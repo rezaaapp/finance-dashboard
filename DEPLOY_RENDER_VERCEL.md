@@ -30,7 +30,21 @@ GOOGLE_SERVICE_ACCOUNT_JSON=your_full_google_service_account_json
 CORS_ALLOWED_ORIGINS=https://finance-dashboard-mu-lac.vercel.app
 ```
 
-Untuk `GOOGLE_SERVICE_ACCOUNT_JSON`, paste isi file service account JSON Google secara utuh sebagai satu value.
+Untuk `GOOGLE_SERVICE_ACCOUNT_JSON`, paste isi file service account JSON Google secara utuh sebagai satu value. JSON itu wajib memiliki field seperti `client_email`, `private_key`, dan `token_uri`. Jangan memakai placeholder seperti `{"type":"service_account","project_id":"..."}`.
+
+Jika Render sulit menerima JSON mentah, gunakan base64:
+
+```powershell
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content -Raw backend\scripts\credentials.json)))
+```
+
+Lalu isi hasilnya ke:
+
+```env
+GOOGLE_SERVICE_ACCOUNT_JSON_BASE64=hasil_base64
+```
+
+Jika memakai base64, kosongkan `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
 ## 3. Test Backend
 

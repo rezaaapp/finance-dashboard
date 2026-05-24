@@ -6,6 +6,72 @@ import base64
 import json
 import os
 
+
+REQUIRED_SERVICE_ACCOUNT_FIELDS = {
+    "type",
+    "project_id",
+    "private_key",
+    "client_email",
+    "token_uri",
+}
+
+
+def _load_service_account_info(credentials_json):
+    try:
+        service_account_info = json.loads(credentials_json)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            "GOOGLE_SERVICE_ACCOUNT_JSON bukan JSON valid. "
+            "Gunakan isi file service account JSON secara utuh, atau pakai "
+            "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64."
+        ) from error
+
+    missing_fields = REQUIRED_SERVICE_ACCOUNT_FIELDS - set(service_account_info)
+
+    if missing_fields:
+        missing_list = ", ".join(sorted(missing_fields))
+        raise ValueError(
+            "GOOGLE_SERVICE_ACCOUNT_JSON tidak lengkap. "
+            f"Field yang hilang: {missing_list}. "
+            "Pastikan value berisi seluruh isi file service account JSON dari Google Cloud, "
+            "bukan placeholder atau sebagian JSON."
+        )
+
+    return service_account_info
+
+
+def _load_credentials_from_file(credentials_path, scopes):
+    if not credentials_path:
+        raise ValueError(
+            "Set GOOGLE_SERVICE_ACCOUNT_JSON_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, "
+            "atau GOOGLE_APPLICATION_CREDENTIALS"
+        )
+
+    cred_path = Path(credentials_path).expanduser()
+
+    if not cred_path.is_absolute():
+        backend_root = Path(__file__).resolve().parents[1]
+        repo_root = backend_root.parent
+        candidates = [
+            Path.cwd() / cred_path,
+            backend_root / cred_path,
+            repo_root / cred_path,
+        ]
+        cred_path = next(
+            (candidate for candidate in candidates if candidate.exists()),
+            candidates[0]
+        )
+
+    if not cred_path.exists():
+        raise FileNotFoundError(
+            f"File kredensial Google tidak ditemukan: {cred_path}"
+        )
+
+    return Credentials.from_service_account_file(
+        str(cred_path),
+        scopes=scopes
+    )
+
 def load_and_process_data(filename):
     all_sheets = pd.read_excel(filename, sheet_name=None)
     df_list = []
@@ -38,35 +104,37 @@ def load_and_process_data_from_spreadsheet(sheet_id):
 
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
-    credentials_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    credentials_json_base64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64")
-    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    credentials_json = (os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip()
+    credentials_json_base64 = (
+        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64") or ""
+    ).strip()
+    credentials_path = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
 
     if credentials_json_base64:
-        credentials_json = base64.b64decode(credentials_json_base64).decode("utf-8")
+        try:
+            credentials_json = base64.b64decode(
+                credentials_json_base64
+            ).decode("utf-8")
+        except Exception as error:
+            raise ValueError(
+                "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 tidak valid. "
+                "Generate ulang dari file service account JSON asli."
+            ) from error
 
     if credentials_json:
-        creds = Credentials.from_service_account_info(
-            json.loads(credentials_json),
-            scopes=scopes
-        )
+        try:
+            service_account_info = _load_service_account_info(credentials_json)
+            creds = Credentials.from_service_account_info(
+                service_account_info,
+                scopes=scopes
+            )
+        except ValueError:
+            if not credentials_path:
+                raise
+
+            creds = _load_credentials_from_file(credentials_path, scopes)
     else:
-        if not credentials_path:
-            raise ValueError(
-                "Set GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SERVICE_ACCOUNT_JSON_BASE64, "
-                "atau GOOGLE_APPLICATION_CREDENTIALS"
-            )
-
-        cred_path = Path(credentials_path).expanduser()
-
-        if not cred_path.exists():
-            raise FileNotFoundError(
-                "GOOGLE_APPLICATION_CREDENTIALS belum diset atau file kredensial tidak ditemukan"
-            )
-
-        creds = Credentials.from_service_account_file(
-            str(cred_path), scopes=scopes
-        )
+        creds = _load_credentials_from_file(credentials_path, scopes)
 
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(sheet_id)

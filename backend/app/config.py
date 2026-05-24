@@ -1,7 +1,12 @@
 from dotenv import load_dotenv
+from pathlib import Path
 import os
 
-load_dotenv()
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
+
+load_dotenv(REPO_ROOT / ".env")
+load_dotenv(BACKEND_ROOT / ".env", override=True)
 
 class Settings:
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
