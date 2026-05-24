@@ -281,19 +281,19 @@ const Dashboard = () => {
           <SummaryCard
             title="Total Pengeluaran"
             value={summary.total_pengeluaran}
-            trend={-5}
+            trend={summary.trend_pengeluaran}
           />
 
           <SummaryCard
             title="Total Saving"
             value={summary.total_saving}
-            trend={8}
+            trend={summary.trend_saving}
           />
 
           <SummaryCard
             title="Total Income"
             value={summary.total_income}
-            trend={15}
+            trend={summary.trend_income}
           />
         </div>
 

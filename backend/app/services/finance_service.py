@@ -3,6 +3,7 @@ from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
 from app.cache.data_cache import cached_data, last_fetch_time, CACHE_DURATION
 from datetime import datetime
+import pandas as pd
 
 
 # =========================
@@ -44,11 +45,42 @@ def _filter(df, year=None, month=None):
     return df
 
 
+def _trend_vs_last_month(df, year=None, month=None):
+    if df.empty:
+        return 0
+
+    if month:
+        current_period = pd.Period(
+            f"{int(year)}-{int(month):02d}",
+            freq="M"
+        )
+    else:
+        year_df = _filter(df, year)
+
+        if year_df.empty:
+            return 0
+
+        current_period = year_df["Bulan"].max()
+
+    previous_period = current_period - 1
+    current_total = df[df["Bulan"] == current_period]["Harga"].sum()
+    previous_total = df[df["Bulan"] == previous_period]["Harga"].sum()
+
+    if previous_total <= 0:
+        return 0
+
+    return round((current_total - previous_total) / previous_total * 100, 2)
+
+
 # =========================
 # SUMMARY
 # =========================
 def get_summary(year=None, month=None):
     _, df_pengeluaran, df_saving, df_income = get_financial_data()
+
+    trend_pengeluaran = _trend_vs_last_month(df_pengeluaran, year, month)
+    trend_saving = _trend_vs_last_month(df_saving, year, month)
+    trend_income = _trend_vs_last_month(df_income, year, month)
 
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_saving = _filter(df_saving, year, month)
@@ -65,6 +97,9 @@ def get_summary(year=None, month=None):
         "total_pengeluaran": total_pengeluaran,
         "total_saving": total_saving,
         "total_income": total_income,
+        "trend_pengeluaran": trend_pengeluaran,
+        "trend_saving": trend_saving,
+        "trend_income": trend_income,
         "saving_ratio": round(saving_ratio, 2),
         "surplus": float(surplus),
     }

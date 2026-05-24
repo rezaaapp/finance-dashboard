@@ -14,6 +14,12 @@ const formatRupiah = (value) => {
   }).format(value || 0);
 };
 
+const formatTrend = (value) => {
+  return new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: 2,
+  }).format(Math.abs(value || 0));
+};
+
 const SummaryCard = ({
   title,
   value,
@@ -104,7 +110,7 @@ const SummaryCard = ({
               : <TrendingDown size={16} />
             }
 
-            {Math.abs(trend)}%
+            {formatTrend(trend)}%
 
           </div>
 
