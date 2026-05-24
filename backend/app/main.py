@@ -19,6 +19,15 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    return {
+        "service": "finance-dashboard-api",
+        "status": "ok",
+        "health": "/api/health",
+    }
+
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}

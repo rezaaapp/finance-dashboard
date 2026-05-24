@@ -6,14 +6,13 @@ Panduan ini dipakai agar frontend Vercel terhubung ke backend FastAPI, bukan ke 
 
 Di Render, buat **New Web Service** baru dari repository ini.
 
-Gunakan setting berikut:
+Gunakan setting berikut. Cara paling aman adalah Docker supaya Render tidak salah mendeteksi project sebagai Java/Spring Boot.
 
 ```text
 Name: finance-dashboard-api
-Runtime: Python
+Runtime: Docker
 Root Directory: backend
-Build Command: pip install -r requirements.txt
-Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Dockerfile Path: backend/Dockerfile
 ```
 
 Jangan gunakan service yang terdeteksi sebagai Java atau Spring Boot. Jika halaman `/api/health` menampilkan "Whitelabel Error Page", berarti service yang aktif bukan backend FastAPI dari project ini.
@@ -50,8 +49,8 @@ Response yang benar:
 Jika masih 404 atau "Whitelabel Error Page", cek lagi setting Render:
 
 - Root Directory harus `backend`
-- Runtime harus `Python`
-- Start Command harus `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Runtime harus `Docker`
+- Dockerfile Path harus `backend/Dockerfile`
 - Branch repo harus branch yang berisi folder `backend/app/main.py`
 
 ## 4. Setting Frontend Vercel
