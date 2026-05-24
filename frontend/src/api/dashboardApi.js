@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api/dashboard";
+import { DASHBOARD_API_URL } from "./config";
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("finance-dashboard-token");
@@ -24,7 +24,7 @@ const buildConfig = (year, month, name) => ({
 export const getSummary = async (year, month) => {
 
   const response = await axios.get(
-    `${API_URL}/summary`,
+    `${DASHBOARD_API_URL}/summary`,
     buildConfig(year, month)
   );
 
@@ -33,7 +33,7 @@ export const getSummary = async (year, month) => {
 
 export const getMonthlySpending = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/monthly-spending`,
+    `${DASHBOARD_API_URL}/monthly-spending`,
     buildConfig(year, month)
   );
   return response.data;
@@ -41,7 +41,7 @@ export const getMonthlySpending = async (year, month) => {
 
 export const getMonthlySaving = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/monthly-saving`,
+    `${DASHBOARD_API_URL}/monthly-saving`,
     buildConfig(year, month)
   );
   return response.data;
@@ -49,7 +49,7 @@ export const getMonthlySaving = async (year, month) => {
 
 export const getMonthlyIncome = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/monthly-income`,
+    `${DASHBOARD_API_URL}/monthly-income`,
     buildConfig(year, month)
   );
   return response.data;
@@ -57,7 +57,7 @@ export const getMonthlyIncome = async (year, month) => {
 
 export const getTopSpending = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/top-spending`,
+    `${DASHBOARD_API_URL}/top-spending`,
     buildConfig(year, month)
   );
   return response.data;
@@ -65,7 +65,7 @@ export const getTopSpending = async (year, month) => {
 
 export const getSpendingByCategory = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/spending-by-category`,
+    `${DASHBOARD_API_URL}/spending-by-category`,
     buildConfig(year, month)
   );
   return response.data;
@@ -73,7 +73,7 @@ export const getSpendingByCategory = async (year, month) => {
 
 export const getGroceryVsFood = async (year, month, name) => {
   const response = await axios.get(
-    `${API_URL}/grocery-vs-food`,
+    `${DASHBOARD_API_URL}/grocery-vs-food`,
     buildConfig(year, month, name)
   );
   return response.data;
@@ -81,7 +81,7 @@ export const getGroceryVsFood = async (year, month, name) => {
 
 export const getCategoryHeatmap = async (year, month, name) => {
   const response = await axios.get(
-    `${API_URL}/category-heatmap`,
+    `${DASHBOARD_API_URL}/category-heatmap`,
     buildConfig(year, month, name)
   );
   return response.data;
@@ -89,7 +89,7 @@ export const getCategoryHeatmap = async (year, month, name) => {
 
 export const getCategoryTrends = async (year, month, name) => {
   const response = await axios.get(
-    `${API_URL}/category-trends`,
+    `${DASHBOARD_API_URL}/category-trends`,
     buildConfig(year, month, name)
   );
   return response.data;
@@ -97,7 +97,7 @@ export const getCategoryTrends = async (year, month, name) => {
 
 export const getPersonalAnalytics = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/personal-analytics`,
+    `${DASHBOARD_API_URL}/personal-analytics`,
     buildConfig(year, month)
   );
   return response.data;
@@ -105,7 +105,7 @@ export const getPersonalAnalytics = async (year, month) => {
 
 export const getAnomalies = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/anomalies`,
+    `${DASHBOARD_API_URL}/anomalies`,
     buildConfig(year, month)
   );
   return response.data;
@@ -113,7 +113,7 @@ export const getAnomalies = async (year, month) => {
 
 export const getLatestInsight = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/latest-insight`,
+    `${DASHBOARD_API_URL}/latest-insight`,
     buildConfig(year, month)
   );
   return response.data;
@@ -121,7 +121,7 @@ export const getLatestInsight = async (year, month) => {
 
 export const getAvailableYears = async () => {
   const response = await axios.get(
-    `${API_URL}/available-years`,
+    `${DASHBOARD_API_URL}/available-years`,
     {
       headers: getAuthHeaders()
     }
