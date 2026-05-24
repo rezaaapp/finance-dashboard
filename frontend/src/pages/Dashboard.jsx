@@ -1,4 +1,4 @@
-import { Moon, RefreshCw, Sun } from "lucide-react";
+import { LogOut, Moon, RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import SummaryCard from "../components/SummaryCard";
@@ -25,7 +25,7 @@ import {
   getAvailableYears,
 } from "../api/dashboardApi";
 
-const Dashboard = () => {
+const Dashboard = ({ onLogout }) => {
   // =========================
   // STATE
   // =========================
@@ -120,11 +120,17 @@ const Dashboard = () => {
       setError("");
     } catch (err) {
       console.error(err);
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
       setError("Failed to fetch dashboard data.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onLogout]);
 
   // =========================
   // INITIAL DATA
@@ -142,11 +148,17 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error(err);
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
       setError("Failed to load available years.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onLogout]);
 
   // =========================
   // LOAD AVAILABLE YEARS
@@ -292,6 +304,15 @@ const Dashboard = () => {
             >
               <RefreshCw size={18} />
               Refresh Data
+            </button>
+
+            <button
+              type="button"
+              onClick={onLogout}
+              className="theme-toggle px-4 py-2 rounded-xl font-semibold"
+            >
+              <LogOut size={18} />
+              Logout
             </button>
           </div>
         </div>

@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.auth import require_auth
 from app.services.finance_service import *
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_auth)])
 
 @router.get("/summary")
 def summary(
