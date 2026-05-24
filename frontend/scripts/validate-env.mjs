@@ -1,4 +1,25 @@
-const apiUrl = process.env.VITE_API_URL || process.env.VITE_API_BASE_URL;
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const localEnv = {};
+const envPath = resolve(process.cwd(), ".env");
+
+if (existsSync(envPath)) {
+  const envFile = readFileSync(envPath, "utf-8");
+
+  for (const line of envFile.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+
+    if (match) {
+      localEnv[match[1]] = match[2].replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
+const apiUrl = process.env.VITE_API_URL
+  || process.env.VITE_API_BASE_URL
+  || localEnv.VITE_API_URL
+  || localEnv.VITE_API_BASE_URL;
 
 if (!apiUrl) {
   console.error(

@@ -2,6 +2,8 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from pathlib import Path
+import base64
+import json
 import os
 
 def load_and_process_data(filename):
@@ -34,23 +36,37 @@ def load_and_process_data_from_spreadsheet(sheet_id):
     Load & process data from Google Spreadsheet (ALL SHEETS)
     """
 
+    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+
+    credentials_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    credentials_json_base64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64")
     credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
-    if not credentials_path:
-        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS belum diset di .env")
+    if credentials_json_base64:
+        credentials_json = base64.b64decode(credentials_json_base64).decode("utf-8")
 
-    cred_path = Path(credentials_path).expanduser()
-
-    if not cred_path.exists():
-        raise FileNotFoundError(
-            "GOOGLE_APPLICATION_CREDENTIALS belum diset atau file kredensial tidak ditemukan"
+    if credentials_json:
+        creds = Credentials.from_service_account_info(
+            json.loads(credentials_json),
+            scopes=scopes
         )
+    else:
+        if not credentials_path:
+            raise ValueError(
+                "Set GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SERVICE_ACCOUNT_JSON_BASE64, "
+                "atau GOOGLE_APPLICATION_CREDENTIALS"
+            )
 
-    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    
-    creds = Credentials.from_service_account_file(
-        str(cred_path), scopes=scopes
-    )
+        cred_path = Path(credentials_path).expanduser()
+
+        if not cred_path.exists():
+            raise FileNotFoundError(
+                "GOOGLE_APPLICATION_CREDENTIALS belum diset atau file kredensial tidak ditemukan"
+            )
+
+        creds = Credentials.from_service_account_file(
+            str(cred_path), scopes=scopes
+        )
 
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(sheet_id)

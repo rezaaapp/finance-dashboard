@@ -8,6 +8,14 @@ class Settings:
     DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME")
     DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
     DASHBOARD_AUTH_TOKEN = os.getenv("DASHBOARD_AUTH_TOKEN")
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if origin.strip()
+    ]
 
     if not GOOGLE_SHEET_ID:
         raise ValueError("GOOGLE_SHEET_ID belum diset di .env")
