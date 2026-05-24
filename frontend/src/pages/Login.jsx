@@ -21,7 +21,23 @@ const Login = ({ onLogin }) => {
       onLogin(authData);
     } catch (err) {
       console.error(err);
-      setError("Username atau password salah.");
+
+      if (err?.response?.status === 401) {
+        setError("Username atau password salah.");
+        return;
+      }
+
+      if (err?.response?.status === 404) {
+        setError("Endpoint login tidak ditemukan. Periksa VITE_API_URL.");
+        return;
+      }
+
+      if (err?.response?.status >= 500) {
+        setError("Backend login sedang bermasalah. Periksa environment backend.");
+        return;
+      }
+
+      setError("Tidak bisa terhubung ke backend login.");
     } finally {
       setLoading(false);
     }
