@@ -10,13 +10,14 @@ const getAuthHeaders = () => {
     : {};
 };
 
-const buildParams = (year, month) => ({
+const buildParams = (year, month, name) => ({
   ...(year && { year }),
   ...(month && { month }),
+  ...(name && { name }),
 });
 
-const buildConfig = (year, month) => ({
-  params: buildParams(year, month),
+const buildConfig = (year, month, name) => ({
+  params: buildParams(year, month, name),
   headers: getAuthHeaders(),
 });
 
@@ -70,26 +71,26 @@ export const getSpendingByCategory = async (year, month) => {
   return response.data;
 };
 
-export const getGroceryVsFood = async (year, month) => {
+export const getGroceryVsFood = async (year, month, name) => {
   const response = await axios.get(
     `${API_URL}/grocery-vs-food`,
-    buildConfig(year, month)
+    buildConfig(year, month, name)
   );
   return response.data;
 };
 
-export const getCategoryHeatmap = async (year, month) => {
+export const getCategoryHeatmap = async (year, month, name) => {
   const response = await axios.get(
     `${API_URL}/category-heatmap`,
-    buildConfig(year, month)
+    buildConfig(year, month, name)
   );
   return response.data;
 };
 
-export const getCategoryTrends = async (year, month) => {
+export const getCategoryTrends = async (year, month, name) => {
   const response = await axios.get(
     `${API_URL}/category-trends`,
-    buildConfig(year, month)
+    buildConfig(year, month, name)
   );
   return response.data;
 };

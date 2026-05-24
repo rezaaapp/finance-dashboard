@@ -4,7 +4,7 @@ import {
   TrendingDown,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -40,7 +40,11 @@ const fallbackKpi = {
 
 const fallbackUsers = [{ label: "Semua Data", value: "all" }];
 
-const PersonalAnalytics = ({ data }) => {
+const PersonalAnalytics = ({
+  data,
+  selectedUser,
+  onSelectedUserChange,
+}) => {
   const users = useMemo(() => (
     data?.users ?? fallbackUsers
   ), [data?.users]);
@@ -48,13 +52,12 @@ const PersonalAnalytics = ({ data }) => {
   const topCategoryMap = useMemo(() => (
     data?.top_categories ?? {}
   ), [data?.top_categories]);
-  const [selectedUser, setSelectedUser] = useState("all");
 
   useEffect(() => {
     if (!users.some((user) => user.value === selectedUser)) {
-      setSelectedUser("all");
+      onSelectedUserChange("all");
     }
-  }, [selectedUser, users]);
+  }, [onSelectedUserChange, selectedUser, users]);
 
   const kpis = data?.kpis?.[selectedUser] ?? fallbackKpi;
 
@@ -94,7 +97,7 @@ const PersonalAnalytics = ({ data }) => {
                 <button
                   key={user.value}
                   type="button"
-                  onClick={() => setSelectedUser(user.value)}
+                  onClick={() => onSelectedUserChange(user.value)}
                   className={`
                     rounded-lg
                     px-4

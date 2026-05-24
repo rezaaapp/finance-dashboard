@@ -48,16 +48,18 @@ def spending_by_category(
 @router.get("/category-heatmap")
 def category_heatmap(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    name: str | None = None
 ):
-    return get_category_heatmap(year, month)
+    return get_category_heatmap(year, month, name)
 
 @router.get("/category-trends")
 def category_trends(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    name: str | None = None
 ):
-    return get_category_trends(year, month)
+    return get_category_trends(year, month, name)
 
 @router.get("/spending-per-person")
 def spending_per_person(
@@ -76,9 +78,10 @@ def personal_analytics(
 @router.get("/grocery-vs-food")
 def grocery_vs_food(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    name: str | None = None
 ):
-    return get_grocery_vs_food(year, month)
+    return get_grocery_vs_food(year, month, name)
 
 @router.get("/anomalies")
 def anomalies(

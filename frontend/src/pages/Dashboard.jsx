@@ -57,6 +57,7 @@ const Dashboard = ({ onLogout }) => {
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [activeView, setActiveView] = useState("dashboard");
+  const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -95,6 +96,9 @@ const Dashboard = ({ onLogout }) => {
   ) => {
     try {
       setLoading(true);
+      const analyticsUserName = selectedAnalyticsUser === "all"
+        ? ""
+        : selectedAnalyticsUser;
 
       const summaryData = await getSummary(
         year,
@@ -105,9 +109,21 @@ const Dashboard = ({ onLogout }) => {
       const incomeData = await getMonthlyIncome(year, month);
       const topSpendingData = await getTopSpending(year, month);
       const categoryDataRes = await getSpendingByCategory(year, month);
-      const groceryVsFoodData = await getGroceryVsFood(year, month);
-      const categoryHeatmapData = await getCategoryHeatmap(year, month);
-      const categoryTrendsData = await getCategoryTrends(year, month);
+      const groceryVsFoodData = await getGroceryVsFood(
+        year,
+        month,
+        analyticsUserName
+      );
+      const categoryHeatmapData = await getCategoryHeatmap(
+        year,
+        month,
+        analyticsUserName
+      );
+      const categoryTrendsData = await getCategoryTrends(
+        year,
+        month,
+        analyticsUserName
+      );
       const personalAnalyticsData = await getPersonalAnalytics(year, month);
       const anomaliesData = await getAnomalies(year, month);
       const insightData = await getLatestInsight(year, month);
@@ -145,7 +161,7 @@ const Dashboard = ({ onLogout }) => {
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, selectedAnalyticsUser]);
 
   // =========================
   // INITIAL DATA
@@ -441,7 +457,11 @@ const Dashboard = ({ onLogout }) => {
           </>
         ) : (
           <div className="grid grid-cols-1 gap-6">
-            <PersonalAnalytics data={personalAnalytics} />
+            <PersonalAnalytics
+              data={personalAnalytics}
+              selectedUser={selectedAnalyticsUser}
+              onSelectedUserChange={setSelectedAnalyticsUser}
+            />
 
             <GroceryVsFoodChart
               data={groceryVsFood}

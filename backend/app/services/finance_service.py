@@ -45,6 +45,13 @@ def _filter(df, year=None, month=None):
     return df
 
 
+def _filter_name(df, name=None):
+    if name:
+        df = df[df["Nama"] == name]
+
+    return df
+
+
 def _trend_vs_last_month(df, year=None, month=None):
     if df.empty:
         return 0
@@ -191,9 +198,10 @@ def get_spending_by_category(year=None, month=None):
     return grouped.to_dict(orient="records")
 
 
-def get_category_heatmap(year=None, month=None):
+def get_category_heatmap(year=None, month=None, name=None):
     _, df_pengeluaran, _, _ = get_financial_data()
     df_pengeluaran = _filter(df_pengeluaran, year, month)
+    df_pengeluaran = _filter_name(df_pengeluaran, name)
 
     if df_pengeluaran.empty:
         return {
@@ -246,9 +254,10 @@ def get_category_heatmap(year=None, month=None):
     }
 
 
-def get_category_trends(year=None, month=None):
+def get_category_trends(year=None, month=None, name=None):
     _, df_pengeluaran, _, _ = get_financial_data()
     df_pengeluaran = _filter(df_pengeluaran, year, month)
+    df_pengeluaran = _filter_name(df_pengeluaran, name)
 
     if df_pengeluaran.empty:
         return {
@@ -409,9 +418,10 @@ def get_personal_analytics(year=None, month=None):
 # =========================
 # GROCERY VS FOOD
 # =========================
-def get_grocery_vs_food(year=None, month=None):
+def get_grocery_vs_food(year=None, month=None, name=None):
     _, df_pengeluaran, _, _ = get_financial_data()
     df_pengeluaran = _filter(df_pengeluaran, year, month)
+    df_pengeluaran = _filter_name(df_pengeluaran, name)
 
     df_food = df_pengeluaran[df_pengeluaran["Kategori"].isin(["Grocery", "Makanan"])]
 
