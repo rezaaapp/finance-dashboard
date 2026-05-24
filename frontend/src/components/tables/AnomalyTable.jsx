@@ -1,7 +1,7 @@
 const AnomalyTable = ({ data }) => {
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+    <div className="panel rounded-2xl p-6">
 
       <h2 className="text-2xl font-bold mb-6 text-red-400">
         Anomaly Detection
@@ -9,7 +9,7 @@ const AnomalyTable = ({ data }) => {
 
       {data.length === 0 ? (
 
-        <div className="text-slate-400">
+        <div className="text-muted">
           Tidak ada anomaly terdeteksi
         </div>
 
@@ -20,7 +20,7 @@ const AnomalyTable = ({ data }) => {
           <table className="w-full text-sm">
 
             <thead>
-              <tr className="border-b border-slate-700 text-slate-400">
+              <tr className="table-border text-muted">
 
                 <th className="text-left py-3">
                   Tanggal
@@ -51,7 +51,7 @@ const AnomalyTable = ({ data }) => {
 
                 <tr
                   key={index}
-                  className="border-b border-slate-800 hover:bg-slate-800/60"
+                  className="table-row table-border"
                 >
 
                   <td className="py-3">

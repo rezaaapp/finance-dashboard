@@ -34,22 +34,20 @@ def load_and_process_data_from_spreadsheet(sheet_id):
     Load & process data from Google Spreadsheet (ALL SHEETS)
     """
 
-    # --- Penyesuaian Path Credentials ---
-    # Menggunakan Path(__file__) untuk mendapatkan lokasi data_processing.py
-    # Lalu mencari 'credentials.json' di folder yang sama.
-    current_dir = Path(__file__).parent
-    cred_path = current_dir / "credentials.json"
-    print("FILE __file__ :", __file__)
-    print("CURRENT DIR   :", current_dir)
-    print("CREDENTIALS   :", cred_path)
-    print("EXISTS?       :", cred_path.exists())
-    # Verifikasi tambahan (opsional) untuk membantu debug jika file masih tidak terbaca
+    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+    if not credentials_path:
+        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS belum diset di .env")
+
+    cred_path = Path(credentials_path).expanduser()
+
     if not cred_path.exists():
-        raise FileNotFoundError(f"File kredensial tidak ditemukan di: {cred_path.absolute()}")
+        raise FileNotFoundError(
+            "GOOGLE_APPLICATION_CREDENTIALS belum diset atau file kredensial tidak ditemukan"
+        )
 
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
     
-    # Gunakan str(cred_path) karena library google-auth meminta tipe string
     creds = Credentials.from_service_account_file(
         str(cred_path), scopes=scopes
     )

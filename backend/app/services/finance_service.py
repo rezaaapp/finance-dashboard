@@ -184,7 +184,14 @@ def get_grocery_vs_food(year=None, month=None):
         .reset_index()
     )
 
-    return grouped.to_dict(orient="records")
+    return [
+        {
+            "bulan": str(row["Bulan"]),
+            "Grocery": float(row.get("Grocery", 0)),
+            "Makanan": float(row.get("Makanan", 0)),
+        }
+        for _, row in grouped.iterrows()
+    ]
 
 
 # =========================

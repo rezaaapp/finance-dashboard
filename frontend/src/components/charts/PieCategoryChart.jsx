@@ -26,11 +26,28 @@ const formatRupiah = (value) => {
   }).format(value);
 };
 
-const PieCategoryChart = ({ data }) => {
-  return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+const chartTheme = {
+  dark: {
+    tooltipBg: "#0f172a",
+    tooltipBorder: "#334155",
+    tooltipText: "#f8fafc",
+    legendText: "#cbd5e1",
+  },
+  light: {
+    tooltipBg: "#ffffff",
+    tooltipBorder: "#cbd5e1",
+    tooltipText: "#0f172a",
+    legendText: "#475569",
+  },
+};
 
-      <h2 className="text-xl font-bold mb-6">
+const PieCategoryChart = ({ data, theme = "dark" }) => {
+  const colors = chartTheme[theme] || chartTheme.dark;
+
+  return (
+    <div className="panel rounded-2xl p-5 shadow-lg">
+
+      <h2 className="text-xl font-bold text-main mb-6">
         Spending by Category
       </h2>
 
@@ -61,14 +78,14 @@ const PieCategoryChart = ({ data }) => {
             <Tooltip
               formatter={(value) => formatRupiah(value)}
               contentStyle={{
-                backgroundColor: "#0f172a",
-                border: "1px solid #334155",
+                backgroundColor: colors.tooltipBg,
+                border: `1px solid ${colors.tooltipBorder}`,
                 borderRadius: "12px",
-                color: "#fff",
+                color: colors.tooltipText,
               }}
             />
 
-            <Legend />
+            <Legend wrapperStyle={{ color: colors.legendText }} />
 
           </PieChart>
 

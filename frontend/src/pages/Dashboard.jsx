@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Moon, RefreshCw, Sun } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import SummaryCard from "../components/SummaryCard";
 import MonthlyChart from "../components/charts/MonthlyChart";
@@ -37,52 +38,35 @@ const Dashboard = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem("finance-dashboard-theme");
 
-  // =========================
-  // LOAD AVAILABLE YEARS
-  // =========================
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-
-  // =========================
-  // FETCH DASHBOARD WHEN YEAR CHANGES
-  // =========================
-  useEffect(() => {
-    if (selectedYear !== "") {
-      fetchDashboardData(
-        selectedYear,
-        selectedMonth
-      );
+    if (savedTheme === "light" || savedTheme === "dark") {
+      return savedTheme;
     }
-  }, [selectedYear, selectedMonth]);
 
-  // =========================
-  // INITIAL DATA
-  // =========================
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
+    return window.matchMedia("(prefers-color-scheme: light)").matches
+      ? "light"
+      : "dark";
+  });
 
-      const availableYears = await getAvailableYears();
+  const isDarkMode = theme === "dark";
 
-      setYears(availableYears);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("finance-dashboard-theme", theme);
+  }, [theme]);
 
-      if (availableYears.length > 0) {
-        setSelectedYear(availableYears[0]);
-      }
-    } catch (err) {
-      console.error(err);
-      setError("Failed to load available years.");
-    } finally {
-      setLoading(false);
-    }
+  const toggleTheme = () => {
+    setTheme((currentTheme) => (
+      currentTheme === "dark" ? "light" : "dark"
+    ));
   };
 
   // =========================
   // FETCH ALL DASHBOARD DATA
   // =========================
-  const fetchDashboardData = async (
+  const fetchDashboardData = useCallback(async (
     year = "",
     month = ""
   ) => {
@@ -93,13 +77,13 @@ const Dashboard = () => {
         year,
         month
       );
-      const spendingData = await getMonthlySpending(year);
-      const savingData = await getMonthlySaving(year);
-      const incomeData = await getMonthlyIncome(year);
-      const topSpendingData = await getTopSpending(year);
-      const categoryDataRes = await getSpendingByCategory(year);
-      const anomaliesData = await getAnomalies(year);
-      const insightData = await getLatestInsight(year);
+      const spendingData = await getMonthlySpending(year, month);
+      const savingData = await getMonthlySaving(year, month);
+      const incomeData = await getMonthlyIncome(year, month);
+      const topSpendingData = await getTopSpending(year, month);
+      const categoryDataRes = await getSpendingByCategory(year, month);
+      const anomaliesData = await getAnomalies(year, month);
+      const insightData = await getLatestInsight(year, month);
 
       setSummary(summaryData);
       setSpending(spendingData);
@@ -124,14 +108,55 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // =========================
+  // INITIAL DATA
+  // =========================
+  const loadInitialData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const availableYears = await getAvailableYears();
+
+      setYears(availableYears);
+
+      if (availableYears.length > 0) {
+        setSelectedYear(availableYears[0]);
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load available years.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // =========================
+  // LOAD AVAILABLE YEARS
+  // =========================
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  // =========================
+  // FETCH DASHBOARD WHEN YEAR CHANGES
+  // =========================
+  useEffect(() => {
+    if (selectedYear !== "") {
+      fetchDashboardData(
+        selectedYear,
+        selectedMonth
+      );
+    }
+  }, [fetchDashboardData, selectedYear, selectedMonth]);
 
   // =========================
   // LOADING SCREEN
   // =========================
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-950 text-white text-2xl">
+      <div className="dashboard-screen h-screen flex items-center justify-center text-2xl">
         Loading Dashboard...
       </div>
     );
@@ -142,7 +167,7 @@ const Dashboard = () => {
   // =========================
   if (error) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-950 text-red-400 text-xl">
+      <div className="dashboard-screen h-screen flex items-center justify-center text-red-500 text-xl">
         {error}
       </div>
     );
@@ -152,27 +177,27 @@ const Dashboard = () => {
   // UI
   // =========================
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex">
+    <div className="dashboard-screen min-h-screen flex">
       {/* SIDEBAR */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 p-6 hidden lg:block">
-        <h1 className="text-2xl font-bold text-cyan-400 mb-10">
+      <aside className="dashboard-sidebar w-64 border-r p-6 hidden lg:block">
+        <h1 className="text-2xl font-bold text-accent mb-10">
           Finance AI
         </h1>
 
         <nav className="space-y-4">
-          <div className="text-slate-300 hover:text-cyan-400 cursor-pointer">
+          <div className="nav-link cursor-pointer">
             Dashboard
           </div>
 
-          <div className="text-slate-300 hover:text-cyan-400 cursor-pointer">
+          <div className="nav-link cursor-pointer">
             Analytics
           </div>
 
-          <div className="text-slate-300 hover:text-cyan-400 cursor-pointer">
+          <div className="nav-link cursor-pointer">
             Spending
           </div>
 
-          <div className="text-slate-300 hover:text-cyan-400 cursor-pointer">
+          <div className="nav-link cursor-pointer">
             Saving
           </div>
         </nav>
@@ -181,25 +206,24 @@ const Dashboard = () => {
       {/* MAIN */}
       <main className="flex-1 p-6">
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col gap-5 xl:flex-row xl:justify-between xl:items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold">
               Financial Dashboard
             </h1>
 
-            <p className="text-slate-400 mt-1">
+            <p className="text-muted mt-1">
               Monitoring household financial analytics
             </p>
           </div>
 
-          <div className="flex gap-3">
-            <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
 
           {/* YEAR FILTER */}
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
-            className="bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl"
+            className="form-control px-4 py-2 rounded-xl"
           >
             {years.map((year) => (
               <option key={year} value={year}>
@@ -212,7 +236,7 @@ const Dashboard = () => {
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl"
+            className="form-control px-4 py-2 rounded-xl"
           >
             <option value="">All Month</option>
 
@@ -230,13 +254,23 @@ const Dashboard = () => {
             <option value="12">December</option>
           </select>
 
-        </div>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="theme-toggle px-4 py-2 rounded-xl font-semibold"
+              aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
+              title={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+              <span>{isDarkMode ? "Light" : "Dark"}</span>
+            </button>
 
             {/* REFRESH BUTTON */}
             <button
-              onClick={() => fetchDashboardData(selectedYear)}
-              className="bg-cyan-500 hover:bg-cyan-600 px-4 py-2 rounded-xl font-semibold"
+              onClick={() => fetchDashboardData(selectedYear, selectedMonth)}
+              className="primary-button px-4 py-2 rounded-xl font-semibold"
             >
+              <RefreshCw size={18} />
               Refresh Data
             </button>
           </div>
@@ -269,21 +303,24 @@ const Dashboard = () => {
             title="Monthly Spending"
             data={spending}
             dataKey="total"
+            theme={theme}
           />
 
           <MonthlyChart
             title="Monthly Saving"
             data={saving}
             dataKey="total"
+            theme={theme}
           />
 
           <MonthlyChart
             title="Monthly Income"
             data={income}
             dataKey="total"
+            theme={theme}
           />
 
-          <PieCategoryChart data={categoryData} />
+          <PieCategoryChart data={categoryData} theme={theme} />
         </div>
 
         {/* TABLES */}
@@ -294,12 +331,12 @@ const Dashboard = () => {
         </div>
 
         {/* AI INSIGHT */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-          <h2 className="text-2xl font-bold mb-4 text-cyan-400">
+        <div className="panel p-6 rounded-2xl">
+          <h2 className="text-2xl font-bold mb-4 text-accent">
             AI Financial Insight
           </h2>
 
-          <p className="text-slate-300 leading-8">
+          <p className="text-soft leading-8">
             {insight}
           </p>
         </div>

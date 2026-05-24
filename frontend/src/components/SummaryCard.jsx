@@ -38,16 +38,13 @@ const SummaryCard = ({
   return (
     <div
       className="
+        panel
         relative
         overflow-hidden
-        bg-slate-900
-        border
-        border-slate-800
         rounded-2xl
         p-6
         shadow-lg
         hover:scale-[1.02]
-        hover:border-cyan-500
         transition-all
         duration-300
       "
@@ -60,7 +57,7 @@ const SummaryCard = ({
         -right-10
         w-32
         h-32
-        bg-cyan-500/10
+        bg-accent-glow
         rounded-full
         blur-3xl
       " />
@@ -71,18 +68,17 @@ const SummaryCard = ({
         <div className="flex justify-between items-start mb-6">
 
           <div>
-            <p className="text-slate-400 text-sm mb-2">
+            <p className="text-muted text-sm mb-2">
               {title}
             </p>
 
-            <h2 className="text-3xl font-bold text-white leading-tight">
+            <h2 className="text-3xl font-bold text-main leading-tight">
               {formatRupiah(value)}
             </h2>
           </div>
 
           <div className="
-            bg-cyan-500/10
-            text-cyan-400
+            icon-badge
             p-3
             rounded-xl
           ">
@@ -112,7 +108,7 @@ const SummaryCard = ({
 
           </div>
 
-          <span className="text-slate-500 text-sm">
+          <span className="text-subtle text-sm">
             vs last month
           </span>
 

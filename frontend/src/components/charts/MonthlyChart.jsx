@@ -16,16 +16,35 @@ const formatRupiah = (value) => {
   }).format(value);
 };
 
-const MonthlyChart = ({ title, data, dataKey = "total" }) => {
+const chartTheme = {
+  dark: {
+    grid: "#1e293b",
+    tick: "#94a3b8",
+    tooltipBg: "#0f172a",
+    tooltipBorder: "#334155",
+    tooltipText: "#f8fafc",
+  },
+  light: {
+    grid: "#dbe4ef",
+    tick: "#64748b",
+    tooltipBg: "#ffffff",
+    tooltipBorder: "#cbd5e1",
+    tooltipText: "#0f172a",
+  },
+};
+
+const MonthlyChart = ({ title, data, dataKey = "total", theme = "dark" }) => {
+  const colors = chartTheme[theme] || chartTheme.dark;
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+    <div className="panel rounded-2xl p-5 shadow-lg">
 
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-white">
+        <h2 className="text-xl font-bold text-main">
           {title}
         </h2>
 
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-muted">
           {data.length} months
         </div>
       </div>
@@ -38,18 +57,18 @@ const MonthlyChart = ({ title, data, dataKey = "total" }) => {
 
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#1e293b"
+              stroke={colors.grid}
             />
 
             <XAxis
               dataKey="bulan"
-              stroke="#94a3b8"
-              tick={{ fill: "#94a3b8", fontSize: 12 }}
+              stroke={colors.tick}
+              tick={{ fill: colors.tick, fontSize: 12 }}
             />
 
             <YAxis
-              stroke="#94a3b8"
-              tick={{ fill: "#94a3b8", fontSize: 12 }}
+              stroke={colors.tick}
+              tick={{ fill: colors.tick, fontSize: 12 }}
               tickFormatter={(value) =>
                 `${(value / 1000000).toFixed(0)}jt`
               }
@@ -57,10 +76,10 @@ const MonthlyChart = ({ title, data, dataKey = "total" }) => {
 
             <Tooltip
               contentStyle={{
-                backgroundColor: "#0f172a",
-                border: "1px solid #334155",
+                backgroundColor: colors.tooltipBg,
+                border: `1px solid ${colors.tooltipBorder}`,
                 borderRadius: "12px",
-                color: "#fff",
+                color: colors.tooltipText,
               }}
               formatter={(value) => formatRupiah(value)}
             />
