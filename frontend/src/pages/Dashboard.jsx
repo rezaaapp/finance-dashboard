@@ -209,7 +209,7 @@ const Dashboard = ({ onLogout }) => {
       {/* SIDEBAR */}
       <aside className="dashboard-sidebar w-64 border-r p-6 hidden lg:block">
         <h1 className="text-2xl font-bold text-accent mb-10">
-          Finance AI
+          Operasional Rumah Tangga Dashboard 
         </h1>
 
         <nav className="space-y-4">
@@ -249,13 +249,13 @@ const Dashboard = ({ onLogout }) => {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:w-auto xl:grid-cols-[120px_160px_repeat(3,auto)] xl:items-center">
 
           {/* YEAR FILTER */}
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
-            className="form-control px-4 py-2 rounded-xl"
+            className="form-control w-full px-4 py-2 rounded-xl"
           >
             {years.map((year) => (
               <option key={year} value={year}>
@@ -268,7 +268,7 @@ const Dashboard = ({ onLogout }) => {
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="form-control px-4 py-2 rounded-xl"
+            className="form-control w-full px-4 py-2 rounded-xl"
           >
             <option value="">All Month</option>
 
@@ -289,7 +289,7 @@ const Dashboard = ({ onLogout }) => {
             <button
               type="button"
               onClick={toggleTheme}
-              className="theme-toggle px-4 py-2 rounded-xl font-semibold"
+              className="theme-toggle w-full px-4 py-2 rounded-xl font-semibold xl:w-auto"
               aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
               title={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
             >
@@ -299,17 +299,19 @@ const Dashboard = ({ onLogout }) => {
 
             {/* REFRESH BUTTON */}
             <button
+              type="button"
               onClick={() => fetchDashboardData(selectedYear, selectedMonth)}
-              className="primary-button px-4 py-2 rounded-xl font-semibold"
+              className="primary-button w-full px-4 py-2 rounded-xl font-semibold xl:w-11 xl:px-0"
+              aria-label="Refresh data"
+              title="Refresh data"
             >
               <RefreshCw size={18} />
-              Refresh Data
             </button>
 
             <button
               type="button"
               onClick={onLogout}
-              className="theme-toggle px-4 py-2 rounded-xl font-semibold"
+              className="theme-toggle w-full px-4 py-2 rounded-xl font-semibold sm:col-span-2 xl:col-span-1 xl:w-auto"
             >
               <LogOut size={18} />
               Logout
