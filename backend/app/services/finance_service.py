@@ -7,7 +7,7 @@ def get_financial_data():
         settings.GOOGLE_SHEET_ID
     )
 
-def get_summary():
+def get_summary(year):
     _, df_pengeluaran, df_saving, df_income = get_financial_data()
 
     total_pengeluaran = float(df_pengeluaran["Harga"].sum())
@@ -29,20 +29,30 @@ def get_summary():
         "surplus": surplus
     }
 
-def get_monthly_spending():
+def get_monthly_spending(year=None):
     _, df_pengeluaran, _, _ = get_financial_data()
 
-    monthly = (
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == year
+        ]
+
+    grouped = (
         df_pengeluaran
         .groupby("Bulan")["Harga"]
         .sum()
         .reset_index()
     )
 
-    monthly["Bulan"] = monthly["Bulan"].astype(str)
+    grouped["Bulan"] = grouped["Bulan"].astype(str)
 
-    return monthly.to_dict(orient="records")
-
+    return [
+        {
+            "bulan": row["Bulan"],
+            "total": float(row["Harga"])
+        }
+        for _, row in grouped.iterrows()
+    ]
 def get_monthly_saving():
     _, _, df_saving, _ = get_financial_data()
 
@@ -209,3 +219,26 @@ def get_latest_insight():
         )
     }
 
+def get_available_years():
+    df_all, _, _, _ = get_financial_data()
+
+    years = (
+        df_all["Waktu Transaksi"]
+        .dt.year
+        .dropna()
+        .unique()
+    )
+
+    years = sorted(years.tolist(), reverse=True)
+
+    return years
+
+# =========================
+# FILTER YEAR HELPER
+# =========================
+def filter_by_year(df, year):
+    if year:
+        return df[
+            df["Waktu Transaksi"].dt.year == int(year)
+        ]
+    return df
