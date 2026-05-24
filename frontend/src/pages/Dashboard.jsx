@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import SummaryCard from "../components/SummaryCard";
 import MonthlyChart from "../components/charts/MonthlyChart";
 import PieCategoryChart from "../components/charts/PieCategoryChart";
+import GroceryVsFoodChart from "../components/charts/GroceryVsFoodChart";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 
@@ -14,6 +15,7 @@ import {
   getMonthlyIncome,
   getTopSpending,
   getSpendingByCategory,
+  getGroceryVsFood,
   getAnomalies,
   getLatestInsight,
   getAvailableYears,
@@ -29,12 +31,14 @@ const Dashboard = () => {
   const [income, setIncome] = useState([]);
   const [topSpending, setTopSpending] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
+  const [groceryVsFood, setGroceryVsFood] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
   const [insight, setInsight] = useState("");
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [activeView, setActiveView] = useState("dashboard");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,6 +86,7 @@ const Dashboard = () => {
       const incomeData = await getMonthlyIncome(year, month);
       const topSpendingData = await getTopSpending(year, month);
       const categoryDataRes = await getSpendingByCategory(year, month);
+      const groceryVsFoodData = await getGroceryVsFood(year, month);
       const anomaliesData = await getAnomalies(year, month);
       const insightData = await getLatestInsight(year, month);
 
@@ -91,6 +96,7 @@ const Dashboard = () => {
       setIncome(incomeData);
       setTopSpending(topSpendingData);
       setCategoryData(categoryDataRes);
+      setGroceryVsFood(groceryVsFoodData);
       setAnomalies(anomaliesData);
 
       setInsight(
@@ -185,13 +191,25 @@ const Dashboard = () => {
         </h1>
 
         <nav className="space-y-4">
-          <div className="nav-link cursor-pointer">
+          <button
+            type="button"
+            onClick={() => setActiveView("dashboard")}
+            className={`nav-link cursor-pointer block w-full bg-transparent border-0 p-0 text-left ${
+              activeView === "dashboard" ? "text-accent" : ""
+            }`}
+          >
             Dashboard
-          </div>
+          </button>
 
-          <div className="nav-link cursor-pointer">
+          <button
+            type="button"
+            onClick={() => setActiveView("analytics")}
+            className={`nav-link cursor-pointer block w-full bg-transparent border-0 p-0 text-left ${
+              activeView === "analytics" ? "text-accent" : ""
+            }`}
+          >
             Analytics
-          </div>
+          </button>
         </nav>
       </aside>
 
@@ -268,70 +286,81 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* SUMMARY */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <SummaryCard
-            title="Total Pengeluaran"
-            value={summary.total_pengeluaran}
-            trend={summary.trend_pengeluaran}
-          />
+        {activeView === "dashboard" ? (
+          <>
+            {/* SUMMARY */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <SummaryCard
+                title="Total Pengeluaran"
+                value={summary.total_pengeluaran}
+                trend={summary.trend_pengeluaran}
+              />
 
-          <SummaryCard
-            title="Total Saving"
-            value={summary.total_saving}
-            trend={summary.trend_saving}
-          />
+              <SummaryCard
+                title="Total Saving"
+                value={summary.total_saving}
+                trend={summary.trend_saving}
+              />
 
-          <SummaryCard
-            title="Total Income"
-            value={summary.total_income}
-            trend={summary.trend_income}
-          />
-        </div>
+              <SummaryCard
+                title="Total Income"
+                value={summary.total_income}
+                trend={summary.trend_income}
+              />
+            </div>
 
-        {/* CHARTS */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-          <MonthlyChart
-            title="Monthly Spending"
-            data={spending}
-            dataKey="total"
-            theme={theme}
-          />
+            {/* CHARTS */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+              <MonthlyChart
+                title="Monthly Spending"
+                data={spending}
+                dataKey="total"
+                theme={theme}
+              />
 
-          <MonthlyChart
-            title="Monthly Saving"
-            data={saving}
-            dataKey="total"
-            theme={theme}
-          />
+              <MonthlyChart
+                title="Monthly Saving"
+                data={saving}
+                dataKey="total"
+                theme={theme}
+              />
 
-          <MonthlyChart
-            title="Monthly Income"
-            data={income}
-            dataKey="total"
-            theme={theme}
-          />
+              <MonthlyChart
+                title="Monthly Income"
+                data={income}
+                dataKey="total"
+                theme={theme}
+              />
 
-          <PieCategoryChart data={categoryData} theme={theme} />
-        </div>
+              <PieCategoryChart data={categoryData} theme={theme} />
+            </div>
 
-        {/* TABLES */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-          <TopSpendingTable data={topSpending} />
+            {/* TABLES */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+              <TopSpendingTable data={topSpending} />
 
-          <AnomalyTable data={anomalies} />
-        </div>
+              <AnomalyTable data={anomalies} />
+            </div>
 
-        {/* AI INSIGHT */}
-        <div className="panel p-6 rounded-2xl">
-          <h2 className="text-2xl font-bold mb-4 text-accent">
-            AI Financial Insight
-          </h2>
+            {/* AI INSIGHT */}
+            <div className="panel p-6 rounded-2xl">
+              <h2 className="text-2xl font-bold mb-4 text-accent">
+                AI Financial Insight
+              </h2>
 
-          <p className="text-soft leading-8">
-            {insight}
-          </p>
-        </div>
+              <p className="text-soft leading-8">
+                {insight}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-1 gap-6">
+            <GroceryVsFoodChart
+              data={groceryVsFood}
+              theme={theme}
+            />
+          </div>
+        )}
       </main>
     </div>
   );

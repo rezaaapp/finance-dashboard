@@ -191,6 +191,61 @@ def get_spending_by_category(year=None, month=None):
     return grouped.to_dict(orient="records")
 
 
+def get_category_heatmap(year=None, month=None):
+    _, df_pengeluaran, _, _ = get_financial_data()
+    df_pengeluaran = _filter(df_pengeluaran, year, month)
+
+    if df_pengeluaran.empty:
+        return {
+            "months": [],
+            "categories": [],
+            "max_total": 0,
+            "rows": [],
+        }
+
+    grouped = (
+        df_pengeluaran.groupby(["Kategori", "Bulan"])["Harga"]
+        .sum()
+        .reset_index()
+    )
+
+    months = sorted(grouped["Bulan"].unique())
+    categories = sorted(grouped["Kategori"].unique())
+    max_total = float(grouped["Harga"].max())
+
+    rows = []
+
+    for category in categories:
+        category_data = grouped[grouped["Kategori"] == category]
+        category_total = float(category_data["Harga"].sum())
+        month_values = []
+
+        for current_month in months:
+            total = category_data[category_data["Bulan"] == current_month]["Harga"].sum()
+            total = float(total)
+
+            month_values.append({
+                "bulan": str(current_month),
+                "total": total,
+                "intensity": round(total / max_total, 4) if max_total > 0 else 0,
+            })
+
+        rows.append({
+            "kategori": category,
+            "total": category_total,
+            "months": month_values,
+        })
+
+    rows = sorted(rows, key=lambda row: row["total"], reverse=True)
+
+    return {
+        "months": [str(current_month) for current_month in months],
+        "categories": categories,
+        "max_total": max_total,
+        "rows": rows,
+    }
+
+
 # =========================
 # PERSON
 # =========================

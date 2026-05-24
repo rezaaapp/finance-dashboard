@@ -69,6 +69,16 @@ export const getSpendingByCategory = async (year, month) => {
   return response.data;
 };
 
+export const getGroceryVsFood = async (year, month) => {
+  const response = await axios.get(
+    `${API_URL}/grocery-vs-food`,
+    {
+      params: buildParams(year, month)
+    }
+  );
+  return response.data;
+};
+
 export const getAnomalies = async (year, month) => {
   const response = await axios.get(
     `${API_URL}/anomalies`,
