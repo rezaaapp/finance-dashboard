@@ -192,14 +192,6 @@ const Dashboard = () => {
           <div className="nav-link cursor-pointer">
             Analytics
           </div>
-
-          <div className="nav-link cursor-pointer">
-            Spending
-          </div>
-
-          <div className="nav-link cursor-pointer">
-            Saving
-          </div>
         </nav>
       </aside>
 
