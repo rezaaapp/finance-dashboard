@@ -1,10 +1,33 @@
 from scripts.data_processing import load_and_process_data_from_spreadsheet
+from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
 
 def get_financial_data():
     return load_and_process_data_from_spreadsheet(
         settings.GOOGLE_SHEET_ID
     )
+
+def get_summary():
+    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+
+    total_pengeluaran = float(df_pengeluaran["Harga"].sum())
+    total_saving = float(df_saving["Harga"].sum())
+    total_income = float(df_income["Harga"].sum())
+
+    saving_ratio = (
+        (total_saving / total_pengeluaran) * 100
+        if total_pengeluaran > 0 else 0
+    )
+
+    surplus = total_income - total_pengeluaran
+
+    return {
+        "total_pengeluaran": total_pengeluaran,
+        "total_saving": total_saving,
+        "total_income": total_income,
+        "saving_ratio": round(saving_ratio, 2),
+        "surplus": surplus
+    }
 
 def get_monthly_spending():
     _, df_pengeluaran, _, _ = get_financial_data()
@@ -19,3 +42,170 @@ def get_monthly_spending():
     monthly["Bulan"] = monthly["Bulan"].astype(str)
 
     return monthly.to_dict(orient="records")
+
+def get_monthly_saving():
+    _, _, df_saving, _ = get_financial_data()
+
+    monthly = (
+        df_saving
+        .groupby("Bulan")["Harga"]
+        .sum()
+        .reset_index()
+    )
+
+    monthly["Bulan"] = monthly["Bulan"].astype(str)
+
+    return monthly.to_dict(orient="records")
+
+def get_monthly_income():
+    _, _, _, df_income = get_financial_data()
+
+    monthly = (
+        df_income
+        .groupby("Bulan")["Harga"]
+        .sum()
+        .reset_index()
+    )
+
+    monthly["Bulan"] = monthly["Bulan"].astype(str)
+
+    return monthly.to_dict(orient="records")
+
+def get_top_spending(limit=10):
+    _, df_pengeluaran, _, _ = get_financial_data()
+
+    latest_month = (
+        df_pengeluaran["Bulan"]
+        .sort_values()
+        .iloc[-1]
+    )
+
+    top_spending = (
+        df_pengeluaran[
+            df_pengeluaran["Bulan"] == latest_month
+        ]
+        .sort_values("Harga", ascending=False)
+        .head(limit)
+    )
+
+    top_spending["Bulan"] = top_spending["Bulan"].astype(str)
+
+    return top_spending[
+        [
+            "Nama Transaksi",
+            "Kategori",
+            "Harga",
+            "Nama",
+            "Bulan"
+        ]
+    ].to_dict(orient="records")
+
+def get_spending_by_category():
+    _, df_pengeluaran, _, _ = get_financial_data()
+
+    kategori = (
+        df_pengeluaran
+        .groupby("Kategori")["Harga"]
+        .sum()
+        .reset_index()
+        .sort_values("Harga", ascending=False)
+    )
+
+    return kategori.to_dict(orient="records")
+
+def get_spending_per_person():
+    _, df_pengeluaran, _, _ = get_financial_data()
+
+    person = (
+        df_pengeluaran
+        .groupby("Nama")["Harga"]
+        .sum()
+        .reset_index()
+    )
+
+    return person.to_dict(orient="records")
+
+def get_grocery_vs_food():
+    _, df_pengeluaran, _, _ = get_financial_data()
+
+    df_food = df_pengeluaran[
+        df_pengeluaran["Kategori"]
+        .isin(["Grocery", "Makanan"])
+    ]
+
+    grouped = (
+        df_food
+        .groupby(["Bulan", "Kategori"])["Harga"]
+        .sum()
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+
+    grouped["Bulan"] = grouped["Bulan"].astype(str)
+
+    return grouped.to_dict(orient="records")
+
+def get_anomalies():
+    _, df_pengeluaran, _, _ = get_financial_data()
+
+    anomalies = detect_anomaly_pengeluaran(
+        df_pengeluaran
+    )
+
+    anomalies["Bulan"] = anomalies["Bulan"].astype(str)
+
+    return anomalies[
+        [
+            "Waktu Transaksi",
+            "Kategori",
+            "Harga",
+            "Nama",
+            "Nama Transaksi"
+        ]
+    ].to_dict(orient="records")
+
+def get_latest_insight():
+    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+
+    latest_month = (
+        df_pengeluaran["Bulan"]
+        .sort_values()
+        .iloc[-1]
+    )
+
+    current_spending = (
+        df_pengeluaran[
+            df_pengeluaran["Bulan"] == latest_month
+        ]["Harga"].sum()
+    )
+
+    current_saving = (
+        df_saving[
+            df_saving["Bulan"] == latest_month
+        ]["Harga"].sum()
+    )
+
+    current_income = (
+        df_income[
+            df_income["Bulan"] == latest_month
+        ]["Harga"].sum()
+    )
+
+    saving_ratio = (
+        (current_saving / current_spending) * 100
+        if current_spending > 0 else 0
+    )
+
+    return {
+        "bulan": str(latest_month),
+        "spending": current_spending,
+        "saving": current_saving,
+        "income": current_income,
+        "saving_ratio": round(saving_ratio, 2),
+        "status": (
+            "HEALTHY"
+            if saving_ratio >= 30
+            else "WARNING"
+        )
+    }
+
