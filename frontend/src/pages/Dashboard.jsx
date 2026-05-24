@@ -33,6 +33,7 @@ const Dashboard = () => {
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,9 +50,12 @@ const Dashboard = () => {
   // =========================
   useEffect(() => {
     if (selectedYear !== "") {
-      fetchDashboardData(selectedYear);
+      fetchDashboardData(
+        selectedYear,
+        selectedMonth
+      );
     }
-  }, [selectedYear]);
+  }, [selectedYear, selectedMonth]);
 
   // =========================
   // INITIAL DATA
@@ -78,11 +82,17 @@ const Dashboard = () => {
   // =========================
   // FETCH ALL DASHBOARD DATA
   // =========================
-  const fetchDashboardData = async (year = "") => {
+  const fetchDashboardData = async (
+    year = "",
+    month = ""
+  ) => {
     try {
       setLoading(true);
 
-      const summaryData = await getSummary(year);
+      const summaryData = await getSummary(
+        year,
+        month
+      );
       const spendingData = await getMonthlySpending(year);
       const savingData = await getMonthlySaving(year);
       const incomeData = await getMonthlyIncome(year);
@@ -183,18 +193,44 @@ const Dashboard = () => {
           </div>
 
           <div className="flex gap-3">
-            {/* YEAR FILTER */}
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl"
-            >
-              {years.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-3">
+
+          {/* YEAR FILTER */}
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl"
+          >
+            {years.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+
+          {/* MONTH FILTER */}
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl"
+          >
+            <option value="">All Month</option>
+
+            <option value="1">January</option>
+            <option value="2">February</option>
+            <option value="3">March</option>
+            <option value="4">April</option>
+            <option value="5">May</option>
+            <option value="6">June</option>
+            <option value="7">July</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+
+        </div>
 
             {/* REFRESH BUTTON */}
             <button
@@ -211,16 +247,19 @@ const Dashboard = () => {
           <SummaryCard
             title="Total Pengeluaran"
             value={summary.total_pengeluaran}
+            trend={-5}
           />
 
           <SummaryCard
             title="Total Saving"
             value={summary.total_saving}
+            trend={8}
           />
 
           <SummaryCard
             title="Total Income"
             value={summary.total_income}
+            trend={15}
           />
         </div>
 

@@ -1,17 +1,75 @@
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
+from app.cache.data_cache import (
+    cached_data,
+    last_fetch_time,
+    CACHE_DURATION
+)
+from datetime import datetime
 
 def get_financial_data():
-    return load_and_process_data_from_spreadsheet(
+    global cached_data
+    global last_fetch_time
+
+    now = datetime.now()
+
+    # Pakai cache jika belum expired
+    if (
+        cached_data is not None and
+        last_fetch_time is not None and
+        now - last_fetch_time < CACHE_DURATION
+    ):
+        print("USING CACHE")
+        return cached_data
+
+    print("FETCH FROM GOOGLE SHEETS")
+
+    data = load_and_process_data_from_spreadsheet(
         settings.GOOGLE_SHEET_ID
     )
 
-def get_summary(year):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+    cached_data = data
+    last_fetch_time = now
+
+    return data
+
+def get_summary(year=None, month=None):
+
+    df_all, df_pengeluaran, df_saving, df_income = get_financial_data()
+
+    # FILTER YEAR
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+        df_saving = df_saving[
+            df_saving["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+        df_income = df_income[
+            df_income["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    # FILTER MONTH
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == int(month)
+        ]
+
+        df_saving = df_saving[
+            df_saving["Waktu Transaksi"].dt.month == int(month)
+        ]
+
+        df_income = df_income[
+            df_income["Waktu Transaksi"].dt.month == int(month)
+        ]
 
     total_pengeluaran = float(df_pengeluaran["Harga"].sum())
+
     total_saving = float(df_saving["Harga"].sum())
+
     total_income = float(df_income["Harga"].sum())
 
     saving_ratio = (
@@ -29,12 +87,17 @@ def get_summary(year):
         "surplus": surplus
     }
 
-def get_monthly_spending(year=None):
+def get_monthly_spending(year=None, month=None):
     _, df_pengeluaran, _, _ = get_financial_data()
 
     if year:
         df_pengeluaran = df_pengeluaran[
             df_pengeluaran["Waktu Transaksi"].dt.year == year
+        ]
+
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
         ]
 
     grouped = (
@@ -53,8 +116,18 @@ def get_monthly_spending(year=None):
         }
         for _, row in grouped.iterrows()
     ]
-def get_monthly_saving():
+def get_monthly_saving(year=None, month=None):
     _, _, df_saving, _ = get_financial_data()
+
+    if year:
+        df_saving = df_saving[
+            df_saving["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_saving = df_saving[
+            df_saving["Waktu Transaksi"].dt.month == month
+        ]
 
     monthly = (
         df_saving
@@ -65,24 +138,59 @@ def get_monthly_saving():
 
     monthly["Bulan"] = monthly["Bulan"].astype(str)
 
-    return monthly.to_dict(orient="records")
+    return [
+        {
+            "bulan": row["Bulan"],
+            "total": float(row["Harga"])
+        }
+        for _, row in monthly.iterrows()
+    ]
 
-def get_monthly_income():
+def get_monthly_income(year=None, month=None):
     _, _, _, df_income = get_financial_data()
 
-    monthly = (
+    if year:
+        df_income = df_income[
+            df_income["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_income = df_income[
+            df_income["Waktu Transaksi"].dt.month == month
+        ]
+
+    grouped = (
         df_income
         .groupby("Bulan")["Harga"]
         .sum()
         .reset_index()
     )
 
-    monthly["Bulan"] = monthly["Bulan"].astype(str)
+    grouped["Bulan"] = grouped["Bulan"].astype(str)
 
-    return monthly.to_dict(orient="records")
+    return [
+        {
+            "bulan": row["Bulan"],
+            "total": float(row["Harga"])
+        }
+        for _, row in grouped.iterrows()
+    ]
 
-def get_top_spending(limit=10):
+def get_top_spending(year=None, month=None, limit=10):
     _, df_pengeluaran, _, _ = get_financial_data()
+
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
+        ]
+
+    if df_pengeluaran.empty:
+        return []
 
     latest_month = (
         df_pengeluaran["Bulan"]
@@ -98,20 +206,29 @@ def get_top_spending(limit=10):
         .head(limit)
     )
 
-    top_spending["Bulan"] = top_spending["Bulan"].astype(str)
+    return [
+        {
+            "nama_transaksi": row["Nama Transaksi"],
+            "kategori": row["Kategori"],
+            "harga": float(row["Harga"]),
+            "nama": row["Nama"],
+            "bulan": str(row["Bulan"])
+        }
+        for _, row in top_spending.iterrows()
+    ]
 
-    return top_spending[
-        [
-            "Nama Transaksi",
-            "Kategori",
-            "Harga",
-            "Nama",
-            "Bulan"
-        ]
-    ].to_dict(orient="records")
-
-def get_spending_by_category():
+def get_spending_by_category(year=None, month=None):
     _, df_pengeluaran, _, _ = get_financial_data()
+
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
+        ]
 
     kategori = (
         df_pengeluaran
@@ -123,8 +240,18 @@ def get_spending_by_category():
 
     return kategori.to_dict(orient="records")
 
-def get_spending_per_person():
+def get_spending_per_person(year=None, month=None):
     _, df_pengeluaran, _, _ = get_financial_data()
+
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
+        ]
 
     person = (
         df_pengeluaran
@@ -135,9 +262,17 @@ def get_spending_per_person():
 
     return person.to_dict(orient="records")
 
-def get_grocery_vs_food():
+def get_grocery_vs_food(year=None, month=None):
     _, df_pengeluaran, _, _ = get_financial_data()
 
+    if year:
+            df_pengeluaran = df_pengeluaran[    
+                df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+            ]   
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
+        ]
     df_food = df_pengeluaran[
         df_pengeluaran["Kategori"]
         .isin(["Grocery", "Makanan"])
@@ -155,8 +290,18 @@ def get_grocery_vs_food():
 
     return grouped.to_dict(orient="records")
 
-def get_anomalies():
+def get_anomalies(year=None, month=None):
     _, df_pengeluaran, _, _ = get_financial_data()
+
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
+        ]
 
     anomalies = detect_anomaly_pengeluaran(
         df_pengeluaran
@@ -174,8 +319,18 @@ def get_anomalies():
         ]
     ].to_dict(orient="records")
 
-def get_latest_insight():
+def get_latest_insight(year=None, month=None):
     _, df_pengeluaran, df_saving, df_income = get_financial_data()
+
+    if year:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.year == int(year)
+        ]
+
+    if month:
+        df_pengeluaran = df_pengeluaran[
+            df_pengeluaran["Waktu Transaksi"].dt.month == month
+        ]
 
     latest_month = (
         df_pengeluaran["Bulan"]

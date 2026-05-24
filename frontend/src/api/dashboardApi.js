@@ -2,58 +2,108 @@ import axios from "axios";
 
 const API_URL = "http://127.0.0.1:8000/api/dashboard";
 
-export const getSummary = async (year = "") => {
+export const getSummary = async (year, month) => {
+
   const response = await axios.get(
-    `${API_URL}/summary?year=${year}`
+    `${API_URL}/summary`,
+    {
+      params: { 
+      ...(year && { year }),
+      ...(month && { month }) 
+      }
+    }
+  );
+
+  return response.data;
+};
+
+export const getMonthlySpending = async (year, month) => {
+  const response = await axios.get(
+    `${API_URL}/monthly-spending`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
 
-export const getMonthlySpending = async (year = "") => {
+export const getMonthlySaving = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/monthly-spending?year=${year}`
+    `${API_URL}/monthly-saving`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
 
-export const getMonthlySaving = async (year = "") => {
+export const getMonthlyIncome = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/monthly-saving?year=${year}`
+    `${API_URL}/monthly-income`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
 
-export const getMonthlyIncome = async (year = "") => {
+export const getTopSpending = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/monthly-income?year=${year}`
+    `${API_URL}/top-spending`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
 
-export const getTopSpending = async (year = "") => {
+export const getSpendingByCategory = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/top-spending?year=${year}`
+    `${API_URL}/spending-by-category`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
 
-export const getSpendingByCategory = async (year = "") => {
+export const getAnomalies = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/spending-by-category?year=${year}`
+    `${API_URL}/anomalies`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
 
-export const getAnomalies = async (year = "") => {
+export const getLatestInsight = async (year, month) => {
   const response = await axios.get(
-    `${API_URL}/anomalies?year=${year}`
-  );
-  return response.data;
-};
-
-export const getLatestInsight = async (year = "") => {
-  const response = await axios.get(
-    `${API_URL}/latest-insight?year=${year}`
+    `${API_URL}/latest-insight`,
+    {
+      params: {
+        ...(year && { year }),
+        ...(month && { month }) 
+        }
+    }
   );
   return response.data;
 };
@@ -64,3 +114,5 @@ export const getAvailableYears = async () => {
   );
   return response.data;
 };
+    
+

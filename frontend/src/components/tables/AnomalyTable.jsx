@@ -1,33 +1,95 @@
 const AnomalyTable = ({ data }) => {
+
   return (
-    <div className="bg-slate-800 p-5 rounded-2xl">
-      <h2 className="text-xl font-bold mb-4 text-red-400">
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+
+      <h2 className="text-2xl font-bold mb-6 text-red-400">
         Anomaly Detection
       </h2>
 
-      <table className="w-full">
-        <thead>
-          <tr className="text-left border-b border-slate-600">
-            <th>Tanggal</th>
-            <th>Kategori</th>
-            <th>Harga</th>
-          </tr>
-        </thead>
+      {data.length === 0 ? (
 
-        <tbody>
-          {data.map((item, index) => (
-            <tr key={index} className="border-b border-slate-700">
-              <td>{item.tanggal}</td>
+        <div className="text-slate-400">
+          Tidak ada anomaly terdeteksi
+        </div>
 
-              <td>{item.kategori}</td>
+      ) : (
 
-              <td className="text-red-400">
-                Rp {item.harga?.toLocaleString("id-ID")}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <div className="overflow-x-auto">
+
+          <table className="w-full text-sm">
+
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400">
+
+                <th className="text-left py-3">
+                  Tanggal
+                </th>
+
+                <th className="text-left py-3">
+                  Transaksi
+                </th>
+
+                <th className="text-left py-3">
+                  Kategori
+                </th>
+
+                <th className="text-left py-3">
+                  Nama
+                </th>
+
+                <th className="text-right py-3">
+                  Nominal
+                </th>
+
+              </tr>
+            </thead>
+
+            <tbody>
+
+              {data.map((item, index) => (
+
+                <tr
+                  key={index}
+                  className="border-b border-slate-800 hover:bg-slate-800/60"
+                >
+
+                  <td className="py-3">
+                    {
+                      new Date(item["Waktu Transaksi"])
+                      .toLocaleDateString("id-ID")
+                    }
+                  </td>
+
+                  <td className="py-3">
+                    {item["Nama Transaksi"]}
+                  </td>
+
+                  <td className="py-3">
+                    {item["Kategori"]}
+                  </td>
+
+                  <td className="py-3">
+                    {item["Nama"]}
+                  </td>
+
+                  <td className="py-3 text-right text-red-400 font-semibold">
+                    Rp {Number(item["Harga"])
+                      .toLocaleString("id-ID")}
+                  </td>
+
+                </tr>
+
+              ))}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      )}
+
     </div>
   );
 };
