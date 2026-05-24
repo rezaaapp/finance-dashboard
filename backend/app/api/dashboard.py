@@ -44,6 +44,20 @@ def spending_by_category(
 ):
     return get_spending_by_category(year, month)
 
+@router.get("/category-heatmap")
+def category_heatmap(
+    year: int | None = None,
+    month: int | None = None
+):
+    return get_category_heatmap(year, month)
+
+@router.get("/category-trends")
+def category_trends(
+    year: int | None = None,
+    month: int | None = None
+):
+    return get_category_trends(year, month)
+
 @router.get("/spending-per-person")
 def spending_per_person(
     year: int | None = None,

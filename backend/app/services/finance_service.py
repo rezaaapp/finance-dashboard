@@ -246,6 +246,60 @@ def get_category_heatmap(year=None, month=None):
     }
 
 
+def get_category_trends(year=None, month=None):
+    _, df_pengeluaran, _, _ = get_financial_data()
+    df_pengeluaran = _filter(df_pengeluaran, year, month)
+
+    if df_pengeluaran.empty:
+        return {
+            "months": [],
+            "categories": [],
+        }
+
+    grouped = (
+        df_pengeluaran.groupby(["Kategori", "Bulan"])["Harga"]
+        .sum()
+        .reset_index()
+    )
+
+    months = sorted(grouped["Bulan"].unique())
+    categories = sorted(grouped["Kategori"].unique())
+    category_rows = []
+
+    for category in categories:
+        category_data = grouped[grouped["Kategori"] == category]
+        values = []
+
+        for current_month in months:
+            total = category_data[category_data["Bulan"] == current_month]["Harga"].sum()
+
+            values.append({
+                "bulan": str(current_month),
+                "total": float(total),
+            })
+
+        category_total = sum(item["total"] for item in values)
+        average = category_total / len(values) if values else 0
+
+        category_rows.append({
+            "kategori": category,
+            "total": float(category_total),
+            "average": round(float(average), 2),
+            "values": values,
+        })
+
+    category_rows = sorted(
+        category_rows,
+        key=lambda row: row["total"],
+        reverse=True
+    )
+
+    return {
+        "months": [str(current_month) for current_month in months],
+        "categories": category_rows,
+    }
+
+
 # =========================
 # PERSON
 # =========================

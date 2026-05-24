@@ -5,6 +5,8 @@ import SummaryCard from "../components/SummaryCard";
 import MonthlyChart from "../components/charts/MonthlyChart";
 import PieCategoryChart from "../components/charts/PieCategoryChart";
 import GroceryVsFoodChart from "../components/charts/GroceryVsFoodChart";
+import CategoryHeatmap from "../components/charts/CategoryHeatmap";
+import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 
@@ -16,6 +18,8 @@ import {
   getTopSpending,
   getSpendingByCategory,
   getGroceryVsFood,
+  getCategoryHeatmap,
+  getCategoryTrends,
   getAnomalies,
   getLatestInsight,
   getAvailableYears,
@@ -32,6 +36,8 @@ const Dashboard = () => {
   const [topSpending, setTopSpending] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [groceryVsFood, setGroceryVsFood] = useState([]);
+  const [categoryHeatmap, setCategoryHeatmap] = useState({});
+  const [categoryTrends, setCategoryTrends] = useState({});
   const [anomalies, setAnomalies] = useState([]);
   const [insight, setInsight] = useState("");
 
@@ -87,6 +93,8 @@ const Dashboard = () => {
       const topSpendingData = await getTopSpending(year, month);
       const categoryDataRes = await getSpendingByCategory(year, month);
       const groceryVsFoodData = await getGroceryVsFood(year, month);
+      const categoryHeatmapData = await getCategoryHeatmap(year, month);
+      const categoryTrendsData = await getCategoryTrends(year, month);
       const anomaliesData = await getAnomalies(year, month);
       const insightData = await getLatestInsight(year, month);
 
@@ -97,6 +105,8 @@ const Dashboard = () => {
       setTopSpending(topSpendingData);
       setCategoryData(categoryDataRes);
       setGroceryVsFood(groceryVsFoodData);
+      setCategoryHeatmap(categoryHeatmapData);
+      setCategoryTrends(categoryTrendsData);
       setAnomalies(anomaliesData);
 
       setInsight(
@@ -357,6 +367,16 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 gap-6">
             <GroceryVsFoodChart
               data={groceryVsFood}
+              theme={theme}
+            />
+
+            <CategoryTrendChart
+              data={categoryTrends}
+              theme={theme}
+            />
+
+            <CategoryHeatmap
+              data={categoryHeatmap}
               theme={theme}
             />
           </div>
