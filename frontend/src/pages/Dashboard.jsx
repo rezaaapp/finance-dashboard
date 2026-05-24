@@ -1,4 +1,13 @@
-import { LogOut, Moon, RefreshCw, Sun } from "lucide-react";
+import {
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  LayoutDashboard,
+  LogOut,
+  Moon,
+  RefreshCw,
+  Sun,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import SummaryCard from "../components/SummaryCard";
@@ -7,6 +16,7 @@ import PieCategoryChart from "../components/charts/PieCategoryChart";
 import GroceryVsFoodChart from "../components/charts/GroceryVsFoodChart";
 import CategoryHeatmap from "../components/charts/CategoryHeatmap";
 import CategoryTrendChart from "../components/charts/CategoryTrendChart";
+import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 
@@ -20,6 +30,7 @@ import {
   getGroceryVsFood,
   getCategoryHeatmap,
   getCategoryTrends,
+  getPersonalAnalytics,
   getAnomalies,
   getLatestInsight,
   getAvailableYears,
@@ -38,6 +49,7 @@ const Dashboard = ({ onLogout }) => {
   const [groceryVsFood, setGroceryVsFood] = useState([]);
   const [categoryHeatmap, setCategoryHeatmap] = useState({});
   const [categoryTrends, setCategoryTrends] = useState({});
+  const [personalAnalytics, setPersonalAnalytics] = useState({});
   const [anomalies, setAnomalies] = useState([]);
   const [insight, setInsight] = useState("");
 
@@ -45,6 +57,7 @@ const Dashboard = ({ onLogout }) => {
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [activeView, setActiveView] = useState("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -95,6 +108,7 @@ const Dashboard = ({ onLogout }) => {
       const groceryVsFoodData = await getGroceryVsFood(year, month);
       const categoryHeatmapData = await getCategoryHeatmap(year, month);
       const categoryTrendsData = await getCategoryTrends(year, month);
+      const personalAnalyticsData = await getPersonalAnalytics(year, month);
       const anomaliesData = await getAnomalies(year, month);
       const insightData = await getLatestInsight(year, month);
 
@@ -107,6 +121,7 @@ const Dashboard = ({ onLogout }) => {
       setGroceryVsFood(groceryVsFoodData);
       setCategoryHeatmap(categoryHeatmapData);
       setCategoryTrends(categoryTrendsData);
+      setPersonalAnalytics(personalAnalyticsData);
       setAnomalies(anomaliesData);
 
       setInsight(
@@ -207,30 +222,68 @@ const Dashboard = ({ onLogout }) => {
   return (
     <div className="dashboard-screen min-h-screen flex">
       {/* SIDEBAR */}
-      <aside className="dashboard-sidebar w-64 border-r p-6 hidden lg:block">
-        <h1 className="text-2xl font-bold text-accent mb-10">
-          Operasional Rumah Tangga Dashboard 
-        </h1>
+      <aside
+        className={`
+          dashboard-sidebar
+          hidden
+          border-r
+          p-6
+          transition-[width]
+          duration-300
+          lg:block
+          ${isSidebarCollapsed ? "w-24" : "w-64"}
+        `}
+      >
+        <div className="mb-10 flex items-start justify-between gap-3">
+          {!isSidebarCollapsed && (
+            <h1 className="text-2xl font-bold text-accent leading-tight">
+              Operasional Rumah Tangga Dashboard
+            </h1>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed((current) => !current)}
+            className="theme-toggle h-10 w-10 shrink-0 rounded-xl p-0"
+            aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isSidebarCollapsed
+              ? <ChevronRight size={18} />
+              : <ChevronLeft size={18} />
+            }
+          </button>
+        </div>
 
         <nav className="space-y-4">
           <button
             type="button"
             onClick={() => setActiveView("dashboard")}
-            className={`nav-link cursor-pointer block w-full bg-transparent border-0 p-0 text-left ${
+            className={`nav-link flex min-h-10 w-full items-center gap-3 rounded-xl border-0 bg-transparent p-0 text-left ${
               activeView === "dashboard" ? "text-accent" : ""
             }`}
+            aria-label="Dashboard"
+            title="Dashboard"
           >
-            Dashboard
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+              <LayoutDashboard size={18} />
+            </span>
+            {!isSidebarCollapsed && <span>Dashboard</span>}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveView("analytics")}
-            className={`nav-link cursor-pointer block w-full bg-transparent border-0 p-0 text-left ${
+            className={`nav-link flex min-h-10 w-full items-center gap-3 rounded-xl border-0 bg-transparent p-0 text-left ${
               activeView === "analytics" ? "text-accent" : ""
             }`}
+            aria-label="Analytics"
+            title="Analytics"
           >
-            Analytics
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+              <BarChart3 size={18} />
+            </span>
+            {!isSidebarCollapsed && <span>Analytics</span>}
           </button>
         </nav>
       </aside>
@@ -388,6 +441,8 @@ const Dashboard = ({ onLogout }) => {
           </>
         ) : (
           <div className="grid grid-cols-1 gap-6">
+            <PersonalAnalytics data={personalAnalytics} />
+
             <GroceryVsFoodChart
               data={groceryVsFood}
               theme={theme}

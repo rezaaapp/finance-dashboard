@@ -312,6 +312,100 @@ def get_spending_per_person(year=None, month=None):
     return grouped.to_dict(orient="records")
 
 
+def _total_by_name(df, name=None):
+    if name:
+        df = df[df["Nama"] == name]
+
+    return float(df["Harga"].sum())
+
+
+def get_personal_analytics(year=None, month=None):
+    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+
+    df_pengeluaran = _filter(df_pengeluaran, year, month)
+    df_saving = _filter(df_saving, year, month)
+    df_income = _filter(df_income, year, month)
+
+    names = sorted(
+        set(df_pengeluaran["Nama"].dropna().unique())
+        | set(df_saving["Nama"].dropna().unique())
+        | set(df_income["Nama"].dropna().unique())
+    )
+
+    users = [
+        {"label": "Semua Data", "value": "all"},
+        *[
+            {"label": str(name), "value": str(name)}
+            for name in names
+        ],
+    ]
+
+    kpis = {}
+
+    for user in users:
+        name = None if user["value"] == "all" else user["value"]
+        income = _total_by_name(df_income, name)
+        spending = _total_by_name(df_pengeluaran, name)
+        saving = _total_by_name(df_saving, name)
+        saving_rate = (saving / income * 100) if income > 0 else 0
+
+        kpis[user["value"]] = {
+            "income": income,
+            "spending": spending,
+            "saving": saving,
+            "saving_rate": round(saving_rate, 2),
+        }
+
+    months = sorted(df_pengeluaran["Bulan"].dropna().unique())
+    comparison = []
+
+    for current_month in months:
+        month_data = df_pengeluaran[df_pengeluaran["Bulan"] == current_month]
+        row = {"month": str(current_month)}
+
+        for name in names:
+            row[str(name)] = _total_by_name(month_data, str(name))
+
+        comparison.append(row)
+
+    top_categories = {}
+
+    for user in users:
+        name = None if user["value"] == "all" else user["value"]
+        user_pengeluaran = (
+            df_pengeluaran
+            if name is None
+            else df_pengeluaran[df_pengeluaran["Nama"] == name]
+        )
+
+        if user_pengeluaran.empty:
+            top_categories[user["value"]] = []
+            continue
+
+        grouped = (
+            user_pengeluaran.groupby("Kategori")["Harga"]
+            .sum()
+            .reset_index()
+            .sort_values("Harga", ascending=False)
+            .head(3)
+        )
+
+        top_categories[user["value"]] = [
+            {
+                "category": row["Kategori"],
+                "total": float(row["Harga"]),
+            }
+            for _, row in grouped.iterrows()
+        ]
+
+    return {
+        "users": users,
+        "kpis": kpis,
+        "comparison": comparison,
+        "top_categories": top_categories,
+    }
+
+
 # =========================
 # GROCERY VS FOOD
 # =========================

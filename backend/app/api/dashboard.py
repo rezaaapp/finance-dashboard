@@ -66,6 +66,13 @@ def spending_per_person(
 ):
     return get_spending_per_person(year, month)
 
+@router.get("/personal-analytics")
+def personal_analytics(
+    year: int | None = None,
+    month: int | None = None
+):
+    return get_personal_analytics(year, month)
+
 @router.get("/grocery-vs-food")
 def grocery_vs_food(
     year: int | None = None,

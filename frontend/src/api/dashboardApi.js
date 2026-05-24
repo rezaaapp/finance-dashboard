@@ -94,6 +94,14 @@ export const getCategoryTrends = async (year, month) => {
   return response.data;
 };
 
+export const getPersonalAnalytics = async (year, month) => {
+  const response = await axios.get(
+    `${API_URL}/personal-analytics`,
+    buildConfig(year, month)
+  );
+  return response.data;
+};
+
 export const getAnomalies = async (year, month) => {
   const response = await axios.get(
     `${API_URL}/anomalies`,
