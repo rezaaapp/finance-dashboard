@@ -18,6 +18,7 @@ import GroceryVsFoodChart from "../components/charts/GroceryVsFoodChart";
 import CategoryHeatmap from "../components/charts/CategoryHeatmap";
 import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
+import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashboard";
 import PrivacyControl from "../components/PrivacyControl";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
@@ -69,6 +70,7 @@ const Dashboard = ({ onLogout }) => {
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [activeView, setActiveView] = useState("dashboard");
+  const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [autoBudget, setAutoBudget] = useState(true);
@@ -577,31 +579,81 @@ const Dashboard = ({ onLogout }) => {
           </>
         ) : activeView === "analytics" ? (
           <div className="grid grid-cols-1 gap-6">
+            <div className="panel rounded-2xl p-3 shadow-lg">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setActiveAnalyticsSubTab("overview")}
+                  className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                    activeAnalyticsSubTab === "overview"
+                      ? "bg-[var(--color-accent-strong)] text-white"
+                      : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                  }`}
+                >
+                  Overview
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveAnalyticsSubTab("velocity")}
+                  className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                    activeAnalyticsSubTab === "velocity"
+                      ? "bg-[var(--color-accent-strong)] text-white"
+                      : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                  }`}
+                >
+                  Income Velocity
+                </button>
+              </div>
+            </div>
+
             <PersonalAnalytics
               data={personalAnalytics}
               selectedUser={selectedAnalyticsUser}
               onSelectedUserChange={setSelectedAnalyticsUser}
               privacyMode={privacyMode}
+              variant="summary"
             />
 
-            <GroceryVsFoodChart
-              data={groceryVsFood}
-              theme={theme}
-              privacyMode={privacyMode}
-            />
+            <div className="grid grid-cols-1 gap-6">
+              {activeAnalyticsSubTab === "overview" && (
+                <>
+                  <PersonalAnalytics
+                    data={personalAnalytics}
+                    selectedUser={selectedAnalyticsUser}
+                    onSelectedUserChange={setSelectedAnalyticsUser}
+                    privacyMode={privacyMode}
+                    variant="breakdown"
+                  />
 
-            <CategoryTrendChart
-              data={categoryTrends}
-              theme={theme}
-              privacyMode={privacyMode}
-            />
+                  <GroceryVsFoodChart
+                    data={groceryVsFood}
+                    theme={theme}
+                    privacyMode={privacyMode}
+                  />
 
-            <CategoryHeatmap
-              data={categoryHeatmap}
-              rawTransactions={rawTransactions}
-              theme={theme}
-              privacyMode={privacyMode}
-            />
+                  <CategoryTrendChart
+                    data={categoryTrends}
+                    theme={theme}
+                    privacyMode={privacyMode}
+                  />
+
+                  <CategoryHeatmap
+                    data={categoryHeatmap}
+                    rawTransactions={rawTransactions}
+                    theme={theme}
+                    privacyMode={privacyMode}
+                  />
+                </>
+              )}
+
+              {activeAnalyticsSubTab === "velocity" && (
+                <IncomeVelocityDashboard
+                  rawTransactions={rawTransactions}
+                  privacyMode={privacyMode}
+                />
+              )}
+            </div>
           </div>
         ) : (
           <BudgetingAlerts

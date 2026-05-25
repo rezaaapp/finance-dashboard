@@ -268,15 +268,15 @@ def get_category_heatmap(year=None, month=None, name=None):
 
 
 def get_transactions(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
-    df_pengeluaran = _filter(df_pengeluaran, year, month)
-    df_pengeluaran = _filter_name(df_pengeluaran, name)
+    df_all, _, _, _ = get_financial_data()
+    df_transactions = _filter(df_all, year, month)
+    df_transactions = _filter_name(df_transactions, name)
 
-    if df_pengeluaran.empty:
+    if df_transactions.empty:
         return []
 
     transactions = (
-        df_pengeluaran
+        df_transactions
         .sort_values("Waktu Transaksi", ascending=False)
         [["Waktu Transaksi", "Kategori", "Nama Transaksi", "Nama", "Harga"]]
         .to_dict(orient="records")

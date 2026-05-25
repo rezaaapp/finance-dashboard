@@ -37,6 +37,7 @@ const PersonalAnalytics = ({
   selectedUser,
   onSelectedUserChange,
   privacyMode,
+  variant = "full",
 }) => {
   const users = useMemo(() => (
     data?.users ?? fallbackUsers
@@ -74,6 +75,58 @@ const PersonalAnalytics = ({
   const selectedUserLabel = users.find((user) => (
     user.value === selectedUser
   ))?.label;
+
+  const renderTopCategoryBreakdown = () => (
+    <div className="panel rounded-2xl p-5 shadow-lg">
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-main">
+          Top Spending Category Breakdown
+        </h2>
+      </div>
+
+      <div className="space-y-5">
+        {topCategories.length === 0 && (
+          <div className="flex h-28 items-center justify-center text-muted">
+            No spending category data available
+          </div>
+        )}
+
+        {topCategories.map((item, index) => {
+          const maskedTotal = maskNumber(item.total, privacyMode);
+          const percentage = maskedTotal / maxCategoryTotal * 100;
+
+          return (
+            <div key={item.category}>
+              <div className="mb-2 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-accent-bg)] text-sm font-bold text-accent">
+                    {index + 1}
+                  </span>
+                  <p className="font-semibold text-main">
+                    {item.category}
+                  </p>
+                </div>
+                <p className="text-sm font-semibold text-soft">
+                  {formatPrivateRupiah(item.total, privacyMode)}
+                </p>
+              </div>
+
+              <div className="h-3 overflow-hidden rounded-full bg-[var(--color-panel-hover)]">
+                <div
+                  className="h-full rounded-full bg-[var(--color-accent-strong)]"
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  if (variant === "breakdown") {
+    return renderTopCategoryBreakdown();
+  }
 
   return (
     <section className="grid grid-cols-1 gap-6">
@@ -164,7 +217,7 @@ const PersonalAnalytics = ({
         </div>
       </div>
 
-      {selectedUser === "all" && (
+      {variant === "full" && selectedUser === "all" && (
         <div className="panel rounded-2xl p-5 shadow-lg">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-xl font-bold text-main">
@@ -216,51 +269,7 @@ const PersonalAnalytics = ({
         </div>
       )}
 
-      <div className="panel rounded-2xl p-5 shadow-lg">
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-main">
-            Top Spending Category Breakdown
-          </h2>
-        </div>
-
-        <div className="space-y-5">
-          {topCategories.length === 0 && (
-            <div className="flex h-28 items-center justify-center text-muted">
-              No spending category data available
-            </div>
-          )}
-
-          {topCategories.map((item, index) => {
-            const maskedTotal = maskNumber(item.total, privacyMode);
-            const percentage = maskedTotal / maxCategoryTotal * 100;
-
-            return (
-              <div key={item.category}>
-                <div className="mb-2 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-accent-bg)] text-sm font-bold text-accent">
-                      {index + 1}
-                    </span>
-                    <p className="font-semibold text-main">
-                      {item.category}
-                    </p>
-                  </div>
-                  <p className="text-sm font-semibold text-soft">
-                    {formatPrivateRupiah(item.total, privacyMode)}
-                  </p>
-                </div>
-
-                <div className="h-3 overflow-hidden rounded-full bg-[var(--color-panel-hover)]">
-                  <div
-                    className="h-full rounded-full bg-[var(--color-accent-strong)]"
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {variant === "full" && renderTopCategoryBreakdown()}
     </section>
   );
 };
