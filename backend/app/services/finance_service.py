@@ -1,7 +1,10 @@
-from scripts.data_processing import load_and_process_data_from_spreadsheet
+from scripts.data_processing import (
+    load_and_process_data_from_spreadsheet,
+    load_mock_financial_data,
+)
 from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
-from app.cache.data_cache import cached_data, last_fetch_time, CACHE_DURATION
+import app.cache.data_cache as data_cache
 from datetime import datetime
 import pandas as pd
 
@@ -10,26 +13,34 @@ import pandas as pd
 # CACHE DATA
 # =========================
 def get_financial_data():
-    global cached_data, last_fetch_time
-
     now = datetime.now()
 
     if (
-        cached_data is not None
-        and last_fetch_time is not None
-        and now - last_fetch_time < CACHE_DURATION
+        data_cache.cached_data is not None
+        and data_cache.last_fetch_time is not None
+        and now - data_cache.last_fetch_time < data_cache.CACHE_DURATION
     ):
         print("USING CACHE")
-        return cached_data
+        return data_cache.cached_data
 
-    print("FETCH FROM GOOGLE SHEETS")
+    if settings.USE_MOCK_DATA:
+        print("USING MOCK DATA")
+        data = load_mock_financial_data()
+    else:
+        print("FETCH FROM GOOGLE SHEETS")
+        data = load_and_process_data_from_spreadsheet(settings.GOOGLE_SHEET_ID)
 
-    data = load_and_process_data_from_spreadsheet(settings.GOOGLE_SHEET_ID)
-
-    cached_data = data
-    last_fetch_time = now
+    data_cache.cached_data = data
+    data_cache.last_fetch_time = now
 
     return data
+
+
+def refresh_financial_data():
+    data_cache.cached_data = None
+    data_cache.last_fetch_time = None
+
+    return get_financial_data()
 
 
 # =========================
@@ -76,7 +87,9 @@ def _trend_vs_last_month(df, year=None, month=None):
     if previous_total <= 0:
         return 0
 
-    return round((current_total - previous_total) / previous_total * 100, 2)
+    trend = (current_total - previous_total) / previous_total * 100
+
+    return float(round(trend, 2))
 
 
 # =========================
@@ -252,6 +265,33 @@ def get_category_heatmap(year=None, month=None, name=None):
         "max_total": max_total,
         "rows": rows,
     }
+
+
+def get_transactions(year=None, month=None, name=None):
+    _, df_pengeluaran, _, _ = get_financial_data()
+    df_pengeluaran = _filter(df_pengeluaran, year, month)
+    df_pengeluaran = _filter_name(df_pengeluaran, name)
+
+    if df_pengeluaran.empty:
+        return []
+
+    transactions = (
+        df_pengeluaran
+        .sort_values("Waktu Transaksi", ascending=False)
+        [["Waktu Transaksi", "Kategori", "Nama Transaksi", "Nama", "Harga"]]
+        .to_dict(orient="records")
+    )
+
+    return [
+        {
+            "date": row["Waktu Transaksi"].strftime("%Y-%m-%d"),
+            "category": row["Kategori"],
+            "item_name": row["Nama Transaksi"],
+            "user": row["Nama"],
+            "amount": float(row["Harga"]),
+        }
+        for row in transactions
+    ]
 
 
 def get_category_trends(year=None, month=None, name=None):
@@ -512,3 +552,120 @@ def get_available_years():
     )
 
     return sorted(years.tolist(), reverse=True)
+
+
+# =========================
+# BUDGETING & ALERTS
+# =========================
+def get_budget_forecast(year=None, month=None):
+    _, df_pengeluaran, _, _ = get_financial_data()
+
+    if df_pengeluaran.empty:
+        return {
+            "method": "historical_average",
+            "alerts": [],
+            "forecast": [],
+            "summary": {
+                "total_forecast": 0,
+                "current_spending": 0,
+                "alert_count": 0,
+            },
+        }
+
+    current_df = _filter(df_pengeluaran, year, month)
+
+    if current_df.empty:
+        latest_period = df_pengeluaran["Bulan"].max()
+        current_df = df_pengeluaran[df_pengeluaran["Bulan"] == latest_period]
+    else:
+        latest_period = current_df["Bulan"].max()
+
+    historical_df = df_pengeluaran[df_pengeluaran["Bulan"] < latest_period]
+
+    if historical_df.empty:
+        historical_df = df_pengeluaran
+
+    monthly_category = (
+        historical_df
+        .groupby(["Bulan", "Kategori"])["Harga"]
+        .sum()
+        .reset_index()
+    )
+
+    forecast_df = (
+        monthly_category
+        .groupby("Kategori")["Harga"]
+        .mean()
+        .reset_index()
+        .rename(columns={"Harga": "forecast_budget"})
+    )
+
+    current_category = (
+        current_df
+        .groupby("Kategori")["Harga"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Harga": "current_spending"})
+    )
+
+    merged = (
+        forecast_df
+        .merge(current_category, on="Kategori", how="outer")
+        .fillna(0)
+    )
+
+    forecast = []
+    alerts = []
+
+    for _, row in merged.iterrows():
+        budget = float(row["forecast_budget"])
+        current_spending = float(row["current_spending"])
+        usage_rate = current_spending / budget * 100 if budget > 0 else 0
+        category = row["Kategori"]
+
+        forecast.append({
+            "category": category,
+            "forecast_budget": round(budget, 2),
+            "current_spending": round(current_spending, 2),
+            "usage_rate": round(usage_rate, 2),
+        })
+
+        if usage_rate >= 100:
+            alerts.append({
+                "severity": "high",
+                "category": category,
+                "message": f"Kategori {category} sudah melewati budget historis.",
+                "usage_rate": round(usage_rate, 2),
+                "current_spending": round(current_spending, 2),
+                "budget": round(budget, 2),
+            })
+        elif usage_rate >= 85:
+            alerts.append({
+                "severity": "medium",
+                "category": category,
+                "message": f"Kategori {category} sudah terpakai {round(usage_rate)}% dari budget.",
+                "usage_rate": round(usage_rate, 2),
+                "current_spending": round(current_spending, 2),
+                "budget": round(budget, 2),
+            })
+
+    forecast = sorted(
+        forecast,
+        key=lambda item: item["forecast_budget"],
+        reverse=True
+    )
+
+    total_forecast = sum(item["forecast_budget"] for item in forecast)
+    current_spending = sum(item["current_spending"] for item in forecast)
+
+    return {
+        "method": "historical_average",
+        "period": str(latest_period),
+        "alerts": alerts,
+        "forecast": forecast[:8],
+        "summary": {
+            "total_forecast": round(total_forecast, 2),
+            "current_spending": round(current_spending, 2),
+            "alert_count": len(alerts),
+        },
+    }

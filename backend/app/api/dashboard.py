@@ -11,6 +11,19 @@ def summary(
 ):
     return get_summary(year, month)
 
+
+@router.post("/refresh")
+def refresh_data():
+    df_all, df_pengeluaran, df_saving, df_income = refresh_financial_data()
+
+    return {
+        "status": "ok",
+        "rows_all": len(df_all),
+        "rows_spending": len(df_pengeluaran),
+        "rows_saving": len(df_saving),
+        "rows_income": len(df_income),
+    }
+
 @router.get("/monthly-spending")
 def monthly_spending(
     year: int = None,
@@ -52,6 +65,16 @@ def category_heatmap(
     name: str | None = None
 ):
     return get_category_heatmap(year, month, name)
+
+
+@router.get("/transactions")
+def transactions(
+    year: int | None = None,
+    month: int | None = None,
+    name: str | None = None
+):
+    return get_transactions(year, month, name)
+
 
 @router.get("/category-trends")
 def category_trends(
@@ -100,3 +123,11 @@ def latest_insight(
 @router.get("/available-years")
 def available_years():
     return get_available_years()
+
+
+@router.get("/budget-forecast")
+def budget_forecast(
+    year: int | None = None,
+    month: int | None = None
+):
+    return get_budget_forecast(year, month)

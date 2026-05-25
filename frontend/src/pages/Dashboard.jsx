@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BellRing,
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
@@ -17,11 +18,18 @@ import GroceryVsFoodChart from "../components/charts/GroceryVsFoodChart";
 import CategoryHeatmap from "../components/charts/CategoryHeatmap";
 import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
+import PrivacyControl from "../components/PrivacyControl";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
+import BudgetingAlerts from "./BudgetingAlerts";
+import {
+  formatPrivateRupiah,
+  PRIVACY_MODES,
+} from "../utils/privacy";
 
 import {
   getSummary,
+  refreshDashboardData,
   getMonthlySpending,
   getMonthlySaving,
   getMonthlyIncome,
@@ -29,11 +37,13 @@ import {
   getSpendingByCategory,
   getGroceryVsFood,
   getCategoryHeatmap,
+  getTransactions,
   getCategoryTrends,
   getPersonalAnalytics,
   getAnomalies,
   getLatestInsight,
   getAvailableYears,
+  getBudgetForecast,
 } from "../api/dashboardApi";
 
 const Dashboard = ({ onLogout }) => {
@@ -48,8 +58,10 @@ const Dashboard = ({ onLogout }) => {
   const [categoryData, setCategoryData] = useState([]);
   const [groceryVsFood, setGroceryVsFood] = useState([]);
   const [categoryHeatmap, setCategoryHeatmap] = useState({});
+  const [rawTransactions, setRawTransactions] = useState([]);
   const [categoryTrends, setCategoryTrends] = useState({});
   const [personalAnalytics, setPersonalAnalytics] = useState({});
+  const [budgetForecast, setBudgetForecast] = useState({});
   const [anomalies, setAnomalies] = useState([]);
   const [insight, setInsight] = useState("");
 
@@ -59,6 +71,11 @@ const Dashboard = ({ onLogout }) => {
   const [activeView, setActiveView] = useState("dashboard");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [autoBudget, setAutoBudget] = useState(true);
+  const [privacyMode, setPrivacyMode] = useState(() => (
+    localStorage.getItem("finance-dashboard-privacy-mode")
+    || PRIVACY_MODES.normal
+  ));
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -81,10 +98,33 @@ const Dashboard = ({ onLogout }) => {
     localStorage.setItem("finance-dashboard-theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    localStorage.setItem("finance-dashboard-privacy-mode", privacyMode);
+  }, [privacyMode]);
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (
       currentTheme === "dark" ? "light" : "dark"
     ));
+  };
+
+  const handleRefreshData = async () => {
+    try {
+      setLoading(true);
+      await refreshDashboardData();
+      await fetchDashboardData(selectedYear, selectedMonth);
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setError("Failed to refresh dashboard data.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // =========================
@@ -119,12 +159,18 @@ const Dashboard = ({ onLogout }) => {
         month,
         analyticsUserName
       );
+      const transactionsData = await getTransactions(
+        year,
+        month,
+        analyticsUserName
+      );
       const categoryTrendsData = await getCategoryTrends(
         year,
         month,
         analyticsUserName
       );
       const personalAnalyticsData = await getPersonalAnalytics(year, month);
+      const budgetForecastData = await getBudgetForecast(year, month);
       const anomaliesData = await getAnomalies(year, month);
       const insightData = await getLatestInsight(year, month);
 
@@ -136,14 +182,16 @@ const Dashboard = ({ onLogout }) => {
       setCategoryData(categoryDataRes);
       setGroceryVsFood(groceryVsFoodData);
       setCategoryHeatmap(categoryHeatmapData);
+      setRawTransactions(transactionsData);
       setCategoryTrends(categoryTrendsData);
       setPersonalAnalytics(personalAnalyticsData);
+      setBudgetForecast(budgetForecastData);
       setAnomalies(anomaliesData);
 
       setInsight(
-        `Bulan ${insightData.bulan} memiliki spending Rp ${Number(
-          insightData.spending
-        ).toLocaleString("id-ID")} dengan saving ratio ${
+        `Bulan ${insightData.bulan} memiliki spending ${
+          formatPrivateRupiah(insightData.spending, privacyMode)
+        } dengan saving ratio ${
           insightData.saving_ratio
         }%. Status keuangan: ${insightData.status}`
       );
@@ -161,7 +209,7 @@ const Dashboard = ({ onLogout }) => {
     } finally {
       setLoading(false);
     }
-  }, [onLogout, selectedAnalyticsUser]);
+  }, [onLogout, privacyMode, selectedAnalyticsUser]);
 
   // =========================
   // INITIAL DATA
@@ -243,14 +291,18 @@ const Dashboard = ({ onLogout }) => {
           dashboard-sidebar
           hidden
           border-r
-          p-6
+          ${isSidebarCollapsed ? "px-4 py-6" : "p-6"}
           transition-[width]
           duration-300
           lg:block
           ${isSidebarCollapsed ? "w-24" : "w-64"}
         `}
       >
-        <div className="mb-10 flex items-start justify-between gap-3">
+        <div className={`mb-10 flex gap-3 ${
+          isSidebarCollapsed
+            ? "justify-center"
+            : "items-start justify-between"
+        }`}>
           {!isSidebarCollapsed && (
             <h1 className="text-2xl font-bold text-accent leading-tight">
               Operasional Rumah Tangga Dashboard
@@ -275,56 +327,101 @@ const Dashboard = ({ onLogout }) => {
           <button
             type="button"
             onClick={() => setActiveView("dashboard")}
-            className={`nav-link flex min-h-10 w-full items-center gap-3 rounded-xl border-0 bg-transparent p-0 text-left ${
-              activeView === "dashboard" ? "text-accent" : ""
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "dashboard"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
             }`}
             aria-label="Dashboard"
             title="Dashboard"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
               <LayoutDashboard size={18} />
             </span>
-            {!isSidebarCollapsed && <span>Dashboard</span>}
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Dashboard
+              </span>
+            )}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveView("analytics")}
-            className={`nav-link flex min-h-10 w-full items-center gap-3 rounded-xl border-0 bg-transparent p-0 text-left ${
-              activeView === "analytics" ? "text-accent" : ""
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "analytics"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
             }`}
             aria-label="Analytics"
             title="Analytics"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
               <BarChart3 size={18} />
             </span>
-            {!isSidebarCollapsed && <span>Analytics</span>}
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Analytics
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView("budgeting")}
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "budgeting"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
+            }`}
+            aria-label="Budgeting & Alerts"
+            title="Budgeting & Alerts"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <BellRing size={18} />
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Budgeting & Alerts
+              </span>
+            )}
           </button>
         </nav>
       </aside>
 
       {/* MAIN */}
-      <main className="flex-1 p-6">
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-5 lg:p-6">
         {/* HEADER */}
-        <div className="flex flex-col gap-5 xl:flex-row xl:justify-between xl:items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold">
+        <div className="mb-6 flex flex-col gap-4 xl:mb-8 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold sm:text-4xl">
               Financial Dashboard
             </h1>
 
-            <p className="text-muted mt-1">
+            <p className="text-muted mt-1 text-sm sm:text-base">
               Monitoring household financial analytics
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:w-auto xl:grid-cols-[120px_160px_repeat(3,auto)] xl:items-center">
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-[120px_160px_repeat(4,auto)] sm:items-center xl:w-auto">
 
           {/* YEAR FILTER */}
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
-            className="form-control w-full px-4 py-2 rounded-xl"
+            className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
           >
             {years.map((year) => (
               <option key={year} value={year}>
@@ -337,7 +434,7 @@ const Dashboard = ({ onLogout }) => {
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="form-control w-full px-4 py-2 rounded-xl"
+            className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
           >
             <option value="">All Month</option>
 
@@ -358,19 +455,26 @@ const Dashboard = ({ onLogout }) => {
             <button
               type="button"
               onClick={toggleTheme}
-              className="theme-toggle w-full px-4 py-2 rounded-xl font-semibold xl:w-auto"
+              className="theme-toggle w-full rounded-xl px-3 py-2 font-semibold sm:w-auto sm:px-4"
               aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
               title={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
             >
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-              <span>{isDarkMode ? "Light" : "Dark"}</span>
+              <span className="hidden sm:inline">{isDarkMode ? "Light" : "Dark"}</span>
             </button>
+
+            <div className="min-w-0">
+              <PrivacyControl
+                value={privacyMode}
+                onChange={setPrivacyMode}
+              />
+            </div>
 
             {/* REFRESH BUTTON */}
             <button
               type="button"
-              onClick={() => fetchDashboardData(selectedYear, selectedMonth)}
-              className="primary-button w-full px-4 py-2 rounded-xl font-semibold xl:w-11 xl:px-0"
+              onClick={handleRefreshData}
+              className="primary-button w-full rounded-xl px-3 py-2 font-semibold sm:w-11 sm:px-0"
               aria-label="Refresh data"
               title="Refresh data"
             >
@@ -380,10 +484,10 @@ const Dashboard = ({ onLogout }) => {
             <button
               type="button"
               onClick={onLogout}
-              className="theme-toggle w-full px-4 py-2 rounded-xl font-semibold sm:col-span-2 xl:col-span-1 xl:w-auto"
+              className="theme-toggle w-full rounded-xl px-3 py-2 font-semibold sm:w-auto sm:px-4"
             >
               <LogOut size={18} />
-              Logout
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </div>
@@ -391,23 +495,26 @@ const Dashboard = ({ onLogout }) => {
         {activeView === "dashboard" ? (
           <>
             {/* SUMMARY */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-6">
               <SummaryCard
                 title="Total Pengeluaran"
                 value={summary.total_pengeluaran}
                 trend={summary.trend_pengeluaran}
+                privacyMode={privacyMode}
               />
 
               <SummaryCard
                 title="Total Saving"
                 value={summary.total_saving}
                 trend={summary.trend_saving}
+                privacyMode={privacyMode}
               />
 
               <SummaryCard
                 title="Total Income"
                 value={summary.total_income}
                 trend={summary.trend_income}
+                privacyMode={privacyMode}
               />
             </div>
 
@@ -418,6 +525,7 @@ const Dashboard = ({ onLogout }) => {
                 data={spending}
                 dataKey="total"
                 theme={theme}
+                privacyMode={privacyMode}
               />
 
               <MonthlyChart
@@ -425,6 +533,7 @@ const Dashboard = ({ onLogout }) => {
                 data={saving}
                 dataKey="total"
                 theme={theme}
+                privacyMode={privacyMode}
               />
 
               <MonthlyChart
@@ -432,16 +541,27 @@ const Dashboard = ({ onLogout }) => {
                 data={income}
                 dataKey="total"
                 theme={theme}
+                privacyMode={privacyMode}
               />
 
-              <PieCategoryChart data={categoryData} theme={theme} />
+              <PieCategoryChart
+                data={categoryData}
+                theme={theme}
+                privacyMode={privacyMode}
+              />
             </div>
 
             {/* TABLES */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-              <TopSpendingTable data={topSpending} />
+              <TopSpendingTable
+                data={topSpending}
+                privacyMode={privacyMode}
+              />
 
-              <AnomalyTable data={anomalies} />
+              <AnomalyTable
+                data={anomalies}
+                privacyMode={privacyMode}
+              />
             </div>
 
             {/* AI INSIGHT */}
@@ -455,31 +575,85 @@ const Dashboard = ({ onLogout }) => {
               </p>
             </div>
           </>
-        ) : (
+        ) : activeView === "analytics" ? (
           <div className="grid grid-cols-1 gap-6">
             <PersonalAnalytics
               data={personalAnalytics}
               selectedUser={selectedAnalyticsUser}
               onSelectedUserChange={setSelectedAnalyticsUser}
+              privacyMode={privacyMode}
             />
 
             <GroceryVsFoodChart
               data={groceryVsFood}
               theme={theme}
+              privacyMode={privacyMode}
             />
 
             <CategoryTrendChart
               data={categoryTrends}
               theme={theme}
+              privacyMode={privacyMode}
             />
 
             <CategoryHeatmap
               data={categoryHeatmap}
+              rawTransactions={rawTransactions}
               theme={theme}
+              privacyMode={privacyMode}
             />
           </div>
+        ) : (
+          <BudgetingAlerts
+            data={budgetForecast}
+            theme={theme}
+            privacyMode={privacyMode}
+            autoBudget={autoBudget}
+            onAutoBudgetChange={setAutoBudget}
+          />
         )}
       </main>
+
+      <nav className="fixed inset-x-4 bottom-4 z-50 grid grid-cols-3 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-2xl lg:hidden">
+        <button
+          type="button"
+          onClick={() => setActiveView("dashboard")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
+            activeView === "dashboard"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <LayoutDashboard size={18} />
+          Dashboard
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("analytics")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
+            activeView === "analytics"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <BarChart3 size={18} />
+          Analytics
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("budgeting")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
+            activeView === "budgeting"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <BellRing size={18} />
+          Budgeting
+        </button>
+      </nav>
     </div>
   );
 };

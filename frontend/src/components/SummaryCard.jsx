@@ -6,13 +6,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-};
+import { formatPrivateRupiah } from "../utils/privacy";
 
 const formatTrend = (value) => {
   return new Intl.NumberFormat("id-ID", {
@@ -24,6 +18,7 @@ const SummaryCard = ({
   title,
   value,
   trend = 0,
+  privacyMode,
 }) => {
 
   const getIcon = () => {
@@ -48,7 +43,8 @@ const SummaryCard = ({
         relative
         overflow-hidden
         rounded-2xl
-        p-6
+        p-4
+        sm:p-6
         shadow-lg
         hover:scale-[1.02]
         transition-all
@@ -71,21 +67,23 @@ const SummaryCard = ({
       <div className="relative z-10">
 
         {/* Header */}
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex justify-between items-start gap-3 mb-5 sm:mb-6">
 
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-muted text-sm mb-2">
               {title}
             </p>
 
-            <h2 className="text-3xl font-bold text-main leading-tight">
-              {formatRupiah(value)}
+            <h2 className="break-words text-[clamp(1.35rem,6vw,1.875rem)] font-bold text-main leading-tight">
+              {formatPrivateRupiah(value, privacyMode)}
             </h2>
           </div>
 
           <div className="
             icon-badge
-            p-3
+            shrink-0
+            p-2.5
+            sm:p-3
             rounded-xl
           ">
             {getIcon()}

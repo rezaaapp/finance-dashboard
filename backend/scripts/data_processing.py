@@ -97,6 +97,61 @@ def load_and_process_data(filename):
     return df_all, df_pengeluaran, df_saving, df_income
 
 
+def load_mock_financial_data():
+    records = [
+        ("2026-01-05", "Gaji Reza", "Income", 18000000, "Reza"),
+        ("2026-01-05", "Gaji Divya", "Income", 15000000, "Divya"),
+        ("2026-01-06", "Tabungan Rumah", "Saving", 6000000, "Reza"),
+        ("2026-01-07", "Investasi Bulanan", "Saving", 4500000, "Divya"),
+        ("2026-01-09", "Belanja Bulanan", "Grocery", 1850000, "Reza"),
+        ("2026-01-12", "Makan Weekend", "Makanan", 750000, "Divya"),
+        ("2026-01-15", "Internet", "Tagihan", 450000, "Reza"),
+        ("2026-02-05", "Gaji Reza", "Income", 18000000, "Reza"),
+        ("2026-02-05", "Gaji Divya", "Income", 15000000, "Divya"),
+        ("2026-02-06", "Tabungan Rumah", "Saving", 6200000, "Reza"),
+        ("2026-02-07", "Investasi Bulanan", "Saving", 4700000, "Divya"),
+        ("2026-02-09", "Belanja Bulanan", "Grocery", 2100000, "Divya"),
+        ("2026-02-11", "Makan Siang", "Makanan", 880000, "Reza"),
+        ("2026-02-20", "Transport", "Transportasi", 650000, "Reza"),
+        ("2026-03-05", "Gaji Reza", "Income", 18500000, "Reza"),
+        ("2026-03-05", "Gaji Divya", "Income", 15000000, "Divya"),
+        ("2026-03-06", "Tabungan Rumah", "Saving", 6500000, "Reza"),
+        ("2026-03-07", "Investasi Bulanan", "Saving", 4800000, "Divya"),
+        ("2026-03-08", "Asuransi Tahunan", "Tagihan Tahunan", 12500000, "Reza"),
+        ("2026-03-13", "Belanja Dapur", "Grocery", 1950000, "Divya"),
+        ("2026-03-18", "Restoran", "Makanan", 950000, "Divya"),
+        ("2026-04-05", "Gaji Reza", "Income", 18500000, "Reza"),
+        ("2026-04-05", "Gaji Divya", "Income", 15500000, "Divya"),
+        ("2026-04-06", "Tabungan Rumah", "Saving", 7000000, "Reza"),
+        ("2026-04-07", "Investasi Bulanan", "Saving", 5000000, "Divya"),
+        ("2026-04-10", "Belanja Bulanan", "Grocery", 2300000, "Reza"),
+        ("2026-04-14", "Makan Keluarga", "Makanan", 1200000, "Divya"),
+        ("2026-04-22", "Kesehatan", "Kesehatan", 850000, "Divya"),
+        ("2026-05-05", "Gaji Reza", "Income", 19000000, "Reza"),
+        ("2026-05-05", "Gaji Divya", "Income", 15500000, "Divya"),
+        ("2026-05-06", "Tabungan Rumah", "Saving", 7200000, "Reza"),
+        ("2026-05-07", "Investasi Bulanan", "Saving", 5200000, "Divya"),
+        ("2026-05-09", "Belanja Bulanan", "Grocery", 2250000, "Reza"),
+        ("2026-05-12", "Makan Weekend", "Makanan", 1100000, "Reza"),
+        ("2026-05-19", "Listrik", "Tagihan", 780000, "Divya"),
+    ]
+
+    df_all = pd.DataFrame(
+        records,
+        columns=["Waktu Transaksi", "Nama Transaksi", "Kategori", "Harga", "Nama"],
+    )
+    df_all["Sheet"] = "Mock"
+    df_all["Waktu Transaksi"] = pd.to_datetime(df_all["Waktu Transaksi"])
+    df_all["Harga"] = df_all["Harga"].astype(float)
+    df_all["Bulan"] = df_all["Waktu Transaksi"].dt.to_period("M")
+
+    df_pengeluaran = df_all[~df_all["Kategori"].isin(["Saving", "Income"])]
+    df_saving = df_all[df_all["Kategori"] == "Saving"]
+    df_income = df_all[df_all["Kategori"] == "Income"]
+
+    return df_all, df_pengeluaran, df_saving, df_income
+
+
 def load_and_process_data_from_spreadsheet(sheet_id):
     """
     Load & process data from Google Spreadsheet (ALL SHEETS)

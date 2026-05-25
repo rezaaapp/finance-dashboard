@@ -71,6 +71,18 @@ export const getSpendingByCategory = async (year, month) => {
   return response.data;
 };
 
+export const refreshDashboardData = async () => {
+  const response = await axios.post(
+    `${DASHBOARD_API_URL}/refresh`,
+    {},
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
 export const getGroceryVsFood = async (year, month, name) => {
   const response = await axios.get(
     `${DASHBOARD_API_URL}/grocery-vs-food`,
@@ -82,6 +94,14 @@ export const getGroceryVsFood = async (year, month, name) => {
 export const getCategoryHeatmap = async (year, month, name) => {
   const response = await axios.get(
     `${DASHBOARD_API_URL}/category-heatmap`,
+    buildConfig(year, month, name)
+  );
+  return response.data;
+};
+
+export const getTransactions = async (year, month, name) => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/transactions`,
     buildConfig(year, month, name)
   );
   return response.data;
@@ -126,6 +146,15 @@ export const getAvailableYears = async () => {
       headers: getAuthHeaders()
     }
   );
+  return response.data;
+};
+
+export const getBudgetForecast = async (year, month) => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/budget-forecast`,
+    buildConfig(year, month)
+  );
+
   return response.data;
 };
     

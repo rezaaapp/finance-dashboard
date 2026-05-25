@@ -9,13 +9,11 @@ import {
   Legend,
 } from "recharts";
 
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-};
+import {
+  formatPrivateRupiah,
+  maskChartRows,
+  maskNumber,
+} from "../../utils/privacy";
 
 const chartTheme = {
   dark: {
@@ -41,6 +39,7 @@ const CustomTooltip = ({
   payload,
   label,
   colors,
+  privacyMode,
 }) => {
   if (!active || !payload?.length) {
     return null;
@@ -73,7 +72,7 @@ const CustomTooltip = ({
             {item.name}
           </span>
           <span>
-            {formatRupiah(item.value)}
+            {formatPrivateRupiah(item.value, privacyMode)}
           </span>
         </div>
       ))}
@@ -83,14 +82,15 @@ const CustomTooltip = ({
         className="mt-2 pt-2 flex items-center justify-between gap-6 text-sm font-semibold"
       >
         <span>Total</span>
-        <span>{formatRupiah(total)}</span>
+        <span>{formatPrivateRupiah(total, privacyMode)}</span>
       </div>
     </div>
   );
 };
 
-const GroceryVsFoodChart = ({ data, theme = "dark" }) => {
+const GroceryVsFoodChart = ({ data, theme = "dark", privacyMode }) => {
   const colors = chartTheme[theme] || chartTheme.dark;
+  const chartData = maskChartRows(data, ["Grocery", "Makanan"], privacyMode);
 
   return (
     <div className="panel rounded-2xl p-5 shadow-lg">
@@ -106,7 +106,7 @@ const GroceryVsFoodChart = ({ data, theme = "dark" }) => {
 
       <div className="h-[360px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
+          <BarChart data={chartData}>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke={colors.grid}
@@ -122,12 +122,17 @@ const GroceryVsFoodChart = ({ data, theme = "dark" }) => {
               stroke={colors.tick}
               tick={{ fill: colors.tick, fontSize: 12 }}
               tickFormatter={(value) =>
-                `${(value / 1000000).toFixed(0)}jt`
+                `${(maskNumber(value, privacyMode) / 1000000).toFixed(0)}jt`
               }
             />
 
             <Tooltip
-              content={<CustomTooltip colors={colors} />}
+              content={(
+                <CustomTooltip
+                  colors={colors}
+                  privacyMode={privacyMode}
+                />
+              )}
             />
 
             <Legend wrapperStyle={{ color: colors.legendText }} />

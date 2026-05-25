@@ -7,6 +7,11 @@ import {
   Legend,
 } from "recharts";
 
+import {
+  formatPrivateRupiah,
+  maskChartRows,
+} from "../../utils/privacy";
+
 const COLORS = [
   "#06b6d4",
   "#3b82f6",
@@ -17,14 +22,6 @@ const COLORS = [
   "#ef4444",
   "#ec4899",
 ];
-
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value);
-};
 
 const chartTheme = {
   dark: {
@@ -41,8 +38,9 @@ const chartTheme = {
   },
 };
 
-const PieCategoryChart = ({ data, theme = "dark" }) => {
+const PieCategoryChart = ({ data, theme = "dark", privacyMode }) => {
   const colors = chartTheme[theme] || chartTheme.dark;
+  const chartData = maskChartRows(data, ["Harga"], privacyMode);
 
   return (
     <div className="panel rounded-2xl p-5 shadow-lg">
@@ -58,7 +56,7 @@ const PieCategoryChart = ({ data, theme = "dark" }) => {
           <PieChart>
 
             <Pie
-              data={data}
+              data={chartData}
               dataKey="Harga"
               nameKey="Kategori"
               cx="50%"
@@ -67,7 +65,7 @@ const PieCategoryChart = ({ data, theme = "dark" }) => {
               outerRadius={110}
               paddingAngle={3}
             >
-              {data.map((entry, index) => (
+              {chartData.map((entry, index) => (
                 <Cell
                   key={index}
                   fill={COLORS[index % COLORS.length]}
@@ -76,7 +74,7 @@ const PieCategoryChart = ({ data, theme = "dark" }) => {
             </Pie>
 
             <Tooltip
-              formatter={(value) => formatRupiah(value)}
+              formatter={(value) => formatPrivateRupiah(value, privacyMode)}
               contentStyle={{
                 backgroundColor: colors.tooltipBg,
                 border: `1px solid ${colors.tooltipBorder}`,

@@ -10,20 +10,12 @@ import {
   ReferenceLine,
 } from "recharts";
 
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-};
-
-const formatCompactRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value || 0);
-};
+import {
+  formatPrivateCompact,
+  formatPrivateRupiah,
+  maskChartRows,
+  maskNumber,
+} from "../../utils/privacy";
 
 const chartTheme = {
   dark: {
@@ -50,6 +42,7 @@ const CustomTooltip = ({
   label,
   average,
   colors,
+  privacyMode,
 }) => {
   if (!active || !payload?.length) {
     return null;
@@ -74,12 +67,12 @@ const CustomTooltip = ({
 
       <div className="mb-1 flex items-center justify-between gap-6 text-sm">
         <span>Monthly Total</span>
-        <span>{formatRupiah(value)}</span>
+        <span>{formatPrivateRupiah(value, privacyMode)}</span>
       </div>
 
       <div className="mb-1 flex items-center justify-between gap-6 text-sm">
         <span>Average</span>
-        <span>{formatRupiah(average)}</span>
+        <span>{formatPrivateRupiah(average, privacyMode)}</span>
       </div>
 
       <div
@@ -89,14 +82,14 @@ const CustomTooltip = ({
         <span>Vs Average</span>
         <span>
           {difference >= 0 ? "+" : ""}
-          {formatRupiah(difference)}
+          {formatPrivateRupiah(difference, privacyMode)}
         </span>
       </div>
     </div>
   );
 };
 
-const CategoryTrendChart = ({ data, theme = "dark" }) => {
+const CategoryTrendChart = ({ data, theme = "dark", privacyMode }) => {
   const colors = chartTheme[theme] || chartTheme.dark;
   const categories = useMemo(() => (
     data?.categories ?? []
@@ -116,8 +109,16 @@ const CategoryTrendChart = ({ data, theme = "dark" }) => {
     categories.find((category) => category.kategori === selectedCategory)
   ), [categories, selectedCategory]);
 
-  const chartData = selectedData?.values ?? [];
-  const average = selectedData?.average ?? 0;
+  const chartData = useMemo(() => (
+    maskChartRows(
+      selectedData?.values ?? [],
+      ["total"],
+      privacyMode
+    )
+  ), [privacyMode, selectedData?.values]);
+  const average = useMemo(() => (
+    maskNumber(selectedData?.average ?? 0, privacyMode)
+  ), [privacyMode, selectedData?.average]);
 
   return (
     <div className="panel rounded-2xl p-5 shadow-lg">
@@ -134,7 +135,7 @@ const CategoryTrendChart = ({ data, theme = "dark" }) => {
               Average
             </p>
             <p className="font-semibold text-main">
-              {formatRupiah(average)}
+              {formatPrivateRupiah(selectedData?.average, privacyMode)}
             </p>
           </div>
 
@@ -177,7 +178,7 @@ const CategoryTrendChart = ({ data, theme = "dark" }) => {
               <YAxis
                 stroke={colors.tick}
                 tick={{ fill: colors.tick, fontSize: 12 }}
-                tickFormatter={(value) => formatCompactRupiah(value)}
+                tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
               />
 
               <Tooltip
@@ -185,6 +186,7 @@ const CategoryTrendChart = ({ data, theme = "dark" }) => {
                   <CustomTooltip
                     average={average}
                     colors={colors}
+                    privacyMode={privacyMode}
                   />
                 )}
               />
@@ -194,7 +196,7 @@ const CategoryTrendChart = ({ data, theme = "dark" }) => {
                 stroke={colors.average}
                 strokeDasharray="6 6"
                 label={{
-                  value: `Avg ${formatCompactRupiah(average)}`,
+                  value: `Avg ${formatPrivateCompact(average, privacyMode)}`,
                   fill: colors.average,
                   fontSize: 12,
                   position: "insideTopRight",

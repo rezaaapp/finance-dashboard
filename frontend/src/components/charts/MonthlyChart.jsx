@@ -8,13 +8,11 @@ import {
   Tooltip,
 } from "recharts";
 
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value);
-};
+import {
+  formatPrivateRupiah,
+  maskChartRows,
+  maskNumber,
+} from "../../utils/privacy";
 
 const chartTheme = {
   dark: {
@@ -33,8 +31,15 @@ const chartTheme = {
   },
 };
 
-const MonthlyChart = ({ title, data, dataKey = "total", theme = "dark" }) => {
+const MonthlyChart = ({
+  title,
+  data,
+  dataKey = "total",
+  theme = "dark",
+  privacyMode,
+}) => {
   const colors = chartTheme[theme] || chartTheme.dark;
+  const chartData = maskChartRows(data, [dataKey], privacyMode);
 
   return (
     <div className="panel rounded-2xl p-5 shadow-lg">
@@ -53,7 +58,7 @@ const MonthlyChart = ({ title, data, dataKey = "total", theme = "dark" }) => {
 
         <ResponsiveContainer width="100%" height="100%">
 
-          <LineChart data={data}>
+          <LineChart data={chartData}>
 
             <CartesianGrid
               strokeDasharray="3 3"
@@ -70,7 +75,7 @@ const MonthlyChart = ({ title, data, dataKey = "total", theme = "dark" }) => {
               stroke={colors.tick}
               tick={{ fill: colors.tick, fontSize: 12 }}
               tickFormatter={(value) =>
-                `${(value / 1000000).toFixed(0)}jt`
+                `${(maskNumber(value, privacyMode) / 1000000).toFixed(0)}jt`
               }
             />
 
@@ -81,7 +86,7 @@ const MonthlyChart = ({ title, data, dataKey = "total", theme = "dark" }) => {
                 borderRadius: "12px",
                 color: colors.tooltipText,
               }}
-              formatter={(value) => formatRupiah(value)}
+              formatter={(value) => formatPrivateRupiah(value, privacyMode)}
             />
 
             <Line

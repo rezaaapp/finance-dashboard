@@ -16,20 +16,12 @@ import {
   YAxis,
 } from "recharts";
 
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-};
-
-const formatCompactRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value || 0);
-};
+import {
+  formatPrivateCompact,
+  formatPrivateRupiah,
+  maskChartRows,
+  maskNumber,
+} from "../../utils/privacy";
 
 const fallbackKpi = {
   income: 0,
@@ -44,6 +36,7 @@ const PersonalAnalytics = ({
   data,
   selectedUser,
   onSelectedUserChange,
+  privacyMode,
 }) => {
   const users = useMemo(() => (
     data?.users ?? fallbackUsers
@@ -66,9 +59,15 @@ const PersonalAnalytics = ({
   ), [selectedUser, topCategoryMap]);
 
   const comparisonUsers = users.filter((user) => user.value !== "all");
+  const comparisonKeys = comparisonUsers.map((user) => user.value);
+  const maskedComparisonData = maskChartRows(
+    comparisonData,
+    comparisonKeys,
+    privacyMode
+  );
 
   const maxCategoryTotal = Math.max(
-    ...topCategories.map((item) => item.total),
+    ...topCategories.map((item) => maskNumber(item.total, privacyMode)),
     1
   );
 
@@ -129,7 +128,7 @@ const PersonalAnalytics = ({
             </div>
           </div>
           <p className="text-3xl font-bold text-main">
-            {formatRupiah(kpis.income)}
+            {formatPrivateRupiah(kpis.income, privacyMode)}
           </p>
         </div>
 
@@ -143,7 +142,7 @@ const PersonalAnalytics = ({
             </div>
           </div>
           <p className="text-3xl font-bold text-main">
-            {formatRupiah(kpis.spending)}
+            {formatPrivateRupiah(kpis.spending, privacyMode)}
           </p>
         </div>
 
@@ -157,7 +156,7 @@ const PersonalAnalytics = ({
             </div>
           </div>
           <p className="text-3xl font-bold text-main">
-            {formatRupiah(kpis.saving)}
+            {formatPrivateRupiah(kpis.saving, privacyMode)}
           </p>
           <p className="mt-2 text-sm font-semibold text-sky-400">
             {Number(kpis.saving_rate || 0).toFixed(1)}% Saving Rate
@@ -178,7 +177,7 @@ const PersonalAnalytics = ({
 
           <div className="h-[360px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonData}>
+              <BarChart data={maskedComparisonData}>
                 <CartesianGrid
                   stroke="var(--color-border)"
                   strokeDasharray="3 3"
@@ -191,10 +190,10 @@ const PersonalAnalytics = ({
                 <YAxis
                   stroke="var(--color-muted)"
                   tick={{ fill: "var(--color-muted)", fontSize: 12 }}
-                  tickFormatter={(value) => formatCompactRupiah(value)}
+                  tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
                 />
                 <Tooltip
-                  formatter={(value) => formatRupiah(value)}
+                  formatter={(value) => formatPrivateRupiah(value, privacyMode)}
                   contentStyle={{
                     backgroundColor: "var(--color-panel)",
                     border: "1px solid var(--color-border)",
@@ -232,7 +231,8 @@ const PersonalAnalytics = ({
           )}
 
           {topCategories.map((item, index) => {
-            const percentage = item.total / maxCategoryTotal * 100;
+            const maskedTotal = maskNumber(item.total, privacyMode);
+            const percentage = maskedTotal / maxCategoryTotal * 100;
 
             return (
               <div key={item.category}>
@@ -246,7 +246,7 @@ const PersonalAnalytics = ({
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-soft">
-                    {formatRupiah(item.total)}
+                    {formatPrivateRupiah(item.total, privacyMode)}
                   </p>
                 </div>
 

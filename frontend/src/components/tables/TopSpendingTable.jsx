@@ -1,20 +1,14 @@
-const formatRupiah = (value) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-};
+import { formatPrivateRupiah } from "../../utils/privacy";
 
-const TopSpendingTable = ({ data = [] }) => {
+const TopSpendingTable = ({ data = [], privacyMode }) => {
   return (
-    <div className="panel rounded-2xl p-5">
+    <div className="panel rounded-2xl p-4 sm:p-5">
 
       <h2 className="text-xl font-bold mb-6 text-main">
         Top Spending
       </h2>
 
-      <div className="overflow-x-auto">
+      <div className="hidden overflow-x-auto md:block">
 
         <table className="w-full text-sm">
 
@@ -62,7 +56,7 @@ const TopSpendingTable = ({ data = [] }) => {
                 </td>
 
                 <td className="py-4 text-right font-semibold text-accent">
-                  {formatRupiah(item.harga)}
+                  {formatPrivateRupiah(item.harga, privacyMode)}
                 </td>
 
               </tr>
@@ -73,6 +67,30 @@ const TopSpendingTable = ({ data = [] }) => {
 
         </table>
 
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:hidden">
+        {data.map((item, index) => (
+          <div
+            key={index}
+            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="break-words font-semibold text-main">
+                  {item.nama_transaksi}
+                </p>
+                <p className="mt-1 text-sm text-soft">
+                  {item.kategori} • {item.nama}
+                </p>
+              </div>
+
+              <p className="shrink-0 text-right text-sm font-bold text-accent">
+                {formatPrivateRupiah(item.harga, privacyMode)}
+              </p>
+            </div>
+          </div>
+        ))}
       </div>
 
     </div>

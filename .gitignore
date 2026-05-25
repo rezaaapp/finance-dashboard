@@ -2,23 +2,35 @@
 .env
 .env.*
 !.env.example
+*.local
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.pytest_cache/
+.mypy_cache/
 
 # Backend generated files
 backend/logs/
 backend/output/
 backend/scripts/credentials.json
 */credentials.json
+*credentials*.json
+*service-account*.json
+*service_account*.json
+*secret*.json
+*.pem
+*.p12
+*.key
 
 # Node
 node_modules/
 dist/
 dist-ssr/
+coverage/
+.vite/
 
 # Logs
 logs/
