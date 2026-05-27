@@ -12,35 +12,49 @@ import pandas as pd
 # =========================
 # CACHE DATA
 # =========================
-def get_financial_data():
+def _get_cache_key(year=None):
+    if settings.USE_MOCK_DATA:
+        return "mock-data"
+
+    return settings.get_sheet_id_for_year(year)
+
+
+def get_financial_data(year=None):
     now = datetime.now()
+    cache_key = _get_cache_key(year)
 
     if (
-        data_cache.cached_data is not None
-        and data_cache.last_fetch_time is not None
-        and now - data_cache.last_fetch_time < data_cache.CACHE_DURATION
+        cache_key in data_cache.cached_data_by_key
+        and cache_key in data_cache.last_fetch_time_by_key
+        and now - data_cache.last_fetch_time_by_key[cache_key] < data_cache.CACHE_DURATION
     ):
-        print("USING CACHE")
-        return data_cache.cached_data
+        print(f"USING CACHE: {cache_key}")
+        return data_cache.cached_data_by_key[cache_key]
 
     if settings.USE_MOCK_DATA:
         print("USING MOCK DATA")
         data = load_mock_financial_data()
     else:
-        print("FETCH FROM GOOGLE SHEETS")
-        data = load_and_process_data_from_spreadsheet(settings.GOOGLE_SHEET_ID)
+        sheet_id = settings.get_sheet_id_for_year(year)
+        print(f"FETCH FROM GOOGLE SHEETS: {year or 'latest'}")
+        data = load_and_process_data_from_spreadsheet(sheet_id)
 
-    data_cache.cached_data = data
-    data_cache.last_fetch_time = now
+    data_cache.cached_data_by_key[cache_key] = data
+    data_cache.last_fetch_time_by_key[cache_key] = now
 
     return data
 
 
-def refresh_financial_data():
-    data_cache.cached_data = None
-    data_cache.last_fetch_time = None
+def refresh_financial_data(year=None):
+    if year:
+        cache_key = _get_cache_key(year)
+        data_cache.cached_data_by_key.pop(cache_key, None)
+        data_cache.last_fetch_time_by_key.pop(cache_key, None)
+    else:
+        data_cache.cached_data_by_key.clear()
+        data_cache.last_fetch_time_by_key.clear()
 
-    return get_financial_data()
+    return get_financial_data(year)
 
 
 # =========================
@@ -96,7 +110,7 @@ def _trend_vs_last_month(df, year=None, month=None):
 # SUMMARY
 # =========================
 def get_summary(year=None, month=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
 
     trend_pengeluaran = _trend_vs_last_month(df_pengeluaran, year, month)
     trend_saving = _trend_vs_last_month(df_saving, year, month)
@@ -129,7 +143,7 @@ def get_summary(year=None, month=None):
 # MONTHLY SERIES
 # =========================
 def get_monthly_spending(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     grouped = df_pengeluaran.groupby("Bulan")["Harga"].sum().reset_index()
@@ -141,7 +155,7 @@ def get_monthly_spending(year=None, month=None):
 
 
 def get_monthly_saving(year=None, month=None):
-    _, _, df_saving, _ = get_financial_data()
+    _, _, df_saving, _ = get_financial_data(year)
     df_saving = _filter(df_saving, year, month)
 
     grouped = df_saving.groupby("Bulan")["Harga"].sum().reset_index()
@@ -153,7 +167,7 @@ def get_monthly_saving(year=None, month=None):
 
 
 def get_monthly_income(year=None, month=None):
-    _, _, _, df_income = get_financial_data()
+    _, _, _, df_income = get_financial_data(year)
     df_income = _filter(df_income, year, month)
 
     grouped = df_income.groupby("Bulan")["Harga"].sum().reset_index()
@@ -168,7 +182,7 @@ def get_monthly_income(year=None, month=None):
 # TOP SPENDING (FIXED BUG IMPORTANT)
 # =========================
 def get_top_spending(year=None, month=None, limit=10):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     if df_pengeluaran.empty:
@@ -198,7 +212,7 @@ def get_top_spending(year=None, month=None, limit=10):
 # CATEGORY
 # =========================
 def get_spending_by_category(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     grouped = (
@@ -212,7 +226,7 @@ def get_spending_by_category(year=None, month=None):
 
 
 def get_category_heatmap(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_pengeluaran = _filter_name(df_pengeluaran, name)
 
@@ -268,7 +282,7 @@ def get_category_heatmap(year=None, month=None, name=None):
 
 
 def get_transactions(year=None, month=None, name=None):
-    df_all, _, _, _ = get_financial_data()
+    df_all, _, _, _ = get_financial_data(year)
     df_transactions = _filter(df_all, year, month)
     df_transactions = _filter_name(df_transactions, name)
 
@@ -295,7 +309,7 @@ def get_transactions(year=None, month=None, name=None):
 
 
 def get_category_trends(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_pengeluaran = _filter_name(df_pengeluaran, name)
 
@@ -353,7 +367,7 @@ def get_category_trends(year=None, month=None, name=None):
 # PERSON
 # =========================
 def get_spending_per_person(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     grouped = df_pengeluaran.groupby("Nama")["Harga"].sum().reset_index()
@@ -369,7 +383,7 @@ def _total_by_name(df, name=None):
 
 
 def get_personal_analytics(year=None, month=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
 
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_saving = _filter(df_saving, year, month)
@@ -459,7 +473,7 @@ def get_personal_analytics(year=None, month=None):
 # GROCERY VS FOOD
 # =========================
 def get_grocery_vs_food(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_pengeluaran = _filter_name(df_pengeluaran, name)
 
@@ -486,7 +500,7 @@ def get_grocery_vs_food(year=None, month=None, name=None):
 # ANOMALY
 # =========================
 def get_anomalies(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     anomalies = detect_anomaly_pengeluaran(df_pengeluaran)
@@ -503,7 +517,7 @@ def get_anomalies(year=None, month=None):
 # INSIGHT
 # =========================
 def get_latest_insight(year=None, month=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data()
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
 
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_saving = _filter(df_saving, year, month)
@@ -541,6 +555,11 @@ def get_latest_insight(year=None, month=None):
 # AVAILABLE YEARS (FIX FLOAT ISSUE)
 # =========================
 def get_available_years():
+    registry_years = settings.get_available_registry_years()
+
+    if registry_years:
+        return registry_years
+
     df_all, _, _, _ = get_financial_data()
 
     years = (
@@ -558,7 +577,7 @@ def get_available_years():
 # BUDGETING & ALERTS
 # =========================
 def get_budget_forecast(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data()
+    _, df_pengeluaran, _, _ = get_financial_data(year)
 
     if df_pengeluaran.empty:
         return {
@@ -669,3 +688,4 @@ def get_budget_forecast(year=None, month=None):
             "alert_count": len(alerts),
         },
     }
+

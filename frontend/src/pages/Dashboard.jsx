@@ -113,7 +113,7 @@ const Dashboard = ({ onLogout }) => {
   const handleRefreshData = async () => {
     try {
       setLoading(true);
-      await refreshDashboardData();
+      await refreshDashboardData(selectedYear);
       await fetchDashboardData(selectedYear, selectedMonth);
     } catch (err) {
       console.error(err);

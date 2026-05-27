@@ -13,8 +13,8 @@ def summary(
 
 
 @router.post("/refresh")
-def refresh_data():
-    df_all, df_pengeluaran, df_saving, df_income = refresh_financial_data()
+def refresh_data(year: int | None = None):
+    df_all, df_pengeluaran, df_saving, df_income = refresh_financial_data(year)
 
     return {
         "status": "ok",

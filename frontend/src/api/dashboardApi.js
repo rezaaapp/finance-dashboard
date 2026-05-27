@@ -71,11 +71,12 @@ export const getSpendingByCategory = async (year, month) => {
   return response.data;
 };
 
-export const refreshDashboardData = async () => {
+export const refreshDashboardData = async (year) => {
   const response = await axios.post(
     `${DASHBOARD_API_URL}/refresh`,
     {},
     {
+      params: buildParams(year),
       headers: getAuthHeaders(),
     }
   );
