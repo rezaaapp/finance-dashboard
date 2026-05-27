@@ -20,6 +20,7 @@ import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
 import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashboard";
 import PrivacyControl from "../components/PrivacyControl";
+import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 import BudgetingAlerts from "./BudgetingAlerts";
@@ -65,6 +66,7 @@ const Dashboard = ({ onLogout }) => {
   const [budgetForecast, setBudgetForecast] = useState({});
   const [anomalies, setAnomalies] = useState([]);
   const [insight, setInsight] = useState("");
+  const [currentSheetName, setCurrentSheetName] = useState("");
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
@@ -177,6 +179,10 @@ const Dashboard = ({ onLogout }) => {
       const insightData = await getLatestInsight(year, month);
 
       setSummary(summaryData);
+      setCurrentSheetName(
+        summaryData?.data_source?.name
+        || (year ? `Google Sheet ${year}` : "")
+      );
       setSpending(spendingData);
       setSaving(savingData);
       setIncome(incomeData);
@@ -293,10 +299,12 @@ const Dashboard = ({ onLogout }) => {
           dashboard-sidebar
           hidden
           border-r
+          min-h-screen
+          flex-col
           ${isSidebarCollapsed ? "px-4 py-6" : "p-6"}
           transition-[width]
           duration-300
-          lg:block
+          lg:flex
           ${isSidebarCollapsed ? "w-24" : "w-64"}
         `}
       >
@@ -401,6 +409,11 @@ const Dashboard = ({ onLogout }) => {
             )}
           </button>
         </nav>
+
+        <SidebarDataSourceIndicator
+          sheetName={currentSheetName}
+          isCollapsed={isSidebarCollapsed}
+        />
       </aside>
 
       {/* MAIN */}

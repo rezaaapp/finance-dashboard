@@ -136,6 +136,7 @@ def get_summary(year=None, month=None):
         "trend_income": trend_income,
         "saving_ratio": round(saving_ratio, 2),
         "surplus": float(surplus),
+        "data_source": settings.get_data_source_for_year(year),
     }
 
 

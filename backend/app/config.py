@@ -26,11 +26,33 @@ class Settings:
     ]
 
     try:
-        SPREADSHEET_REGISTRY = {
-            str(year): sheet_id
-            for year, sheet_id in json.loads(GOOGLE_SHEET_REGISTRY_JSON).items()
-            if str(year).strip() and str(sheet_id).strip()
-        }
+        _raw_registry = json.loads(GOOGLE_SHEET_REGISTRY_JSON)
+        SPREADSHEET_REGISTRY = {}
+        SPREADSHEET_REGISTRY_META = {}
+
+        for year, value in _raw_registry.items():
+            registry_year = str(year).strip()
+
+            if not registry_year:
+                continue
+
+            if isinstance(value, dict):
+                sheet_id = str(value.get("id", "")).strip()
+                sheet_name = str(
+                    value.get("name") or f"Google Sheet {registry_year}"
+                ).strip()
+            else:
+                sheet_id = str(value).strip()
+                sheet_name = f"Google Sheet {registry_year}"
+
+            if not sheet_id:
+                continue
+
+            SPREADSHEET_REGISTRY[registry_year] = sheet_id
+            SPREADSHEET_REGISTRY_META[registry_year] = {
+                "id": sheet_id,
+                "name": sheet_name,
+            }
     except json.JSONDecodeError as exc:
         raise ValueError(
             "GOOGLE_SHEET_REGISTRY_JSON harus berupa JSON object valid"
@@ -76,5 +98,22 @@ class Settings:
             )
 
         return sheet_id
+
+    def get_sheet_name_for_year(self, year=None):
+        if not self.SPREADSHEET_REGISTRY:
+            return "Google Sheet"
+
+        selected_year = str(year or self.get_latest_registry_year())
+        meta = self.SPREADSHEET_REGISTRY_META.get(selected_year, {})
+
+        return meta.get("name") or f"Google Sheet {selected_year}"
+
+    def get_data_source_for_year(self, year=None):
+        selected_year = str(year or self.get_latest_registry_year() or "")
+
+        return {
+            "year": selected_year,
+            "name": self.get_sheet_name_for_year(selected_year),
+        }
 
 settings = Settings()
