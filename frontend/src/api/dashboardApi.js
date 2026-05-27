@@ -116,6 +116,14 @@ export const getCategoryTrends = async (year, month, name) => {
   return response.data;
 };
 
+export const getSourceDanaAnalytics = async (year, month, name) => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/source-dana-analytics`,
+    buildConfig(year, month, name)
+  );
+  return response.data;
+};
+
 export const getPersonalAnalytics = async (year, month) => {
   const response = await axios.get(
     `${DASHBOARD_API_URL}/personal-analytics`,

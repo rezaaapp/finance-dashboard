@@ -179,8 +179,8 @@ const IncomeVelocityDashboard = ({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MetricCard
           title="Days to Burn 50%"
-          value={velocity.d2b50 === null ? "-" : `${velocity.d2b50} hari`}
-          description="Hari saat spending melewati 50% income."
+          value={velocity.d2b50 === null ? "-" : `${velocity.d2b50} days`}
+          description="The day spending passes 50% of income."
           accentClass="text-cyan-400"
           iconBgClass="bg-cyan-400/15"
           icon={TimerReset}
@@ -193,14 +193,14 @@ const IncomeVelocityDashboard = ({
             .
           </p>
           <p>
-            Total Pengeluaran Saat Menyentuh 50%:{" "}
+            Total Expenses When Reaching 50%:{" "}
             <span className="font-bold text-white">
               {formatPrivateRupiah(velocity.burnAmount || velocity.threshold, privacyMode)}
             </span>
             .
           </p>
           <p>
-            Terjadi pada tanggal:{" "}
+            Occurred on:{" "}
             <span className="font-bold text-white">
               {formatDate(velocity.burnDate)}
             </span>
@@ -217,21 +217,21 @@ const IncomeVelocityDashboard = ({
         <MetricCard
           title="Daily Burn Rate Score"
           value={formatPrivateRupiah(velocity.dailyBurnRate, privacyMode)}
-          description="Rata-rata pengeluaran per hari berjalan."
+          description="Average expenses per elapsed day."
           accentClass="text-emerald-400"
           iconBgClass="bg-emerald-400/15"
           icon={Gauge}
         >
           <p>
-            Total pengeluaran bulan ini (
+            This month's total expenses (
             <span className="font-bold text-white">
               {formatPrivateRupiah(velocity.totalSpending, privacyMode)}
             </span>
-            ) dibagi dengan{" "}
+            ) divided by{" "}
             <span className="font-bold text-white">
               {velocity.elapsedDays}
             </span>{" "}
-            hari berjalan.
+            elapsed days.
           </p>
         </MetricCard>
       </div>
@@ -267,37 +267,37 @@ const IncomeVelocityDashboard = ({
 
           <MetricTooltip>
             <p>
-              Sisa dana Anda saat ini{" "}
+              Your current remaining funds are{" "}
               <span className="font-bold text-white">
                 {formatPrivateRupiah(velocity.remainingFunds, privacyMode)}
               </span>
               .
             </p>
             <p>
-              Estimasi pengeluaran harian{" "}
+              Estimated daily expenses are{" "}
               <span className="font-bold text-white">
                 {formatPrivateRupiah(velocity.dailyBurnRate, privacyMode)}
               </span>
               .
             </p>
             <p>
-              Dana diprediksi habis dalam{" "}
+              Funds are projected to run out in{" "}
               <span className="font-bold text-white">
                 {velocity.runwayDays}
               </span>{" "}
-              hari lagi jika pola belanja konsisten.
+              more days if the spending pattern stays consistent.
             </p>
           </MetricTooltip>
         </div>
 
         <p className="mt-4 text-sm leading-6 text-slate-300">
-          Dengan burn rate saat ini, sisa dana aman sekitar{" "}
+          At the current burn rate, the estimated safe remaining funds are{" "}
           <span className="font-bold text-emerald-400">
             {formatPrivateRupiah(velocity.remainingFunds, privacyMode)}
           </span>
-          , estimasi runway{" "}
+          , with an estimated runway of{" "}
           <span className="font-bold text-cyan-400">
-            {velocity.runwayDays} hari
+            {velocity.runwayDays} days
           </span>
           .
         </p>

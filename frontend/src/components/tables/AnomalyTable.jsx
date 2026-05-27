@@ -26,7 +26,7 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
 
       {rows.length === 0 ? (
         <div className="text-muted">
-          Tidak ada anomaly terdeteksi
+          No anomalies detected
         </div>
       ) : (
         <>
@@ -35,19 +35,19 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
               <thead>
                 <tr className="table-border text-muted">
                   <th className="py-3 text-left">
-                    Tanggal
+                    Date
                   </th>
                   <th className="py-3 text-left">
-                    Transaksi
+                    Transaction
                   </th>
                   <th className="py-3 text-left">
-                    Kategori
+                    Category
                   </th>
                   <th className="py-3 text-left">
-                    Nama
+                    Name
                   </th>
                   <th className="py-3 text-right">
-                    Nominal
+                    Amount
                   </th>
                 </tr>
               </thead>

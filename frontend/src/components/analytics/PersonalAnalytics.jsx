@@ -30,7 +30,11 @@ const fallbackKpi = {
   saving_rate: 0,
 };
 
-const fallbackUsers = [{ label: "Semua Data", value: "all" }];
+const fallbackUsers = [{ label: "All Data", value: "all" }];
+
+const getUserDisplayLabel = (user) => (
+  user?.value === "all" ? "All Data" : user?.label
+);
 
 const PersonalAnalytics = ({
   data,
@@ -74,7 +78,7 @@ const PersonalAnalytics = ({
 
   const selectedUserLabel = users.find((user) => (
     user.value === selectedUser
-  ))?.label;
+  ));
 
   const renderTopCategoryBreakdown = () => (
     <div className="panel rounded-2xl p-5 shadow-lg">
@@ -131,17 +135,17 @@ const PersonalAnalytics = ({
   return (
     <section className="grid grid-cols-1 gap-6">
       <div className="panel rounded-2xl p-5 shadow-lg">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-col">
             <h2 className="text-xl font-bold text-main">
               Personal Finance Performance
             </h2>
-            <p className="text-muted mt-1 text-sm">
-              {selectedUserLabel}
+            <p className="mt-1 truncate text-sm text-muted">
+              {getUserDisplayLabel(selectedUserLabel)}
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 rounded-xl border border-[var(--color-border)] p-1">
+          <div className="flex max-w-full shrink-0 flex-row flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-[var(--color-border)] p-1">
             {users.map((user) => {
               const isActive = selectedUser === user.value;
 
@@ -156,13 +160,15 @@ const PersonalAnalytics = ({
                     py-2
                     text-sm
                     font-semibold
+                    whitespace-nowrap
+                    flex-none
                     transition-colors
                     ${isActive
                       ? "bg-[var(--color-accent-strong)] text-white"
                       : "text-muted hover:text-accent"}
                   `}
                 >
-                  {user.label}
+                  {getUserDisplayLabel(user)}
                 </button>
               );
             })}

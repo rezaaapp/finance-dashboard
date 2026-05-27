@@ -148,7 +148,7 @@ const BudgetingAlerts = ({
           return {
             severity: usageRate >= 100 ? "high" : "medium",
             category: item.category,
-            message: `Kategori ${item.category} sudah terpakai ${Math.round(usageRate)}% dari budget manual.`,
+            message: `${item.category} has used ${Math.round(usageRate)}% of the manual budget.`,
             usage_rate: usageRate,
             current_spending: item.current_spending,
             budget: item.effective_budget,
@@ -319,8 +319,8 @@ const BudgetingAlerts = ({
               </h3>
               <p className="text-sm text-muted">
                 {autoBudget
-                  ? "Switch to Manual untuk mengubah angka budget per kategori."
-                  : "Ubah budget per kategori; alert dan chart akan mengikuti angka manual."}
+                  ? "Switch to Manual to edit the budget amount per category."
+                  : "Edit the budget per category; alerts and charts will follow the manual amount."}
               </p>
             </div>
           </div>
@@ -332,34 +332,34 @@ const BudgetingAlerts = ({
                   <th className="py-3 text-left">
                     {renderHeaderWithTooltip(
                       "Category",
-                      "Kategori transaksi yang dipakai untuk mengelompokkan pengeluaran, misalnya Grocery, Makanan, Tagihan, atau Transportasi."
+                      "Transaction category used to group expenses, for example Grocery, Makanan, Tagihan, or Transportasi."
                     )}
                   </th>
                   <th className="py-3 text-right">
                     {renderHeaderWithTooltip(
                       "Historical Suggestion",
-                      "Usulan budget dari rata-rata historis per kategori. Sistem memakai seluruh bulan sebelum periode aktif; jika belum ada bulan sebelumnya, sistem memakai data bulan yang tersedia.",
+                      "Budget suggestion from the historical average per category. The system uses all months before the active period; if no previous month exists, it uses the available month data.",
                       "right"
                     )}
                   </th>
                   <th className="py-3 text-right">
                     {renderHeaderWithTooltip(
                       "Manual Budget",
-                      "Angka budget yang bisa kamu edit saat mode Manual aktif. Nilai ini disimpan di browser dan dipakai untuk menghitung alert serta chart.",
+                      "Budget amount you can edit when Manual mode is active. This value is stored in the browser and used to calculate alerts and charts.",
                       "right"
                     )}
                   </th>
                   <th className="py-3 text-right">
                     {renderHeaderWithTooltip(
                       "Current Spending",
-                      "Total pengeluaran aktual pada periode filter tahun dan bulan yang sedang dipilih.",
+                      "Actual total expenses for the currently selected year and month filter period.",
                       "right"
                     )}
                   </th>
                   <th className="py-3 text-right">
                     {renderHeaderWithTooltip(
                       "Usage",
-                      "Persentase pemakaian budget: Current Spending dibagi budget aktif. Warna amber berarti mendekati batas, merah berarti melewati budget.",
+                      "Budget usage percentage: Current Spending divided by the active budget. Amber means near the limit, red means over budget.",
                       "right"
                     )}
                   </th>
@@ -520,7 +520,7 @@ const BudgetingAlerts = ({
         <div className="space-y-3">
           {alertRows.length === 0 && (
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-300">
-              Semua kategori masih berada dalam batas aman.
+              All categories are still within the safe limit.
             </div>
           )}
 
@@ -563,14 +563,14 @@ const BudgetingAlerts = ({
                   </div>
 
                   <div className="flex justify-between gap-4">
-                    <span>Budget aktif</span>
+                    <span>Active budget</span>
                     <span className="font-semibold text-main">
                       {formatPrivateRupiah(alert.budget, privacyMode)}
                     </span>
                   </div>
 
                   <div className="flex justify-between gap-4 border-t border-[var(--color-border)] pt-2">
-                    <span>{remaining >= 0 ? "Sisa budget" : "Over budget"}</span>
+                    <span>{remaining >= 0 ? "Remaining budget" : "Over budget"}</span>
                     <span className={`font-semibold ${
                       remaining >= 0 ? "text-emerald-400" : "text-red-400"
                     }`}>

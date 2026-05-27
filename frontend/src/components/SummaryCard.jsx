@@ -23,7 +23,7 @@ const SummaryCard = ({
 
   const getIcon = () => {
 
-    if (title.includes("Pengeluaran")) {
+    if (title.includes("Expenses")) {
       return <Wallet size={28} />;
     }
 

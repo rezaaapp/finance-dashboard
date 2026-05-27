@@ -365,6 +365,56 @@ def get_category_trends(year=None, month=None, name=None):
 
 
 # =========================
+# SOURCE DANA
+# =========================
+def _aggregate_source_dana(df):
+    if df.empty:
+        return []
+
+    df = df.copy()
+
+    if "Source Dana" not in df.columns:
+        df["Source Dana"] = "Lainnya"
+
+    df["Source Dana"] = (
+        df["Source Dana"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("", "Lainnya")
+    )
+
+    grouped = (
+        df.groupby("Source Dana")["Harga"]
+        .sum()
+        .reset_index()
+        .sort_values("Harga", ascending=False)
+    )
+
+    return [
+        {
+            "source": row["Source Dana"],
+            "total": float(row["Harga"]),
+        }
+        for _, row in grouped.iterrows()
+    ]
+
+
+def get_source_dana_analytics(year=None, month=None, name=None):
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
+
+    df_pengeluaran = _filter_name(_filter(df_pengeluaran, year, month), name)
+    df_saving = _filter_name(_filter(df_saving, year, month), name)
+    df_income = _filter_name(_filter(df_income, year, month), name)
+
+    return {
+        "income_sources": _aggregate_source_dana(df_income),
+        "saving_sources": _aggregate_source_dana(df_saving),
+        "spending_sources": _aggregate_source_dana(df_pengeluaran),
+    }
+
+
+# =========================
 # PERSON
 # =========================
 def get_spending_per_person(year=None, month=None):

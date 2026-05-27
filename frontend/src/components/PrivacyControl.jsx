@@ -13,19 +13,19 @@ const privacyOptions = [
   {
     value: PRIVACY_MODES.normal,
     label: "Normal",
-    description: "Data asli tampil penuh.",
+    description: "Original data is fully visible.",
     icon: Eye,
   },
   {
     value: PRIVACY_MODES.hide,
     label: "Hide",
-    description: "Nominal disensor saat di tempat umum.",
+    description: "Amounts are hidden for public viewing.",
     icon: Lock,
   },
   {
     value: PRIVACY_MODES.guest,
     label: "Guest",
-    description: "Nominal diganti dummy realistis.",
+    description: "Amounts are replaced with realistic dummy values.",
     icon: VenetianMask,
   },
 ];

@@ -10,9 +10,9 @@ function TopSpendingTable({ data }) {
 
           <thead>
             <tr className="text-left border-b border-slate-700">
-              <th className="pb-3">Transaksi</th>
-              <th className="pb-3">Kategori</th>
-              <th className="pb-3">Harga</th>
+              <th className="pb-3">Transaction</th>
+              <th className="pb-3">Category</th>
+              <th className="pb-3">Amount</th>
             </tr>
           </thead>
 

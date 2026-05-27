@@ -19,6 +19,7 @@ import CategoryHeatmap from "../components/charts/CategoryHeatmap";
 import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
 import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashboard";
+import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
 import PrivacyControl from "../components/PrivacyControl";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
@@ -41,6 +42,7 @@ import {
   getCategoryHeatmap,
   getTransactions,
   getCategoryTrends,
+  getSourceDanaAnalytics,
   getPersonalAnalytics,
   getAnomalies,
   getLatestInsight,
@@ -62,6 +64,7 @@ const Dashboard = ({ onLogout }) => {
   const [categoryHeatmap, setCategoryHeatmap] = useState({});
   const [rawTransactions, setRawTransactions] = useState([]);
   const [categoryTrends, setCategoryTrends] = useState({});
+  const [sourceDanaAnalytics, setSourceDanaAnalytics] = useState({});
   const [personalAnalytics, setPersonalAnalytics] = useState({});
   const [budgetForecast, setBudgetForecast] = useState({});
   const [anomalies, setAnomalies] = useState([]);
@@ -197,11 +200,11 @@ const Dashboard = ({ onLogout }) => {
       setAnomalies(anomaliesData);
 
       setInsight(
-        `Bulan ${insightData.bulan} memiliki spending ${
+        `Month ${insightData.bulan} has spending of ${
           formatPrivateRupiah(insightData.spending, privacyMode)
-        } dengan saving ratio ${
+        } with a saving ratio of ${
           insightData.saving_ratio
-        }%. Status keuangan: ${insightData.status}`
+        }%. Financial status: ${insightData.status}`
       );
 
       setError("");
@@ -265,6 +268,57 @@ const Dashboard = ({ onLogout }) => {
       );
     }
   }, [fetchDashboardData, selectedYear, selectedMonth]);
+
+  // =========================
+  // LAZY FETCH ANALYTICS DATA
+  // =========================
+  useEffect(() => {
+    if (activeView !== "analytics" || selectedYear === "") {
+      return;
+    }
+
+    let isMounted = true;
+    const analyticsUserName = selectedAnalyticsUser === "all"
+      ? ""
+      : selectedAnalyticsUser;
+
+    const fetchSourceDanaAnalytics = async () => {
+      try {
+        const data = await getSourceDanaAnalytics(
+          selectedYear,
+          selectedMonth,
+          analyticsUserName
+        );
+
+        if (isMounted) {
+          setSourceDanaAnalytics(data);
+        }
+      } catch (err) {
+        console.error(err);
+
+        if (err?.response?.status === 401) {
+          onLogout();
+          return;
+        }
+
+        if (isMounted) {
+          setSourceDanaAnalytics({});
+        }
+      }
+    };
+
+    fetchSourceDanaAnalytics();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    activeView,
+    onLogout,
+    selectedAnalyticsUser,
+    selectedMonth,
+    selectedYear,
+  ]);
 
   // =========================
   // LOADING SCREEN
@@ -512,7 +566,7 @@ const Dashboard = ({ onLogout }) => {
             {/* SUMMARY */}
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-6">
               <SummaryCard
-                title="Total Pengeluaran"
+                title="Total Expenses"
                 value={summary.total_pengeluaran}
                 trend={summary.trend_pengeluaran}
                 privacyMode={privacyMode}
@@ -637,6 +691,12 @@ const Dashboard = ({ onLogout }) => {
                     onSelectedUserChange={setSelectedAnalyticsUser}
                     privacyMode={privacyMode}
                     variant="breakdown"
+                  />
+
+                  <SourceDanaAnalytics
+                    data={sourceDanaAnalytics}
+                    theme={theme}
+                    privacyMode={privacyMode}
                   />
 
                   <GroceryVsFoodChart

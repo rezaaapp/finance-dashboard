@@ -84,6 +84,14 @@ def category_trends(
 ):
     return get_category_trends(year, month, name)
 
+@router.get("/source-dana-analytics")
+def source_dana_analytics(
+    year: int | None = None,
+    month: int | None = None,
+    name: str | None = None
+):
+    return get_source_dana_analytics(year, month, name)
+
 @router.get("/spending-per-person")
 def spending_per_person(
     year: int | None = None,

@@ -88,6 +88,26 @@ const getCellTextColor = (value, scaleLimit, theme) => {
   return intensity > 0.2 ? "#f8fafc" : "var(--color-text)";
 };
 
+const HeatmapColorLegend = () => (
+  <div className="mb-5 flex w-full flex-col gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 sm:max-w-xl">
+    <span className="text-xs font-medium text-gray-500">
+      Transaction Intensity
+    </span>
+
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <span className="shrink-0 text-xs font-semibold text-gray-500">
+        Low / None (Rp 0)
+      </span>
+
+      <div className="h-2.5 min-w-32 flex-1 rounded bg-gradient-to-r from-slate-600 via-cyan-500 via-emerald-500 via-amber-400 to-orange-500" />
+
+      <span className="shrink-0 text-xs font-semibold text-gray-500">
+        High (Peak Spending)
+      </span>
+    </div>
+  </div>
+);
+
 const formatDate = (value) => new Date(value).toLocaleDateString("id-ID", {
   day: "2-digit",
   month: "short",
@@ -149,7 +169,7 @@ const TransactionDetailModal = memo(({
               Detail Heat Map
             </p>
             <h3 className="mt-1 break-words text-lg font-bold text-cyan-400 sm:text-xl">
-              Rincian Transaksi: {category} - {formatPeriod(period)}
+              Transaction Details: {category} - {formatPeriod(period)}
             </h3>
           </div>
 
@@ -157,8 +177,8 @@ const TransactionDetailModal = memo(({
             type="button"
             onClick={onClose}
             className="theme-toggle h-10 w-10 shrink-0 rounded-xl p-0"
-            aria-label="Tutup rincian transaksi"
-            title="Tutup"
+            aria-label="Close transaction details"
+            title="Close"
           >
             <X size={18} />
           </button>
@@ -167,7 +187,7 @@ const TransactionDetailModal = memo(({
         <div className="px-5 py-4">
           {transactions.length === 0 ? (
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 text-center text-sm text-slate-300">
-              Tidak ada catatan transaksi pada periode ini.
+              No transaction records found for this period.
             </div>
           ) : (
             <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
@@ -214,7 +234,7 @@ const TransactionDetailModal = memo(({
           <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-sm font-semibold text-slate-300">
-                Total Pengeluaran Periode Ini
+                Total Expenses for This Period
               </span>
               <span className="font-mono text-lg font-bold text-emerald-400">
                 {formatPrivateRupiah(totalAmount, privacyMode)}
@@ -227,7 +247,7 @@ const TransactionDetailModal = memo(({
             onClick={onClose}
             className="primary-button w-full rounded-xl px-4 py-3 font-bold"
           >
-            Tutup
+            Close
           </button>
         </div>
       </div>
@@ -361,6 +381,8 @@ const CategoryHeatmap = ({
         </div>
       ) : (
         <>
+        <HeatmapColorLegend />
+
         <div className="hidden overflow-x-auto md:block">
           <div
             className="grid min-w-[720px] gap-2"

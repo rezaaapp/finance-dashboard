@@ -72,6 +72,22 @@ def _load_credentials_from_file(credentials_path, scopes):
         scopes=scopes
     )
 
+
+def _normalize_source_dana(df):
+    if "Source Dana" not in df.columns:
+        df["Source Dana"] = "Lainnya"
+
+    df["Source Dana"] = (
+        df["Source Dana"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("", "Lainnya")
+    )
+
+    return df
+
+
 def load_and_process_data(filename):
     all_sheets = pd.read_excel(filename, sheet_name=None)
     df_list = []
@@ -79,6 +95,7 @@ def load_and_process_data(filename):
         df['Sheet'] = sheet_name
         df_list.append(df)
     df_all = pd.concat(df_list, ignore_index=True)
+    df_all = _normalize_source_dana(df_all)
     df_all['Waktu Transaksi'] = pd.to_datetime(df_all['Waktu Transaksi'])
     df_all['Harga'] = (
         df_all['Harga']
@@ -99,47 +116,55 @@ def load_and_process_data(filename):
 
 def load_mock_financial_data():
     records = [
-        ("2026-01-05", "Gaji Reza", "Income", 18000000, "Reza"),
-        ("2026-01-05", "Gaji Divya", "Income", 15000000, "Divya"),
-        ("2026-01-06", "Tabungan Rumah", "Saving", 6000000, "Reza"),
-        ("2026-01-07", "Investasi Bulanan", "Saving", 4500000, "Divya"),
-        ("2026-01-09", "Belanja Bulanan", "Grocery", 1850000, "Reza"),
-        ("2026-01-12", "Makan Weekend", "Makanan", 750000, "Divya"),
-        ("2026-01-15", "Internet", "Tagihan", 450000, "Reza"),
-        ("2026-02-05", "Gaji Reza", "Income", 18000000, "Reza"),
-        ("2026-02-05", "Gaji Divya", "Income", 15000000, "Divya"),
-        ("2026-02-06", "Tabungan Rumah", "Saving", 6200000, "Reza"),
-        ("2026-02-07", "Investasi Bulanan", "Saving", 4700000, "Divya"),
-        ("2026-02-09", "Belanja Bulanan", "Grocery", 2100000, "Divya"),
-        ("2026-02-11", "Makan Siang", "Makanan", 880000, "Reza"),
-        ("2026-02-20", "Transport", "Transportasi", 650000, "Reza"),
-        ("2026-03-05", "Gaji Reza", "Income", 18500000, "Reza"),
-        ("2026-03-05", "Gaji Divya", "Income", 15000000, "Divya"),
-        ("2026-03-06", "Tabungan Rumah", "Saving", 6500000, "Reza"),
-        ("2026-03-07", "Investasi Bulanan", "Saving", 4800000, "Divya"),
-        ("2026-03-08", "Asuransi Tahunan", "Tagihan Tahunan", 12500000, "Reza"),
-        ("2026-03-13", "Belanja Dapur", "Grocery", 1950000, "Divya"),
-        ("2026-03-18", "Restoran", "Makanan", 950000, "Divya"),
-        ("2026-04-05", "Gaji Reza", "Income", 18500000, "Reza"),
-        ("2026-04-05", "Gaji Divya", "Income", 15500000, "Divya"),
-        ("2026-04-06", "Tabungan Rumah", "Saving", 7000000, "Reza"),
-        ("2026-04-07", "Investasi Bulanan", "Saving", 5000000, "Divya"),
-        ("2026-04-10", "Belanja Bulanan", "Grocery", 2300000, "Reza"),
-        ("2026-04-14", "Makan Keluarga", "Makanan", 1200000, "Divya"),
-        ("2026-04-22", "Kesehatan", "Kesehatan", 850000, "Divya"),
-        ("2026-05-05", "Gaji Reza", "Income", 19000000, "Reza"),
-        ("2026-05-05", "Gaji Divya", "Income", 15500000, "Divya"),
-        ("2026-05-06", "Tabungan Rumah", "Saving", 7200000, "Reza"),
-        ("2026-05-07", "Investasi Bulanan", "Saving", 5200000, "Divya"),
-        ("2026-05-09", "Belanja Bulanan", "Grocery", 2250000, "Reza"),
-        ("2026-05-12", "Makan Weekend", "Makanan", 1100000, "Reza"),
-        ("2026-05-19", "Listrik", "Tagihan", 780000, "Divya"),
+        ("2026-01-05", "Gaji Reza", "Income", 18000000, "Reza", "Gaji Reza"),
+        ("2026-01-05", "Gaji Divya", "Income", 15000000, "Divya", "Gaji Divya"),
+        ("2026-01-06", "Tabungan Rumah", "Saving", 6000000, "Reza", "Tabungan Rumah"),
+        ("2026-01-07", "Investasi Bulanan", "Saving", 4500000, "Divya", "Investasi"),
+        ("2026-01-09", "Belanja Bulanan", "Grocery", 1850000, "Reza", "BCA"),
+        ("2026-01-12", "Makan Weekend", "Makanan", 750000, "Divya", "QRIS"),
+        ("2026-01-15", "Internet", "Tagihan", 450000, "Reza", "Autodebet"),
+        ("2026-02-05", "Gaji Reza", "Income", 18000000, "Reza", "Gaji Reza"),
+        ("2026-02-05", "Gaji Divya", "Income", 15000000, "Divya", "Gaji Divya"),
+        ("2026-02-06", "Tabungan Rumah", "Saving", 6200000, "Reza", "Tabungan Rumah"),
+        ("2026-02-07", "Investasi Bulanan", "Saving", 4700000, "Divya", "Investasi"),
+        ("2026-02-09", "Belanja Bulanan", "Grocery", 2100000, "Divya", "BCA"),
+        ("2026-02-11", "Makan Siang", "Makanan", 880000, "Reza", "QRIS"),
+        ("2026-02-20", "Transport", "Transportasi", 650000, "Reza", "E-Wallet"),
+        ("2026-03-05", "Gaji Reza", "Income", 18500000, "Reza", "Gaji Reza"),
+        ("2026-03-05", "Gaji Divya", "Income", 15000000, "Divya", "Gaji Divya"),
+        ("2026-03-06", "Tabungan Rumah", "Saving", 6500000, "Reza", "Tabungan Rumah"),
+        ("2026-03-07", "Investasi Bulanan", "Saving", 4800000, "Divya", "Investasi"),
+        ("2026-03-08", "Asuransi Tahunan", "Tagihan Tahunan", 12500000, "Reza", "Kartu Kredit"),
+        ("2026-03-13", "Belanja Dapur", "Grocery", 1950000, "Divya", "BCA"),
+        ("2026-03-18", "Restoran", "Makanan", 950000, "Divya", "QRIS"),
+        ("2026-04-05", "Gaji Reza", "Income", 18500000, "Reza", "Gaji Reza"),
+        ("2026-04-05", "Gaji Divya", "Income", 15500000, "Divya", "Gaji Divya"),
+        ("2026-04-06", "Tabungan Rumah", "Saving", 7000000, "Reza", "Tabungan Rumah"),
+        ("2026-04-07", "Investasi Bulanan", "Saving", 5000000, "Divya", "Investasi"),
+        ("2026-04-10", "Belanja Bulanan", "Grocery", 2300000, "Reza", "BCA"),
+        ("2026-04-14", "Makan Keluarga", "Makanan", 1200000, "Divya", "QRIS"),
+        ("2026-04-22", "Kesehatan", "Kesehatan", 850000, "Divya", "Debit"),
+        ("2026-05-05", "Gaji Reza", "Income", 19000000, "Reza", "Gaji Reza"),
+        ("2026-05-05", "Gaji Divya", "Income", 15500000, "Divya", "Gaji Divya"),
+        ("2026-05-06", "Tabungan Rumah", "Saving", 7200000, "Reza", "Tabungan Rumah"),
+        ("2026-05-07", "Investasi Bulanan", "Saving", 5200000, "Divya", "Investasi"),
+        ("2026-05-09", "Belanja Bulanan", "Grocery", 2250000, "Reza", "BCA"),
+        ("2026-05-12", "Makan Weekend", "Makanan", 1100000, "Reza", "QRIS"),
+        ("2026-05-19", "Listrik", "Tagihan", 780000, "Divya", "Autodebet"),
     ]
 
     df_all = pd.DataFrame(
         records,
-        columns=["Waktu Transaksi", "Nama Transaksi", "Kategori", "Harga", "Nama"],
+        columns=[
+            "Waktu Transaksi",
+            "Nama Transaksi",
+            "Kategori",
+            "Harga",
+            "Nama",
+            "Source Dana",
+        ],
     )
+    df_all = _normalize_source_dana(df_all)
     df_all["Sheet"] = "Mock"
     df_all["Waktu Transaksi"] = pd.to_datetime(df_all["Waktu Transaksi"])
     df_all["Harga"] = df_all["Harga"].astype(float)
@@ -212,6 +237,7 @@ def load_and_process_data_from_spreadsheet(sheet_id):
         raise ValueError("Tidak ada data yang bisa diproses")
 
     df_all = pd.concat(df_list, ignore_index=True)
+    df_all = _normalize_source_dana(df_all)
 
     # ===== PROSES DATA (SAMA DENGAN EXCEL) =====
     df_all["Waktu Transaksi"] = pd.to_datetime(df_all["Waktu Transaksi"], errors='coerce')

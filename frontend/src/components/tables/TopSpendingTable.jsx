@@ -16,19 +16,19 @@ const TopSpendingTable = ({ data = [], privacyMode }) => {
             <tr className="table-border text-muted">
 
               <th className="text-left py-3">
-                Transaksi
+                Transaction
               </th>
 
               <th className="text-left py-3">
-                Kategori
+                Category
               </th>
 
               <th className="text-left py-3">
-                Nama
+                Name
               </th>
 
               <th className="text-right py-3">
-                Harga
+                Amount
               </th>
 
             </tr>
