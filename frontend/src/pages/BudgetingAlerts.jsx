@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   BellRing,
-  Bot,
   Info,
   SlidersHorizontal,
   Wallet,
@@ -28,7 +27,6 @@ const BudgetingAlerts = ({
   theme = "dark",
   privacyMode,
   autoBudget,
-  onAutoBudgetChange,
 }) => {
   const alerts = useMemo(() => (
     data?.alerts ?? []
@@ -228,45 +226,6 @@ const BudgetingAlerts = ({
   return (
     <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6">
       <section className="panel rounded-2xl p-4 shadow-lg sm:p-5">
-        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-main">
-              Budget Configuration Panel
-            </h2>
-            <p className="mt-1 text-sm text-muted">
-              Historical average is used for local forecasting.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 rounded-xl border border-[var(--color-border)] p-1">
-            <button
-              type="button"
-              onClick={() => onAutoBudgetChange(false)}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-                !autoBudget
-                  ? "bg-[var(--color-accent-strong)] text-white"
-                  : "text-muted hover:text-accent"
-              }`}
-            >
-              <SlidersHorizontal size={16} className="mr-2 inline" />
-              Manual
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onAutoBudgetChange(true)}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-                autoBudget
-                  ? "bg-[var(--color-accent-strong)] text-white"
-                  : "text-muted hover:text-accent"
-              }`}
-            >
-              <Bot size={16} className="mr-2 inline" />
-              AI Auto
-            </button>
-          </div>
-        </div>
-
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 md:gap-4">
           <div className="rounded-xl border border-[var(--color-border)] p-4">
             <div className="mb-4 flex items-center justify-between">

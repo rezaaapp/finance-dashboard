@@ -166,5 +166,17 @@ export const getBudgetForecast = async (year, month) => {
 
   return response.data;
 };
+
+export const saveConfiguration = async (configuration) => {
+  const response = await axios.post(
+    `${DASHBOARD_API_URL}/configuration`,
+    configuration,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
     
 

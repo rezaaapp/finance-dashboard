@@ -73,6 +73,42 @@ def _load_credentials_from_file(credentials_path, scopes):
     )
 
 
+def get_google_sheets_client(scopes):
+    credentials_json = (os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip()
+    credentials_json_base64 = (
+        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64") or ""
+    ).strip()
+    credentials_path = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
+
+    if credentials_json_base64:
+        try:
+            credentials_json = base64.b64decode(
+                credentials_json_base64
+            ).decode("utf-8")
+        except Exception as error:
+            raise ValueError(
+                "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 tidak valid. "
+                "Generate ulang dari file service account JSON asli."
+            ) from error
+
+    if credentials_json:
+        try:
+            service_account_info = _load_service_account_info(credentials_json)
+            creds = Credentials.from_service_account_info(
+                service_account_info,
+                scopes=scopes
+            )
+        except ValueError:
+            if not credentials_path:
+                raise
+
+            creds = _load_credentials_from_file(credentials_path, scopes)
+    else:
+        creds = _load_credentials_from_file(credentials_path, scopes)
+
+    return gspread.authorize(creds)
+
+
 def _normalize_source_dana(df):
     if "Source Dana" not in df.columns:
         df["Source Dana"] = "Lainnya"
@@ -184,39 +220,7 @@ def load_and_process_data_from_spreadsheet(sheet_id):
 
     scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
-    credentials_json = (os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip()
-    credentials_json_base64 = (
-        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64") or ""
-    ).strip()
-    credentials_path = (os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or "").strip()
-
-    if credentials_json_base64:
-        try:
-            credentials_json = base64.b64decode(
-                credentials_json_base64
-            ).decode("utf-8")
-        except Exception as error:
-            raise ValueError(
-                "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 tidak valid. "
-                "Generate ulang dari file service account JSON asli."
-            ) from error
-
-    if credentials_json:
-        try:
-            service_account_info = _load_service_account_info(credentials_json)
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=scopes
-            )
-        except ValueError:
-            if not credentials_path:
-                raise
-
-            creds = _load_credentials_from_file(credentials_path, scopes)
-    else:
-        creds = _load_credentials_from_file(credentials_path, scopes)
-
-    client = gspread.authorize(creds)
+    client = get_google_sheets_client(scopes)
     spreadsheet = client.open_by_key(sheet_id)
 
     df_list = []

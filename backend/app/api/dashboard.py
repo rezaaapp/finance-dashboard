@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 from app.auth import require_auth
 from app.services.finance_service import *
 
@@ -139,3 +139,11 @@ def budget_forecast(
     month: int | None = None
 ):
     return get_budget_forecast(year, month)
+
+
+@router.post("/configuration")
+def save_configuration(config: dict = Body(...)):
+    try:
+        return save_configuration_settings(config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

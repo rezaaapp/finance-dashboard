@@ -1,4 +1,5 @@
 from scripts.data_processing import (
+    get_google_sheets_client,
     load_and_process_data_from_spreadsheet,
     load_mock_financial_data,
 )
@@ -6,6 +7,7 @@ from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
 import app.cache.data_cache as data_cache
 from datetime import datetime
+from gspread.exceptions import WorksheetNotFound
 import pandas as pd
 
 
@@ -738,5 +740,60 @@ def get_budget_forecast(year=None, month=None):
             "current_spending": round(current_spending, 2),
             "alert_count": len(alerts),
         },
+    }
+
+
+# =========================
+# CONFIGURATION
+# =========================
+def save_configuration_settings(config):
+    payday_start_day = int(config.get("payday_start_day", 1))
+    privacy_mode = config.get("privacy_mode", "normal")
+    auto_budget = bool(config.get("auto_budget", True))
+    year = config.get("year")
+
+    if payday_start_day < 1 or payday_start_day > 31:
+        raise ValueError("payday_start_day must be between 1 and 31")
+
+    if privacy_mode not in {"normal", "hide", "guest"}:
+        raise ValueError("privacy_mode is invalid")
+
+    configuration = {
+        "payday_start_day": payday_start_day,
+        "auto_budget": auto_budget,
+        "privacy_mode": privacy_mode,
+    }
+
+    if not settings.USE_MOCK_DATA:
+        sheet_id = settings.get_sheet_id_for_year(year)
+        client = get_google_sheets_client([
+            "https://www.googleapis.com/auth/spreadsheets",
+        ])
+        spreadsheet = client.open_by_key(sheet_id)
+
+        try:
+            worksheet = spreadsheet.worksheet("Configuration")
+        except WorksheetNotFound:
+            worksheet = spreadsheet.add_worksheet(
+                title="Configuration",
+                rows=10,
+                cols=2,
+            )
+
+        worksheet.clear()
+        worksheet.update(
+            "A1:B4",
+            [
+                ["key", "value"],
+                ["payday_start_day", payday_start_day],
+                ["auto_budget", str(auto_budget).lower()],
+                ["privacy_mode", privacy_mode],
+            ],
+        )
+
+    return {
+        "status": "ok",
+        "message": "Configuration saved",
+        "configuration": configuration,
     }
 

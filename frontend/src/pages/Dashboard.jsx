@@ -7,6 +7,7 @@ import {
   LogOut,
   Moon,
   RefreshCw,
+  Settings,
   Sun,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -20,11 +21,11 @@ import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
 import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashboard";
 import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
-import PrivacyControl from "../components/PrivacyControl";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 import BudgetingAlerts from "./BudgetingAlerts";
+import Configuration from "./Configuration";
 import {
   formatPrivateRupiah,
   PRIVACY_MODES,
@@ -78,7 +79,16 @@ const Dashboard = ({ onLogout }) => {
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [autoBudget, setAutoBudget] = useState(true);
+  const [autoBudget, setAutoBudget] = useState(() => (
+    localStorage.getItem("finance-dashboard-auto-budget") !== "false"
+  ));
+  const [paydayStartDay, setPaydayStartDay] = useState(() => {
+    const savedDay = Number(localStorage.getItem("finance-dashboard-payday-start-day"));
+
+    return Number.isInteger(savedDay) && savedDay >= 1 && savedDay <= 31
+      ? savedDay
+      : 1;
+  });
   const [privacyMode, setPrivacyMode] = useState(() => (
     localStorage.getItem("finance-dashboard-privacy-mode")
     || PRIVACY_MODES.normal
@@ -109,10 +119,31 @@ const Dashboard = ({ onLogout }) => {
     localStorage.setItem("finance-dashboard-privacy-mode", privacyMode);
   }, [privacyMode]);
 
+  useEffect(() => {
+    localStorage.setItem("finance-dashboard-auto-budget", String(autoBudget));
+  }, [autoBudget]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "finance-dashboard-payday-start-day",
+      String(paydayStartDay)
+    );
+  }, [paydayStartDay]);
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (
       currentTheme === "dark" ? "light" : "dark"
     ));
+  };
+
+  const handleSaveConfiguration = ({
+    autoBudget: nextAutoBudget,
+    paydayStartDay: nextPaydayStartDay,
+    privacyMode: nextPrivacyMode,
+  }) => {
+    setAutoBudget(nextAutoBudget);
+    setPaydayStartDay(nextPaydayStartDay);
+    setPrivacyMode(nextPrivacyMode);
   };
 
   const handleRefreshData = async () => {
@@ -462,6 +493,31 @@ const Dashboard = ({ onLogout }) => {
               </span>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView("configuration")}
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "configuration"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
+            }`}
+            aria-label="Configuration"
+            title="Configuration"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <Settings size={18} />
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Configuration
+              </span>
+            )}
+          </button>
         </nav>
 
         <SidebarDataSourceIndicator
@@ -484,7 +540,7 @@ const Dashboard = ({ onLogout }) => {
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-[120px_160px_repeat(4,auto)] sm:items-center xl:w-auto">
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-[120px_160px_repeat(3,auto)] sm:items-center xl:w-auto">
 
           {/* YEAR FILTER */}
           <select
@@ -531,13 +587,6 @@ const Dashboard = ({ onLogout }) => {
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
               <span className="hidden sm:inline">{isDarkMode ? "Light" : "Dark"}</span>
             </button>
-
-            <div className="min-w-0">
-              <PrivacyControl
-                value={privacyMode}
-                onChange={setPrivacyMode}
-              />
-            </div>
 
             {/* REFRESH BUTTON */}
             <button
@@ -728,18 +777,27 @@ const Dashboard = ({ onLogout }) => {
               )}
             </div>
           </div>
-        ) : (
+        ) : activeView === "budgeting" ? (
           <BudgetingAlerts
             data={budgetForecast}
             theme={theme}
             privacyMode={privacyMode}
             autoBudget={autoBudget}
-            onAutoBudgetChange={setAutoBudget}
+          />
+        ) : (
+          <Configuration
+            autoBudget={autoBudget}
+            paydayStartDay={paydayStartDay}
+            selectedYear={selectedYear}
+            currentSheetName={currentSheetName}
+            privacyMode={privacyMode}
+            onSaveChanges={handleSaveConfiguration}
+            onUnauthorized={onLogout}
           />
         )}
       </main>
 
-      <nav className="fixed inset-x-4 bottom-4 z-50 grid grid-cols-3 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-2xl lg:hidden">
+      <nav className="fixed inset-x-4 bottom-4 z-50 grid grid-cols-4 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-2xl lg:hidden">
         <button
           type="button"
           onClick={() => setActiveView("dashboard")}
@@ -777,6 +835,19 @@ const Dashboard = ({ onLogout }) => {
         >
           <BellRing size={18} />
           Budgeting
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("configuration")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
+            activeView === "configuration"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <Settings size={18} />
+          Configuration
         </button>
       </nav>
     </div>
