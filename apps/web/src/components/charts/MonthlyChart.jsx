@@ -13,23 +13,7 @@ import {
   maskChartRows,
   maskNumber,
 } from "../../utils/privacy";
-
-const chartTheme = {
-  dark: {
-    grid: "#1e293b",
-    tick: "#94a3b8",
-    tooltipBg: "#0f172a",
-    tooltipBorder: "#334155",
-    tooltipText: "#f8fafc",
-  },
-  light: {
-    grid: "#dbe4ef",
-    tick: "#64748b",
-    tooltipBg: "#ffffff",
-    tooltipBorder: "#cbd5e1",
-    tooltipText: "#0f172a",
-  },
-};
+import { chartTheme } from "../../theme/chartTheme";
 
 const MonthlyChart = ({
   title,
@@ -42,7 +26,7 @@ const MonthlyChart = ({
   const chartData = maskChartRows(data, [dataKey], privacyMode);
 
   return (
-    <div className="panel rounded-2xl p-5 shadow-lg">
+    <div className="panel rounded-lg p-5 shadow-lg">
 
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-main">
@@ -92,10 +76,18 @@ const MonthlyChart = ({
             <Line
               type="monotone"
               dataKey={dataKey}
-              stroke="#06b6d4"
+              stroke={title.includes("Saving") ? colors.secondary : colors.primary}
               strokeWidth={3}
-              dot={{ r: 4 }}
-              activeDot={{ r: 7 }}
+              dot={{
+                r: 4,
+                fill: title.includes("Saving") ? colors.secondary : colors.primary,
+                stroke: colors.tooltipBg,
+                strokeWidth: 2,
+              }}
+              activeDot={{
+                r: 7,
+                fill: title.includes("Saving") ? colors.secondary : colors.primary,
+              }}
             />
 
           </LineChart>

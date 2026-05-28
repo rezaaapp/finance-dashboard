@@ -22,6 +22,7 @@ import {
   maskChartRows,
   maskNumber,
 } from "../../utils/privacy";
+import { categoricalChartColors } from "../../theme/chartTheme";
 
 const fallbackKpi = {
   income: 0,
@@ -81,7 +82,7 @@ const PersonalAnalytics = ({
   ));
 
   const renderTopCategoryBreakdown = () => (
-    <div className="panel rounded-2xl p-5 shadow-lg">
+    <div className="panel rounded-lg p-5 shadow-lg">
       <div className="mb-6">
         <h2 className="text-xl font-bold text-main">
           Top Spending Category Breakdown
@@ -134,7 +135,7 @@ const PersonalAnalytics = ({
 
   return (
     <section className="grid grid-cols-1 gap-6">
-      <div className="panel rounded-2xl p-5 shadow-lg">
+      <div className="panel rounded-lg p-5 shadow-lg">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-col">
             <h2 className="text-xl font-bold text-main">
@@ -177,12 +178,12 @@ const PersonalAnalytics = ({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="panel rounded-2xl p-5 shadow-lg">
+        <div className="panel rounded-lg p-5 shadow-lg">
           <div className="mb-6 flex items-center justify-between">
             <p className="text-sm font-semibold text-muted">
               Total Income
             </p>
-            <div className="rounded-xl bg-emerald-500/15 p-3 text-emerald-400">
+            <div className="rounded-lg bg-[var(--color-accent-bg)] p-3 text-accent">
               <DollarSign size={22} />
             </div>
           </div>
@@ -191,12 +192,12 @@ const PersonalAnalytics = ({
           </p>
         </div>
 
-        <div className="panel rounded-2xl p-5 shadow-lg">
+        <div className="panel rounded-lg p-5 shadow-lg">
           <div className="mb-6 flex items-center justify-between">
             <p className="text-sm font-semibold text-muted">
               Total Spending
             </p>
-            <div className="rounded-xl bg-orange-500/15 p-3 text-orange-400">
+            <div className="rounded-lg bg-[var(--color-alert-bg)] p-3 text-[var(--color-alert-text)]">
               <TrendingDown size={22} />
             </div>
           </div>
@@ -205,26 +206,26 @@ const PersonalAnalytics = ({
           </p>
         </div>
 
-        <div className="panel rounded-2xl p-5 shadow-lg">
+        <div className="panel rounded-lg p-5 shadow-lg">
           <div className="mb-6 flex items-center justify-between">
             <p className="text-sm font-semibold text-muted">
               Total Saving
             </p>
-            <div className="rounded-xl bg-sky-500/15 p-3 text-sky-400">
+            <div className="rounded-lg bg-[var(--color-accent-bg)] p-3 text-accent">
               <PiggyBank size={22} />
             </div>
           </div>
           <p className="text-3xl font-bold text-main">
             {formatPrivateRupiah(kpis.saving, privacyMode)}
           </p>
-          <p className="mt-2 text-sm font-semibold text-sky-400">
+          <p className="mt-2 text-sm font-semibold metric-positive">
             {Number(kpis.saving_rate || 0).toFixed(1)}% Saving Rate
           </p>
         </div>
       </div>
 
       {variant === "full" && selectedUser === "all" && (
-        <div className="panel rounded-2xl p-5 shadow-lg">
+        <div className="panel rounded-lg p-5 shadow-lg">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-xl font-bold text-main">
               Monthly Spending Contribution
@@ -265,7 +266,7 @@ const PersonalAnalytics = ({
                   <Bar
                     key={user.value}
                     dataKey={user.value}
-                    fill={index === 0 ? "#06b6d4" : "#f59e0b"}
+                    fill={categoricalChartColors[index % categoricalChartColors.length]}
                     radius={[6, 6, 0, 0]}
                   />
                 ))}

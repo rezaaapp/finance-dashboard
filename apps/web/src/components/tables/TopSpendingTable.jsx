@@ -2,7 +2,7 @@ import { formatPrivateRupiah } from "../../utils/privacy";
 
 const TopSpendingTable = ({ data = [], privacyMode }) => {
   return (
-    <div className="panel rounded-2xl p-4 sm:p-5">
+    <div className="panel rounded-lg p-4 sm:p-5">
 
       <h2 className="text-xl font-bold mb-6 text-main">
         Top Spending
@@ -13,21 +13,21 @@ const TopSpendingTable = ({ data = [], privacyMode }) => {
         <table className="w-full text-sm">
 
           <thead>
-            <tr className="table-border text-muted">
+                <tr className="table-header table-border text-muted">
 
-              <th className="text-left py-3">
+              <th className="text-left px-3 py-3">
                 Transaction
               </th>
 
-              <th className="text-left py-3">
+              <th className="text-left px-3 py-3">
                 Category
               </th>
 
-              <th className="text-left py-3">
+              <th className="text-left px-3 py-3">
                 Name
               </th>
 
-              <th className="text-right py-3">
+              <th className="px-3 py-3 text-right">
                 Amount
               </th>
 
@@ -43,19 +43,19 @@ const TopSpendingTable = ({ data = [], privacyMode }) => {
                 className="table-row table-border transition"
               >
 
-                <td className="py-4 text-main">
+                <td className="px-3 py-4 text-main">
                   {item.nama_transaksi}
                 </td>
 
-                <td className="py-4 text-soft">
+                <td className="px-3 py-4 text-soft">
                   {item.kategori}
                 </td>
 
-                <td className="py-4 text-soft">
+                <td className="px-3 py-4 text-soft">
                   {item.nama}
                 </td>
 
-                <td className="py-4 text-right font-semibold text-accent">
+                <td className="px-3 py-4 text-right font-semibold text-accent">
                   {formatPrivateRupiah(item.harga, privacyMode)}
                 </td>
 
@@ -73,7 +73,7 @@ const TopSpendingTable = ({ data = [], privacyMode }) => {
         {data.map((item, index) => (
           <div
             key={index}
-            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

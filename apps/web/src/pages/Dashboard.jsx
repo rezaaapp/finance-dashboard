@@ -106,9 +106,7 @@ const Dashboard = ({ onLogout }) => {
       return savedTheme;
     }
 
-    return window.matchMedia("(prefers-color-scheme: light)").matches
-      ? "light"
-      : "dark";
+    return "light";
   });
 
   const isDarkMode = theme === "dark";
@@ -409,7 +407,7 @@ const Dashboard = ({ onLogout }) => {
             : "items-start justify-between"
         }`}>
           {!isSidebarCollapsed && (
-            <h1 className="text-2xl font-bold text-accent leading-tight">
+            <h1 className="text-2xl font-bold text-white leading-tight">
               Operasional Rumah Tangga Dashboard
             </h1>
           )}
@@ -537,9 +535,9 @@ const Dashboard = ({ onLogout }) => {
       </aside>
 
       {/* MAIN */}
-      <main className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-5 lg:p-6">
+      <main className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-5 lg:p-6">
         {/* HEADER */}
-        <div className="mb-6 flex flex-col gap-4 xl:mb-8 xl:flex-row xl:items-center xl:justify-between">
+        <div className="mb-8 flex flex-col gap-4 xl:mb-10 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold sm:text-4xl">
               Financial Dashboard
@@ -550,7 +548,7 @@ const Dashboard = ({ onLogout }) => {
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-[120px_160px_repeat(3,auto)] sm:items-center xl:w-auto">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto">
 
           {/* YEAR FILTER */}
           <select
@@ -590,7 +588,7 @@ const Dashboard = ({ onLogout }) => {
             <button
               type="button"
               onClick={toggleTheme}
-              className="theme-toggle w-full rounded-xl px-3 py-2 font-semibold sm:w-auto sm:px-4"
+              className="theme-toggle h-11 w-full rounded-lg px-3 py-2 font-semibold sm:w-auto sm:px-4"
               aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
               title={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
             >
@@ -602,7 +600,7 @@ const Dashboard = ({ onLogout }) => {
             <button
               type="button"
               onClick={handleRefreshData}
-              className="primary-button w-full rounded-xl px-3 py-2 font-semibold sm:w-11 sm:px-0"
+              className="primary-button h-11 min-w-11 w-full rounded-lg px-4 py-2 font-semibold sm:w-11 sm:px-0"
               aria-label="Refresh data"
               title="Refresh data"
             >
@@ -612,7 +610,7 @@ const Dashboard = ({ onLogout }) => {
             <button
               type="button"
               onClick={onLogout}
-              className="theme-toggle w-full rounded-xl px-3 py-2 font-semibold sm:w-auto sm:px-4"
+              className="theme-toggle h-11 w-full rounded-lg px-3 py-2 font-semibold sm:w-auto sm:px-4"
             >
               <LogOut size={18} />
               <span className="hidden sm:inline">Logout</span>
@@ -812,7 +810,7 @@ const Dashboard = ({ onLogout }) => {
         )}
       </main>
 
-      <nav className="fixed inset-x-4 bottom-4 z-50 grid grid-cols-4 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-2xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden">
         <button
           type="button"
           onClick={() => setActiveView("dashboard")}

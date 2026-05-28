@@ -26,7 +26,7 @@ const ConfigurationCard = ({
   description,
   children,
 }) => (
-  <section className="panel rounded-2xl p-5 shadow-lg">
+  <section className="panel rounded-lg p-5 shadow-lg">
     <div className="mb-5 flex items-start gap-3">
       <div className="icon-badge rounded-xl p-3">
         <Icon size={22} />
@@ -132,7 +132,7 @@ const Configuration = ({
       </div>
 
       <div
-        className={`flex items-center gap-2 text-sm font-medium text-green-600 transition-opacity duration-300 dark:text-green-400 ${
+        className={`flex items-center gap-2 text-sm font-medium metric-positive transition-opacity duration-300 ${
           showSaved ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         aria-live="polite"
@@ -257,7 +257,7 @@ const Configuration = ({
         type="button"
         onClick={handleSave}
         disabled={isSaving}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#00AED6] px-6 py-2.5 font-medium text-white shadow-sm transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="primary-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-2.5 font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {isSaving && <LoaderCircle size={16} className="animate-spin" />}
         {isSaving ? "Saving..." : "Save Changes"}

@@ -34,7 +34,10 @@ const SummaryCard = ({
     return <Landmark size={28} />;
   };
 
-  const isPositive = trend >= 0;
+  const isTrendUp = trend >= 0;
+  const isExpenseCard = title.includes("Expenses");
+  const isTrendHealthy = isExpenseCard ? trend <= 0 : isTrendUp;
+  const TrendIcon = isTrendUp ? TrendingUp : TrendingDown;
 
   return (
     <div
@@ -42,7 +45,7 @@ const SummaryCard = ({
         panel
         relative
         overflow-hidden
-        rounded-2xl
+        rounded-lg
         p-4
         sm:p-6
         shadow-lg
@@ -74,7 +77,7 @@ const SummaryCard = ({
               {title}
             </p>
 
-            <h2 className="break-words text-[clamp(1.35rem,6vw,1.875rem)] font-bold text-main leading-tight">
+            <h2 className="whitespace-nowrap text-[clamp(1.05rem,4.5vw,1.75rem)] font-bold leading-tight text-main tabular-nums">
               {formatPrivateRupiah(value, privacyMode)}
             </h2>
           </div>
@@ -96,17 +99,14 @@ const SummaryCard = ({
 
           <div
             className={`
-              flex items-center gap-1 text-sm font-semibold
-              ${isPositive
-                ? "text-emerald-400"
-                : "text-red-400"}
+              flex items-center gap-1 text-sm font-bold sm:text-base
+              ${isTrendHealthy
+                ? "metric-positive"
+                : "metric-negative"}
             `}
           >
 
-            {isPositive
-              ? <TrendingUp size={16} />
-              : <TrendingDown size={16} />
-            }
+            <TrendIcon size={16} strokeWidth={2.5} />
 
             {formatTrend(trend)}%
 

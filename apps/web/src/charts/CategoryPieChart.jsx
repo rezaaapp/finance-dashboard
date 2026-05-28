@@ -7,18 +7,18 @@ import {
 } from "recharts";
 
 const COLORS = [
-  "#3b82f6",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#14b8a6",
+  "#002B45",
+  "#4A5D4E",
+  "#F4D35E",
+  "#7A8D82",
+  "#335C67",
+  "#A3ADB8",
 ];
 
 function CategoryPieChart({ data }) {
   return (
-    <div className="bg-slate-800 p-6 rounded-2xl">
-      <h2 className="text-xl font-bold mb-4">
+    <div className="panel rounded-lg p-6">
+      <h2 className="text-xl font-bold mb-4 text-main">
         Spending by Category
       </h2>
 

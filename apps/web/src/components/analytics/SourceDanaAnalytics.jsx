@@ -11,23 +11,18 @@ import {
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
+import { categoricalChartColors, chartTheme } from "../../theme/chartTheme";
 
 const brandColors = {
   BCA: "#0066AE",
   BLU: "#00B4D8",
-  Gopay: "#00AED6",
+  Gopay: "#4A5D4E",
   Ovo: "#4C2A86",
   Seabank: "#FF5722",
   Jago: "#FFB800",
 };
 
-const fallbackColors = [
-  "#9CA3AF",
-  "#64748B",
-  "#94A3B8",
-  "#6B7280",
-  "#475569",
-];
+const fallbackColors = categoricalChartColors;
 
 const normalizedBrandColors = Object.fromEntries(
   Object.entries(brandColors).map(([source, color]) => [
@@ -43,36 +38,21 @@ const getSourceColor = (source, index) => {
     || fallbackColors[index % fallbackColors.length];
 };
 
-const chartTheme = {
-  dark: {
-    tooltipBg: "#0f172a",
-    tooltipBorder: "#334155",
-    tooltipText: "#f8fafc",
-    legendText: "#cbd5e1",
-  },
-  light: {
-    tooltipBg: "#ffffff",
-    tooltipBorder: "#cbd5e1",
-    tooltipText: "#0f172a",
-    legendText: "#475569",
-  },
-};
-
 const chartSections = [
   {
     title: "Income Sources",
     key: "income_sources",
-    accent: "text-emerald-400",
+    accent: "text-accent",
   },
   {
     title: "Expense Methods",
     key: "spending_sources",
-    accent: "text-orange-400",
+    accent: "text-[var(--color-alert-text)]",
   },
   {
     title: "Saving Allocations",
     key: "saving_sources",
-    accent: "text-cyan-400",
+    accent: "text-accent",
   },
 ];
 
@@ -91,7 +71,7 @@ const SourceDanaDonut = ({
   } detected`;
 
   return (
-    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5">
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-5">
       <div className="mb-4">
         <h3 className={`text-base font-bold ${accent}`}>
           {title}
@@ -171,7 +151,7 @@ const SourceDanaAnalytics = ({
   theme = "dark",
   privacyMode,
 }) => (
-  <section className="panel rounded-2xl p-5 shadow-lg">
+  <section className="panel rounded-lg p-5 shadow-lg">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-main">
         Fund Source Analytics

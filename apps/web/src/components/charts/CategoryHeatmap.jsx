@@ -168,7 +168,7 @@ const TransactionDetailModal = memo(({
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
               Detail Heat Map
             </p>
-            <h3 className="mt-1 break-words text-lg font-bold text-cyan-400 sm:text-xl">
+            <h3 className="mt-1 break-words text-lg font-bold text-accent sm:text-xl">
               Transaction Details: {category} - {formatPeriod(period)}
             </h3>
           </div>
@@ -186,7 +186,7 @@ const TransactionDetailModal = memo(({
 
         <div className="px-5 py-4">
           {transactions.length === 0 ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5 text-center text-sm text-slate-300">
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-5 text-center text-sm text-muted">
               No transaction records found for this period.
             </div>
           ) : (
@@ -197,7 +197,7 @@ const TransactionDetailModal = memo(({
                 return (
                   <div
                     key={`${transaction.date}-${transaction.item_name}-${index}`}
-                    className="rounded-xl border border-slate-800 bg-slate-900/70 p-4"
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
@@ -211,7 +211,7 @@ const TransactionDetailModal = memo(({
                             className={`rounded-full px-2.5 py-1 font-bold ${
                               isDivya
                                 ? "bg-fuchsia-500/15 text-fuchsia-300"
-                                : "bg-cyan-500/15 text-cyan-300"
+                                : "bg-[var(--color-accent-bg)] text-accent"
                             }`}
                           >
                             {transaction.user}
@@ -219,7 +219,7 @@ const TransactionDetailModal = memo(({
                         </div>
                       </div>
 
-                      <p className="shrink-0 text-left font-mono text-sm font-bold text-emerald-400 sm:text-right">
+                      <p className="metric-positive shrink-0 text-left font-mono text-sm font-bold sm:text-right">
                         {formatPrivateRupiah(transaction.amount, privacyMode)}
                       </p>
                     </div>
@@ -231,12 +231,12 @@ const TransactionDetailModal = memo(({
         </div>
 
         <div className="border-t border-slate-800 px-5 py-4">
-          <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+          <div className="mb-4 rounded-lg border border-[rgba(74,93,78,0.24)] bg-[var(--color-accent-bg)] p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-sm font-semibold text-slate-300">
                 Total Expenses for This Period
               </span>
-              <span className="font-mono text-lg font-bold text-emerald-400">
+              <span className="metric-positive font-mono text-lg font-bold">
                 {formatPrivateRupiah(totalAmount, privacyMode)}
               </span>
             </div>

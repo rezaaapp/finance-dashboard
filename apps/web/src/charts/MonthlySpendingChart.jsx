@@ -10,20 +10,21 @@ import {
 
 function MonthlySpendingChart({ data }) {
   return (
-    <div className="bg-slate-800 p-6 rounded-2xl">
-      <h2 className="text-xl font-bold mb-4">
+    <div className="panel rounded-lg p-6">
+      <h2 className="text-xl font-bold mb-4 text-main">
         Monthly Spending
       </h2>
 
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="Bulan" />
-          <YAxis />
+          <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
+          <XAxis dataKey="Bulan" stroke="var(--color-muted)" />
+          <YAxis stroke="var(--color-muted)" />
           <Tooltip />
 
           <Bar
             dataKey="Harga"
+            fill="#002B45"
             radius={[10, 10, 0, 0]}
           />
         </BarChart>

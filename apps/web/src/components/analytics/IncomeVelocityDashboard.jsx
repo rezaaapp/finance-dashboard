@@ -43,7 +43,7 @@ const getLatestPeriod = (transactions) => (
 );
 
 const MetricTooltip = ({ children }) => (
-  <div className="pointer-events-none absolute left-0 top-full z-40 mt-3 hidden w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-950 p-4 text-left text-xs leading-5 text-slate-200 shadow-2xl group-hover/tooltip:block group-focus-within/tooltip:block">
+  <div className="pointer-events-none absolute left-0 top-full z-40 mt-3 hidden w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-left text-xs leading-5 text-soft shadow-2xl group-hover/tooltip:block group-focus-within/tooltip:block">
     {children}
   </div>
 );
@@ -57,16 +57,16 @@ const MetricCard = ({
   icon: Icon,
   children,
 }) => (
-  <div className="group/tooltip relative rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+  <div className="group/tooltip relative rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-5">
     <div className="mb-5 flex items-start justify-between gap-4">
       <div>
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-slate-400">
+          <p className="text-sm font-semibold text-muted">
             {title}
           </p>
-          <Info size={14} className="text-slate-500" />
+          <Info size={14} className="text-subtle" />
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-muted">
           {description}
         </p>
       </div>
@@ -166,7 +166,7 @@ const IncomeVelocityDashboard = ({
   const isCritical = velocity.d2b50 !== null && velocity.d2b50 < 7;
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 shadow-lg sm:p-6">
+    <section className="panel rounded-lg p-4 shadow-lg sm:p-6">
       <div className="mb-6">
         <h2 className="text-xl font-bold text-main">
           Income Velocity
@@ -181,33 +181,33 @@ const IncomeVelocityDashboard = ({
           title="Days to Burn 50%"
           value={velocity.d2b50 === null ? "-" : `${velocity.d2b50} days`}
           description="The day spending passes 50% of income."
-          accentClass="text-cyan-400"
-          iconBgClass="bg-cyan-400/15"
+          accentClass="text-accent"
+          iconBgClass="bg-[var(--color-accent-bg)]"
           icon={TimerReset}
         >
           <p>
             Total Income:{" "}
-            <span className="font-bold text-white">
+            <span className="font-bold text-main">
               {formatPrivateRupiah(velocity.totalIncome, privacyMode)}
             </span>
             .
           </p>
           <p>
             Total Expenses When Reaching 50%:{" "}
-            <span className="font-bold text-white">
+            <span className="font-bold text-main">
               {formatPrivateRupiah(velocity.burnAmount || velocity.threshold, privacyMode)}
             </span>
             .
           </p>
           <p>
             Occurred on:{" "}
-            <span className="font-bold text-white">
+            <span className="font-bold text-main">
               {formatDate(velocity.burnDate)}
             </span>
             .
           </p>
           {isCritical && (
-            <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-1 font-bold text-red-300">
+            <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-[var(--color-alert-bg)] px-2 py-1 font-bold text-[var(--color-alert-text)]">
               <AlertTriangle size={13} />
               Critical
             </p>
@@ -218,17 +218,17 @@ const IncomeVelocityDashboard = ({
           title="Daily Burn Rate Score"
           value={formatPrivateRupiah(velocity.dailyBurnRate, privacyMode)}
           description="Average expenses per elapsed day."
-          accentClass="text-emerald-400"
-          iconBgClass="bg-emerald-400/15"
+          accentClass="metric-positive"
+          iconBgClass="bg-[var(--color-accent-bg)]"
           icon={Gauge}
         >
           <p>
             This month's total expenses (
-            <span className="font-bold text-white">
+            <span className="font-bold text-main">
               {formatPrivateRupiah(velocity.totalSpending, privacyMode)}
             </span>
             ) divided by{" "}
-            <span className="font-bold text-white">
+            <span className="font-bold text-main">
               {velocity.elapsedDays}
             </span>{" "}
             elapsed days.
@@ -236,7 +236,7 @@ const IncomeVelocityDashboard = ({
         </MetricCard>
       </div>
 
-      <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+      <div className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="font-bold text-main">
@@ -246,20 +246,20 @@ const IncomeVelocityDashboard = ({
               Current spending runway against monthly income.
             </p>
           </div>
-          <p className="font-mono text-sm font-bold text-cyan-400">
+          <p className="font-mono text-sm font-bold text-accent">
             {maskedProgress.toFixed(1)}%
           </p>
         </div>
 
         <div className="group/tooltip relative">
-          <div className="h-5 overflow-hidden rounded-full bg-slate-800">
+          <div className="h-5 overflow-hidden rounded-full bg-[var(--color-panel-hover)]">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 velocity.spendingProgress >= 100
-                  ? "bg-red-500"
+                  ? "bg-[var(--color-alert)]"
                   : velocity.spendingProgress >= 75
-                    ? "bg-amber-400"
-                    : "bg-cyan-400"
+                    ? "bg-[var(--color-alert)]"
+                    : "bg-[var(--color-accent)]"
               }`}
               style={{ width: `${velocity.spendingProgress}%` }}
             />
@@ -268,21 +268,21 @@ const IncomeVelocityDashboard = ({
           <MetricTooltip>
             <p>
               Your current remaining funds are{" "}
-              <span className="font-bold text-white">
+              <span className="font-bold text-main">
                 {formatPrivateRupiah(velocity.remainingFunds, privacyMode)}
               </span>
               .
             </p>
             <p>
               Estimated daily expenses are{" "}
-              <span className="font-bold text-white">
+              <span className="font-bold text-main">
                 {formatPrivateRupiah(velocity.dailyBurnRate, privacyMode)}
               </span>
               .
             </p>
             <p>
               Funds are projected to run out in{" "}
-              <span className="font-bold text-white">
+              <span className="font-bold text-main">
                 {velocity.runwayDays}
               </span>{" "}
               more days if the spending pattern stays consistent.
@@ -290,13 +290,13 @@ const IncomeVelocityDashboard = ({
           </MetricTooltip>
         </div>
 
-        <p className="mt-4 text-sm leading-6 text-slate-300">
+        <p className="mt-4 text-sm leading-6 text-soft">
           At the current burn rate, the estimated safe remaining funds are{" "}
-          <span className="font-bold text-emerald-400">
+          <span className="font-bold metric-positive">
             {formatPrivateRupiah(velocity.remainingFunds, privacyMode)}
           </span>
           , with an estimated runway of{" "}
-          <span className="font-bold text-cyan-400">
+          <span className="font-bold text-accent">
             {velocity.runwayDays} days
           </span>
           .

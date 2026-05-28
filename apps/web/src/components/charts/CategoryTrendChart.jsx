@@ -16,25 +16,7 @@ import {
   maskChartRows,
   maskNumber,
 } from "../../utils/privacy";
-
-const chartTheme = {
-  dark: {
-    grid: "#1e293b",
-    tick: "#94a3b8",
-    tooltipBg: "#0f172a",
-    tooltipBorder: "#334155",
-    tooltipText: "#f8fafc",
-    average: "#f59e0b",
-  },
-  light: {
-    grid: "#dbe4ef",
-    tick: "#64748b",
-    tooltipBg: "#ffffff",
-    tooltipBorder: "#cbd5e1",
-    tooltipText: "#0f172a",
-    average: "#d97706",
-  },
-};
+import { chartTheme } from "../../theme/chartTheme";
 
 const CustomTooltip = ({
   active,
@@ -121,7 +103,7 @@ const CategoryTrendChart = ({ data, theme = "dark", privacyMode }) => {
   ), [privacyMode, selectedData?.average]);
 
   return (
-    <div className="panel rounded-2xl p-5 shadow-lg">
+    <div className="panel rounded-lg p-5 shadow-lg">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold text-main">
@@ -206,10 +188,15 @@ const CategoryTrendChart = ({ data, theme = "dark", privacyMode }) => {
               <Line
                 type="monotone"
                 dataKey="total"
-                stroke="#06b6d4"
+                stroke={colors.primary}
                 strokeWidth={3}
-                dot={{ r: 4 }}
-                activeDot={{ r: 7 }}
+                dot={{
+                  r: 4,
+                  fill: colors.primary,
+                  stroke: colors.tooltipBg,
+                  strokeWidth: 2,
+                }}
+                activeDot={{ r: 7, fill: colors.primary }}
               />
             </LineChart>
           </ResponsiveContainer>

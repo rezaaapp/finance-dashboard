@@ -19,8 +19,8 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
   ), [data]);
 
   return (
-    <div className="panel rounded-2xl p-4 sm:p-6">
-      <h2 className="mb-6 text-xl font-bold text-red-400 sm:text-2xl">
+    <div className="panel rounded-lg p-4 sm:p-6">
+      <h2 className="mb-6 text-xl font-bold text-main sm:text-2xl">
         Anomaly Detection
       </h2>
 
@@ -33,20 +33,20 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="table-border text-muted">
-                  <th className="py-3 text-left">
+                <tr className="table-header table-border text-muted">
+                  <th className="px-3 py-3 text-left">
                     Date
                   </th>
-                  <th className="py-3 text-left">
+                  <th className="px-3 py-3 text-left">
                     Transaction
                   </th>
-                  <th className="py-3 text-left">
+                  <th className="px-3 py-3 text-left">
                     Category
                   </th>
-                  <th className="py-3 text-left">
+                  <th className="px-3 py-3 text-left">
                     Name
                   </th>
-                  <th className="py-3 text-right">
+                  <th className="px-3 py-3 text-right">
                     Amount
                   </th>
                 </tr>
@@ -56,21 +56,21 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
                 {rows.map((item) => (
                   <tr
                     key={item.id}
-                    className="table-row table-border"
+                    className="table-row table-border anomaly-row"
                   >
-                    <td className="py-3">
+                    <td className="px-3 py-3">
                       {item.date}
                     </td>
-                    <td className="py-3">
+                    <td className="px-3 py-3">
                       {item.transaction}
                     </td>
-                    <td className="py-3">
+                    <td className="px-3 py-3">
                       {item.category}
                     </td>
-                    <td className="py-3">
+                    <td className="px-3 py-3">
                       {item.name}
                     </td>
-                    <td className="py-3 text-right font-semibold text-red-400">
+                    <td className="anomaly-warning px-3 py-3 text-right font-semibold">
                       {formatPrivateRupiah(item.amount, privacyMode)}
                     </td>
                   </tr>
@@ -83,7 +83,7 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
             {rows.map((item) => (
               <div
                 key={item.id}
-                className="rounded-xl border border-red-500/25 bg-red-500/10 p-4"
+                className="anomaly-card rounded-lg border p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -98,7 +98,7 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
                     </p>
                   </div>
 
-                  <p className="shrink-0 text-right text-sm font-bold text-red-400">
+                  <p className="anomaly-warning shrink-0 text-right text-sm font-bold">
                     {formatPrivateRupiah(item.amount, privacyMode)}
                   </p>
                 </div>

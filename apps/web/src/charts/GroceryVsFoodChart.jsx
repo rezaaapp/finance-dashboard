@@ -10,9 +10,9 @@ import {
 
 function GroceryVsFoodChart({ data }) {
   return (
-    <div className="bg-slate-800 p-6 rounded-2xl">
+    <div className="panel rounded-lg p-6">
 
-      <h2 className="text-xl font-bold mb-4">
+      <h2 className="text-xl font-bold mb-4 text-main">
         Grocery vs Food
       </h2>
 
@@ -24,8 +24,8 @@ function GroceryVsFoodChart({ data }) {
           <Tooltip />
           <Legend />
 
-          <Bar dataKey="Grocery" stackId="a" />
-          <Bar dataKey="Makanan" stackId="a" />
+          <Bar dataKey="Grocery" fill="#4A5D4E" stackId="a" />
+          <Bar dataKey="Makanan" fill="#F4D35E" stackId="a" />
 
         </BarChart>
       </ResponsiveContainer>

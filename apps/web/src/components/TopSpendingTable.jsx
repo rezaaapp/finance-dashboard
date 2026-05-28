@@ -1,7 +1,7 @@
 function TopSpendingTable({ data }) {
   return (
-    <div className="bg-slate-800 p-6 rounded-2xl">
-      <h2 className="text-xl font-bold mb-4">
+    <div className="panel rounded-lg p-6">
+      <h2 className="text-xl font-bold mb-4 text-main">
         Top Spending
       </h2>
 
@@ -9,10 +9,10 @@ function TopSpendingTable({ data }) {
         <table className="w-full">
 
           <thead>
-            <tr className="text-left border-b border-slate-700">
-              <th className="pb-3">Transaction</th>
-              <th className="pb-3">Category</th>
-              <th className="pb-3">Amount</th>
+            <tr className="table-header table-border text-left">
+              <th className="px-3 py-3">Transaction</th>
+              <th className="px-3 py-3">Category</th>
+              <th className="px-3 py-3">Amount</th>
             </tr>
           </thead>
 
@@ -20,17 +20,17 @@ function TopSpendingTable({ data }) {
             {data.map((item, index) => (
               <tr
                 key={index}
-                className="border-b border-slate-700"
+                className="table-row table-border"
               >
-                <td className="py-3">
+                <td className="px-3 py-3 text-main">
                   {item["Nama Transaksi"]}
                 </td>
 
-                <td className="py-3">
+                <td className="px-3 py-3">
                   {item.Kategori}
                 </td>
 
-                <td className="py-3 font-bold">
+                <td className="px-3 py-3 font-bold text-accent">
                   Rp {Number(item.Harga).toLocaleString("id-ID")}
                 </td>
               </tr>

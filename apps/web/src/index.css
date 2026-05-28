@@ -1,39 +1,74 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
-  --color-bg: #0f172a;
-  --color-sidebar: #111827;
-  --color-panel: #111827;
-  --color-panel-hover: rgba(30, 41, 59, 0.55);
-  --color-border: #1f2937;
-  --color-text: #f8fafc;
-  --color-soft: #cbd5e1;
-  --color-muted: #94a3b8;
-  --color-subtle: #64748b;
-  --color-accent: #22d3ee;
-  --color-accent-strong: #06b6d4;
-  --color-accent-hover: #0891b2;
-  --color-accent-bg: rgba(34, 211, 238, 0.1);
-  --shadow-panel: 0 18px 40px rgba(2, 6, 23, 0.22);
+  color-scheme: light;
+  --color-navy: #002b45;
+  --color-sage: #4a5d4e;
+  --color-bg: #f8f9fa;
+  --color-sidebar: #002b45;
+  --color-panel: #ffffff;
+  --color-panel-hover: #f3f6f4;
+  --color-border: #e5e7eb;
+  --color-text: #1a1a1a;
+  --color-soft: #374151;
+  --color-muted: #6b7280;
+  --color-subtle: #8a9390;
+  --color-accent: #4a5d4e;
+  --color-accent-strong: #002b45;
+  --color-accent-hover: #0b3b5a;
+  --color-accent-bg: rgba(74, 93, 78, 0.12);
+  --color-alert: #f4d35e;
+  --color-alert-bg: rgba(244, 211, 94, 0.18);
+  --color-alert-text: #6f5b13;
+  --color-danger: #d9534f;
+  --color-danger-bg: rgba(217, 83, 79, 0.12);
+  --shadow-panel: 0 14px 34px rgba(0, 43, 69, 0.07);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-bg: #f5f7fb;
-  --color-sidebar: #ffffff;
+  --color-bg: #f8f9fa;
+  --color-sidebar: #002b45;
   --color-panel: #ffffff;
-  --color-panel-hover: #eef6fb;
-  --color-border: #d9e2ec;
-  --color-text: #0f172a;
-  --color-soft: #334155;
-  --color-muted: #64748b;
-  --color-subtle: #748399;
-  --color-accent: #0284c7;
-  --color-accent-strong: #0891b2;
-  --color-accent-hover: #0e7490;
-  --color-accent-bg: rgba(14, 165, 233, 0.11);
-  --shadow-panel: 0 18px 38px rgba(15, 23, 42, 0.08);
+  --color-panel-hover: #f3f6f4;
+  --color-border: #e5e7eb;
+  --color-text: #1a1a1a;
+  --color-soft: #374151;
+  --color-muted: #6b7280;
+  --color-subtle: #8a9390;
+  --color-accent: #4a5d4e;
+  --color-accent-strong: #002b45;
+  --color-accent-hover: #0b3b5a;
+  --color-accent-bg: rgba(74, 93, 78, 0.12);
+  --color-alert: #f4d35e;
+  --color-alert-bg: rgba(244, 211, 94, 0.18);
+  --color-alert-text: #6f5b13;
+  --color-danger: #d9534f;
+  --color-danger-bg: rgba(217, 83, 79, 0.12);
+  --shadow-panel: 0 14px 34px rgba(0, 43, 69, 0.07);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b192c;
+  --color-sidebar: #002b45;
+  --color-panel: #112240;
+  --color-panel-hover: #172b4d;
+  --color-border: rgba(226, 232, 240, 0.14);
+  --color-text: #f8fafc;
+  --color-soft: #d7dee8;
+  --color-muted: #a8b3c3;
+  --color-subtle: #7f8da2;
+  --color-accent: #9bb6a0;
+  --color-accent-strong: #4a5d4e;
+  --color-accent-hover: #5f7564;
+  --color-accent-bg: rgba(155, 182, 160, 0.16);
+  --color-alert: #f4d35e;
+  --color-alert-bg: rgba(244, 211, 94, 0.18);
+  --color-alert-text: #f4d35e;
+  --color-danger: #ff7b72;
+  --color-danger-bg: rgba(217, 83, 79, 0.18);
+  --shadow-panel: 0 16px 34px rgba(0, 0, 0, 0.22);
 }
 
 body {
@@ -62,31 +97,30 @@ select {
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at top right, var(--color-accent-bg), transparent 34rem),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text);
   transition: background-color 180ms ease, color 180ms ease;
 }
 
-.dashboard-sidebar,
+.dashboard-sidebar {
+  background: var(--color-sidebar);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+
 .panel {
   background: var(--color-panel);
   border-color: var(--color-border);
   box-shadow: var(--shadow-panel);
 }
 
-.dashboard-sidebar {
-  background: var(--color-sidebar);
-}
-
 .panel {
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 8px !important;
 }
 
 .panel:hover {
-  border-color: var(--color-accent);
+  border-color: rgba(74, 93, 78, 0.36);
 }
 
 .text-main {
@@ -121,6 +155,27 @@ select {
 .nav-link {
   color: var(--color-soft);
   transition: color 160ms ease;
+}
+
+.dashboard-sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.dashboard-sidebar .nav-link:hover,
+.dashboard-sidebar .nav-link.text-accent {
+  color: #ffffff;
+}
+
+.dashboard-sidebar .nav-link.text-accent {
+  background: rgba(74, 93, 78, 0.42);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-left-color: #4a5d4e;
+}
+
+.dashboard-sidebar .nav-link.bg-\[var\(--color-accent-bg\)\] {
+  background: rgba(74, 93, 78, 0.42);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-left-color: #4a5d4e;
 }
 
 .nav-link:hover {
@@ -176,10 +231,43 @@ select {
   border-bottom: 1px solid var(--color-border);
 }
 
+.table-header {
+  background: rgba(0, 43, 69, 0.04);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .table-header {
+  background: rgba(155, 182, 160, 0.09);
+}
+
 .table-row {
   color: var(--color-soft);
 }
 
 .table-row:hover {
   background: var(--color-panel-hover);
+}
+
+.metric-positive,
+.financial-healthy {
+  color: var(--color-accent);
+}
+
+.metric-negative,
+.metric-danger {
+  color: var(--color-danger);
+}
+
+.metric-warning,
+.anomaly-warning {
+  color: var(--color-alert-text);
+}
+
+.anomaly-row {
+  background: var(--color-alert-bg);
+}
+
+.anomaly-card {
+  background: var(--color-alert-bg);
+  border-color: rgba(244, 211, 94, 0.58);
 }
