@@ -1,8 +1,15 @@
 {
+  "private": true,
   "scripts": {
-    "build": "npm --prefix frontend run build",
-    "lint": "npm --prefix frontend run lint",
-    "preview": "npm --prefix frontend run preview",
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:landing": "npm --prefix apps/landing run dev",
+    "build": "npm --prefix apps/web run build",
+    "build:web": "npm --prefix apps/web run build",
+    "build:landing": "npm --prefix apps/landing run build",
+    "build:all": "npm run build:web && npm run build:landing",
+    "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",
+    "preview:web": "npm --prefix apps/web run preview",
+    "preview:landing": "npm --prefix apps/landing run preview",
     "classify:financial-data": "tsx backend/node/runSyncAndClassifyFinancialData.ts"
   },
   "dependencies": {

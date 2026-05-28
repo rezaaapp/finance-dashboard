@@ -1,7 +1,7 @@
 {
-  "installCommand": "npm --prefix frontend install --include=optional",
+  "installCommand": "npm --prefix apps/web install --include=optional",
   "buildCommand": "npm run build",
-  "outputDirectory": "frontend/dist",
+  "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
       "source": "/(.*)",

@@ -3,7 +3,7 @@ setlocal
 
 set PORT=5173
 set ROOT=%~dp0
-set FRONTEND_DIR=%ROOT%frontend
+set FRONTEND_DIR=%ROOT%apps\web
 
 echo Stopping existing frontend process on port %PORT% if any...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING"') do (

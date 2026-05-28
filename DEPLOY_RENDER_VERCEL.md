@@ -69,6 +69,15 @@ Jika masih 404 atau "Whitelabel Error Page", cek lagi setting Render:
 
 ## 4. Setting Frontend Vercel
 
+Gunakan setting project frontend/dashboard:
+
+```text
+Root Directory: .
+Install Command: npm --prefix apps/web install --include=optional
+Build Command: npm run build
+Output Directory: apps/web/dist
+```
+
 Di Vercel frontend project, isi environment variables:
 
 ```env
@@ -77,6 +86,20 @@ VITE_API_BASE_URL=https://finance-dashboard-api.onrender.com
 ```
 
 Lalu lakukan redeploy frontend. Pilih opsi untuk tidak memakai build cache jika tersedia.
+
+Jika deploy landing page sebagai project Vercel terpisah, gunakan:
+
+```text
+Root Directory: .
+Build Command: npm run build:landing
+Output Directory: apps/landing/dist
+```
+
+Isi environment landing:
+
+```env
+VITE_DASHBOARD_URL=https://app.your-domain.com
+```
 
 ## 5. Test Login
 

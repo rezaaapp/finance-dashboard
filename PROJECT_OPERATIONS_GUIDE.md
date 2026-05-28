@@ -21,7 +21,8 @@ backend/app                 FastAPI backend
 backend/scripts             Python data processing
 backend/output              Output hasil AI classification
 backend/node                Node/TypeScript data classification utilities
-frontend/src                React application
+apps/web/src                React dashboard application
+apps/landing/src            React landing page application
 ```
 
 ## 2. Menjalankan Local Development
@@ -38,6 +39,7 @@ URL lokal:
 ```text
 Backend:  http://127.0.0.1:8000/api/health
 Frontend: http://127.0.0.1:5173
+Landing:  http://127.0.0.1:5174
 ```
 
 Jika ingin menjalankan terpisah:
@@ -52,6 +54,11 @@ Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
 .\start-local-frontend.bat
 ```
 
+```powershell
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
+.\start-local-landing.bat
+```
+
 Manual backend:
 
 ```powershell
@@ -62,8 +69,15 @@ Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard\backend'
 Manual frontend:
 
 ```powershell
-Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard\frontend'
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard\apps\web'
 npm.cmd run dev -- --host 127.0.0.1
+```
+
+Manual landing:
+
+```powershell
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard\apps\landing'
+npm.cmd run dev -- --host 127.0.0.1 --port 5174
 ```
 
 ## 3. Environment Variables
@@ -72,7 +86,8 @@ File utama:
 
 ```text
 backend/.env
-frontend/.env
+apps/web/.env
+apps/landing/.env
 .env
 ```
 
@@ -353,12 +368,12 @@ Response benar:
 
 ## 14. Deploy Frontend ke Vercel
 
-Vercel settings:
+Vercel settings untuk dashboard app:
 
 ```text
-Root Directory: frontend
+Root Directory: .
 Build Command: npm run build
-Output Directory: dist
+Output Directory: apps/web/dist
 ```
 
 Environment variables:
@@ -371,20 +386,41 @@ VITE_GUEST_MODE_MULTIPLIER=0.75
 
 File `vercel.json` di root sudah mengatur SPA fallback agar refresh page seperti `/analytics` tidak 404.
 
+Vercel settings untuk landing page:
+
+```text
+Root Directory: .
+Build Command: npm run build:landing
+Output Directory: apps/landing/dist
+```
+
+Landing env penting:
+
+```env
+VITE_DASHBOARD_URL=https://app.your-domain.com
+```
+
 ## 15. Build dan Validasi
 
 Frontend lint:
 
 ```powershell
-Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard\frontend'
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
 npm.cmd run lint
 ```
 
 Frontend production build:
 
 ```powershell
-Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard\frontend'
-npm.cmd run build
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
+npm.cmd run build:web
+```
+
+Landing production build:
+
+```powershell
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
+npm.cmd run build:landing
 ```
 
 Root build:
@@ -422,7 +458,8 @@ Pastikan file ini tidak ikut commit:
 ```text
 .env
 backend/.env
-frontend/.env
+apps/web/.env
+apps/landing/.env
 backend/scripts/credentials.json
 *.pem
 *.key
