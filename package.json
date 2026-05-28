@@ -2,14 +2,19 @@
   "scripts": {
     "build": "npm --prefix frontend run build",
     "lint": "npm --prefix frontend run lint",
-    "preview": "npm --prefix frontend run preview"
+    "preview": "npm --prefix frontend run preview",
+    "classify:financial-data": "tsx backend/node/runSyncAndClassifyFinancialData.ts"
   },
   "dependencies": {
+    "@google/genai": "^1.0.0",
     "axios": "^1.16.1",
+    "googleapis": "^144.0.0",
     "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }
