@@ -526,6 +526,19 @@ backend/output/financial-classification-reference.json
 
 File ini boleh dipakai untuk caching ke Supabase atau sebagai master map lokal.
 
+Untuk production Render, file `backend/output` tidak ikut deploy karena berisi data sensitif dan di-ignore Git. Jika ingin `Monthly Budget Allocation Trend` tetap aktif di production tanpa commit file JSON, encode file ini ke base64:
+
+```powershell
+Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content -Raw backend\output\financial-classification-reference.json)))
+```
+
+Lalu simpan hasilnya sebagai environment variable Render:
+
+```env
+FINANCIAL_CLASSIFICATION_JSON_BASE64=hasil_base64_financial_classification_reference
+```
+
 ## 20. Catatan Prinsip Bahasa
 
 Backend dan data processing:

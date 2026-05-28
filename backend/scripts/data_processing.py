@@ -1,6 +1,7 @@
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from dotenv import dotenv_values
 from pathlib import Path
 import base64
 import json
@@ -138,8 +139,49 @@ def _resolve_column(df, candidates):
 
 
 def _load_classification_predictions(classification_path=None):
+    backend_root = Path(__file__).resolve().parents[1]
+    repo_root = backend_root.parent
+    classification_json_base64 = (
+        os.getenv("FINANCIAL_CLASSIFICATION_JSON_BASE64") or ""
+    ).strip()
+    classification_json = (
+        os.getenv("FINANCIAL_CLASSIFICATION_JSON") or ""
+    ).strip()
+
+    if not classification_json_base64 and not classification_json:
+        for env_path in [repo_root / ".env", backend_root / ".env"]:
+            env_values = dotenv_values(env_path)
+            classification_json_base64 = (
+                env_values.get("FINANCIAL_CLASSIFICATION_JSON_BASE64")
+                or classification_json_base64
+                or ""
+            ).strip()
+            classification_json = (
+                env_values.get("FINANCIAL_CLASSIFICATION_JSON")
+                or classification_json
+                or ""
+            ).strip()
+
+            if classification_json_base64 or classification_json:
+                break
+
+    if classification_json_base64:
+        classification_json = base64.b64decode(
+            classification_json_base64
+        ).decode("utf-8")
+
+    if classification_json:
+        payload = json.loads(classification_json)
+
+        if isinstance(payload, dict):
+            return payload.get("predictions", [])
+
+        if isinstance(payload, list):
+            return payload
+
+        return []
+
     if classification_path is None:
-        backend_root = Path(__file__).resolve().parents[1]
         classification_path = (
             backend_root
             / "output"

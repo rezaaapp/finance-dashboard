@@ -1,4 +1,4 @@
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from pathlib import Path
 import json
 import os
@@ -6,8 +6,24 @@ import os
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 
-load_dotenv(REPO_ROOT / ".env")
-load_dotenv(BACKEND_ROOT / ".env", override=True)
+def safe_load_dotenv(path, override=False):
+    for key, value in dotenv_values(path).items():
+        if value is None:
+            continue
+
+        if not override and key in os.environ:
+            continue
+
+        # Windows cannot set very large environment variables. Large payloads
+        # such as classification JSON are read directly from .env when needed.
+        if len(value) > 30000:
+            continue
+
+        os.environ[key] = value
+
+
+safe_load_dotenv(REPO_ROOT / ".env")
+safe_load_dotenv(BACKEND_ROOT / ".env", override=True)
 
 class Settings:
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
