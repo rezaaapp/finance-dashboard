@@ -5,6 +5,7 @@ from pathlib import Path
 import base64
 import json
 import os
+import sys
 
 
 REQUIRED_SERVICE_ACCOUNT_FIELDS = {
@@ -122,6 +123,125 @@ def _normalize_source_dana(df):
     )
 
     return df
+
+
+def _normalize_match_text(value):
+    return str(value or "").strip().lower()
+
+
+def _resolve_column(df, candidates):
+    for candidate in candidates:
+        if candidate in df.columns:
+            return candidate
+
+    return None
+
+
+def _load_classification_predictions(classification_path=None):
+    if classification_path is None:
+        backend_root = Path(__file__).resolve().parents[1]
+        classification_path = (
+            backend_root
+            / "output"
+            / "financial-classification-reference.json"
+        )
+
+    classification_path = Path(classification_path)
+
+    if not classification_path.exists():
+        return []
+
+    with classification_path.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+
+    if isinstance(payload, dict):
+        return payload.get("predictions", [])
+
+    if isinstance(payload, list):
+        return payload
+
+    return []
+
+
+def aggregate_monthly_allocation(df_all, classification_path=None):
+    """
+    Join natural spreadsheet transaction text with AI classification output,
+    then aggregate Rupiah values by month and 50/30/20 allocation type.
+    Spreadsheet text is not translated or mutated beyond match normalization.
+    """
+
+    if df_all.empty:
+        return []
+
+    predictions = _load_classification_predictions(classification_path)
+
+    if not predictions:
+        return []
+
+    title_column = _resolve_column(df_all, ["input_title", "Nama Transaksi"])
+    category_column = _resolve_column(df_all, ["input_category", "Kategori"])
+    date_column = _resolve_column(df_all, ["Tanggal", "Waktu Transaksi"])
+
+    if not title_column or not category_column or not date_column:
+        return []
+
+    composite_lookup = {}
+    title_lookup = {}
+
+    for prediction in predictions:
+        title_key = _normalize_match_text(prediction.get("input_title"))
+        category_key = _normalize_match_text(prediction.get("input_category"))
+        allocation_type = prediction.get("allocation_type")
+
+        if allocation_type not in {"Needs", "Wants", "Savings"}:
+            continue
+
+        if title_key:
+            title_lookup.setdefault(title_key, allocation_type)
+
+        if title_key and category_key:
+            composite_lookup.setdefault(
+                f"{title_key}::{category_key}",
+                allocation_type
+            )
+
+    df = df_all.copy()
+    df = df[df[category_column].astype(str).str.strip() != "Income"]
+    df["allocation_type"] = df.apply(
+        lambda row: composite_lookup.get(
+            f"{_normalize_match_text(row[title_column])}::"
+            f"{_normalize_match_text(row[category_column])}"
+        ) or title_lookup.get(_normalize_match_text(row[title_column])),
+        axis=1,
+    )
+    df = df[df["allocation_type"].isin(["Needs", "Wants", "Savings"])]
+
+    if df.empty:
+        return []
+
+    df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
+    df = df.dropna(subset=[date_column])
+    df["month"] = df[date_column].dt.strftime("%Y-%m")
+
+    grouped = (
+        df.groupby(["month", "allocation_type"])["Harga"]
+        .sum()
+        .unstack(fill_value=0)
+        .reset_index()
+        .sort_values("month")
+    )
+
+    rows = []
+
+    for _, row in grouped.iterrows():
+        rows.append({
+            "month": row["month"],
+            "Needs": float(row.get("Needs", 0)),
+            "Wants": float(row.get("Wants", 0)),
+            "Savings": float(row.get("Savings", 0)),
+        })
+
+    return rows
 
 
 def load_and_process_data(filename):
@@ -263,3 +383,19 @@ def load_and_process_data_from_spreadsheet(sheet_id):
     df_income = df_all[df_all["Kategori"] == "Income"]
 
     return df_all, df_pengeluaran, df_saving, df_income
+
+
+def _run_monthly_allocation_cli():
+    sheet_id = os.getenv("GOOGLE_SPREADSHEET_ID") or os.getenv("GOOGLE_SHEET_ID")
+
+    if not sheet_id:
+        raise ValueError("GOOGLE_SPREADSHEET_ID or GOOGLE_SHEET_ID is required")
+
+    df_all, _, _, _ = load_and_process_data_from_spreadsheet(sheet_id)
+    result = aggregate_monthly_allocation(df_all)
+    print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "monthly-allocation":
+        _run_monthly_allocation_cli()

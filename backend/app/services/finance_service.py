@@ -1,4 +1,5 @@
 from scripts.data_processing import (
+    aggregate_monthly_allocation,
     get_google_sheets_client,
     load_and_process_data_from_spreadsheet,
     load_mock_financial_data,
@@ -414,6 +415,14 @@ def get_source_dana_analytics(year=None, month=None, name=None):
         "saving_sources": _aggregate_source_dana(df_saving),
         "spending_sources": _aggregate_source_dana(df_pengeluaran),
     }
+
+
+def get_monthly_allocation(year=None, month=None, name=None):
+    df_all, _, _, _ = get_financial_data(year)
+    df_all = _filter(df_all, year, month)
+    df_all = _filter_name(df_all, name)
+
+    return aggregate_monthly_allocation(df_all)
 
 
 # =========================

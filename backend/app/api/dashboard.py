@@ -92,6 +92,14 @@ def source_dana_analytics(
 ):
     return get_source_dana_analytics(year, month, name)
 
+@router.get("/monthly-allocation")
+def monthly_allocation(
+    year: int | None = None,
+    month: int | None = None,
+    name: str | None = None
+):
+    return get_monthly_allocation(year, month, name)
+
 @router.get("/spending-per-person")
 def spending_per_person(
     year: int | None = None,

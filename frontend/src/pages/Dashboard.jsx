@@ -21,6 +21,7 @@ import CategoryTrendChart from "../components/charts/CategoryTrendChart";
 import PersonalAnalytics from "../components/analytics/PersonalAnalytics";
 import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashboard";
 import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
+import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTrend";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
@@ -44,6 +45,7 @@ import {
   getTransactions,
   getCategoryTrends,
   getSourceDanaAnalytics,
+  getMonthlyAllocation,
   getPersonalAnalytics,
   getAnomalies,
   getLatestInsight,
@@ -66,6 +68,7 @@ const Dashboard = ({ onLogout }) => {
   const [rawTransactions, setRawTransactions] = useState([]);
   const [categoryTrends, setCategoryTrends] = useState({});
   const [sourceDanaAnalytics, setSourceDanaAnalytics] = useState({});
+  const [monthlyAllocation, setMonthlyAllocation] = useState([]);
   const [personalAnalytics, setPersonalAnalytics] = useState({});
   const [budgetForecast, setBudgetForecast] = useState({});
   const [anomalies, setAnomalies] = useState([]);
@@ -320,9 +323,15 @@ const Dashboard = ({ onLogout }) => {
           selectedMonth,
           analyticsUserName
         );
+        const monthlyAllocationData = await getMonthlyAllocation(
+          selectedYear,
+          selectedMonth,
+          analyticsUserName
+        );
 
         if (isMounted) {
           setSourceDanaAnalytics(data);
+          setMonthlyAllocation(monthlyAllocationData);
         }
       } catch (err) {
         console.error(err);
@@ -334,6 +343,7 @@ const Dashboard = ({ onLogout }) => {
 
         if (isMounted) {
           setSourceDanaAnalytics({});
+          setMonthlyAllocation([]);
         }
       }
     };
@@ -745,6 +755,11 @@ const Dashboard = ({ onLogout }) => {
                   <SourceDanaAnalytics
                     data={sourceDanaAnalytics}
                     theme={theme}
+                    privacyMode={privacyMode}
+                  />
+
+                  <MonthlyAllocationTrend
+                    data={monthlyAllocation}
                     privacyMode={privacyMode}
                   />
 

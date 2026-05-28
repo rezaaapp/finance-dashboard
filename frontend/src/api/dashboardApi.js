@@ -124,6 +124,14 @@ export const getSourceDanaAnalytics = async (year, month, name) => {
   return response.data;
 };
 
+export const getMonthlyAllocation = async (year, month, name) => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/monthly-allocation`,
+    buildConfig(year, month, name)
+  );
+  return response.data;
+};
+
 export const getPersonalAnalytics = async (year, month) => {
   const response = await axios.get(
     `${DASHBOARD_API_URL}/personal-analytics`,
