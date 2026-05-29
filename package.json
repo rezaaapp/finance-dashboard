@@ -12,6 +12,7 @@
     "preview:landing": "npm --prefix apps/landing run preview",
     "db:check": "tsx backend/node/checkDatabaseConnection.ts",
     "db:seed": "tsx backend/node/seedInitialWorkspace.ts",
+    "db:backfill-workspaces": "tsx backend/node/backfillUserWorkspaces.ts",
     "classify:financial-data": "tsx backend/node/runSyncAndClassifyFinancialData.ts"
   },
   "dependencies": {

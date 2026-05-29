@@ -186,5 +186,28 @@ export const saveConfiguration = async (configuration) => {
 
   return response.data;
 };
+
+export const getWorkspaceConfiguration = async () => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/workspace/configuration`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
+export const updateWorkspaceConfiguration = async (configuration) => {
+  const response = await axios.put(
+    `${DASHBOARD_API_URL}/workspace/configuration`,
+    configuration,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
     
 

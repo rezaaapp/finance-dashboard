@@ -162,10 +162,12 @@ const TransactionDetailModal = memo(({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-4 py-5 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-800 bg-[#111827] shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-4">
+      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-2xl">
+        <div className="h-1.5 bg-gradient-to-r from-[var(--color-accent-strong)] via-[var(--color-accent)] to-[var(--color-alert)]" />
+
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               Detail Heat Map
             </p>
             <h3 className="mt-1 break-words text-lg font-bold text-accent sm:text-xl">
@@ -197,20 +199,20 @@ const TransactionDetailModal = memo(({
                 return (
                   <div
                     key={`${transaction.date}-${transaction.item_name}-${index}`}
-                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4"
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <p className="break-words font-bold text-white">
+                        <p className="break-words font-bold text-main">
                           {transaction.item_name}
                         </p>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
                           <span>{formatDate(transaction.date)}</span>
                           <span
                             className={`rounded-full px-2.5 py-1 font-bold ${
                               isDivya
-                                ? "bg-fuchsia-500/15 text-fuchsia-300"
+                                ? "bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]"
                                 : "bg-[var(--color-accent-bg)] text-accent"
                             }`}
                           >
@@ -230,10 +232,10 @@ const TransactionDetailModal = memo(({
           )}
         </div>
 
-        <div className="border-t border-slate-800 px-5 py-4">
-          <div className="mb-4 rounded-lg border border-[rgba(74,93,78,0.24)] bg-[var(--color-accent-bg)] p-4">
+        <div className="border-t border-[var(--color-border)] px-5 py-4">
+          <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-accent-bg)] p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-sm font-semibold text-slate-300">
+              <span className="text-sm font-semibold text-main">
                 Total Expenses for This Period
               </span>
               <span className="metric-positive font-mono text-lg font-bold">

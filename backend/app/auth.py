@@ -63,6 +63,18 @@ def require_auth(
         ) from exc
 
 
+def require_current_user(
+    auth_payload=Depends(require_auth),
+):
+    if auth_payload is True:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User session required",
+        )
+
+    return auth_payload
+
+
 def create_internal_token(user):
     now = datetime.now(timezone.utc)
     payload = {

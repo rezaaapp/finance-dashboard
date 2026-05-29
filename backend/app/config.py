@@ -47,6 +47,7 @@ class Settings:
     )
 
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+    MAX_GOOGLE_SHEET_SOURCES = int(os.getenv("MAX_GOOGLE_SHEET_SOURCES", "5"))
     GOOGLE_SHEET_REGISTRY_JSON = os.getenv("GOOGLE_SHEET_REGISTRY_JSON", "{}")
     DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME")
     DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
@@ -93,11 +94,6 @@ class Settings:
         raise ValueError(
             "GOOGLE_SHEET_REGISTRY_JSON harus berupa JSON object valid"
         ) from exc
-
-    if not GOOGLE_SHEET_ID and not SPREADSHEET_REGISTRY:
-        raise ValueError(
-            "GOOGLE_SHEET_ID atau GOOGLE_SHEET_REGISTRY_JSON belum diset di .env"
-        )
 
     if not DASHBOARD_USERNAME:
         raise ValueError("DASHBOARD_USERNAME belum diset di .env")

@@ -1,20 +1,89 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
-from app.auth import require_auth
+from app.auth import require_auth, require_current_user
+from app.database import get_db_connection
+from app.repositories.workspaces import (
+    ensure_default_workspace_for_user,
+    get_primary_workspace_for_user,
+    normalize_google_sheet_sources,
+    update_google_sheet_id_for_user,
+)
+from scripts.data_processing import get_google_sheets_client
+from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
+
+
+def validate_google_sheet_sources(sources):
+    client = get_google_sheets_client([
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ])
+
+    for source in sources:
+        try:
+            client.open_by_key(source["id"])
+            load_and_process_data_from_spreadsheet(source["id"])
+        except Exception as exc:
+            detail = str(exc)
+
+            if "Tidak ada data yang bisa diproses" in detail:
+                raise ValueError(
+                    f"Google Sheet ID '{source['id']}' kosong atau format datanya tidak sesuai."
+                ) from exc
+
+            raise ValueError(
+                f"Google Sheet ID '{source['id']}' tidak ditemukan atau tidak bisa diakses."
+            ) from exc
+
+
+def get_active_sheet_context(auth_payload=Depends(require_auth)):
+    if auth_payload is True:
+        return {
+            "sheet_id": None,
+            "sheet_ids": [],
+            "use_default_sheet": False,
+        }
+
+    with get_db_connection() as connection:
+        workspace = get_primary_workspace_for_user(
+            connection,
+            user_id=auth_payload["sub"],
+        )
+
+    sources = workspace["google_sheet_sources"] if workspace else []
+    sheet_ids = [
+        source.get("id")
+        for source in sources
+        if isinstance(source, dict)
+        and source.get("id")
+        and source.get("status", "active") == "active"
+    ]
+
+    return {
+        "sheet_id": workspace["google_sheet_id"] if workspace else None,
+        "sheet_ids": sheet_ids,
+        "use_default_sheet": False,
+    }
+
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 @router.get("/summary")
 def summary(
     year: int = None,
-    month: int = None 
+    month: int = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_summary(year, month)
+    return get_summary(year, month, **sheet_context)
 
 
 @router.post("/refresh")
-def refresh_data(year: int | None = None):
-    df_all, df_pengeluaran, df_saving, df_income = refresh_financial_data(year)
+def refresh_data(
+    year: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
+):
+    df_all, df_pengeluaran, df_saving, df_income = refresh_financial_data(
+        year,
+        **sheet_context,
+    )
 
     return {
         "status": "ok",
@@ -27,131 +96,243 @@ def refresh_data(year: int | None = None):
 @router.get("/monthly-spending")
 def monthly_spending(
     year: int = None,
-    month: int = None
+    month: int = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_spending(year, month)
+    return get_monthly_spending(year, month, **sheet_context)
 
 @router.get("/monthly-saving")
 def monthly_saving(
     year: int = None,
-    month: int = None
+    month: int = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_saving(year, month)
+    return get_monthly_saving(year, month, **sheet_context)
 
 @router.get("/monthly-income")
 def monthly_income(
     year: int = None,
-    month: int = None
+    month: int = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_income(year, month)
+    return get_monthly_income(year, month, **sheet_context)
 
 @router.get("/top-spending")
 def top_spending(
     year: int  = None, 
-    month: int = None):
-    return get_top_spending(year, month)
+    month: int = None,
+    sheet_context=Depends(get_active_sheet_context),
+):
+    return get_top_spending(year, month, **sheet_context)
 
 @router.get("/spending-by-category")
 def spending_by_category(
     year: int  = None,
-    month: int  = None
+    month: int  = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_spending_by_category(year, month)
+    return get_spending_by_category(year, month, **sheet_context)
 
 @router.get("/category-heatmap")
 def category_heatmap(
     year: int | None = None,
     month: int | None = None,
-    name: str | None = None
+    name: str | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_category_heatmap(year, month, name)
+    return get_category_heatmap(year, month, name, **sheet_context)
 
 
 @router.get("/transactions")
 def transactions(
     year: int | None = None,
     month: int | None = None,
-    name: str | None = None
+    name: str | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_transactions(year, month, name)
+    return get_transactions(year, month, name, **sheet_context)
 
 
 @router.get("/category-trends")
 def category_trends(
     year: int | None = None,
     month: int | None = None,
-    name: str | None = None
+    name: str | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_category_trends(year, month, name)
+    return get_category_trends(year, month, name, **sheet_context)
 
 @router.get("/source-dana-analytics")
 def source_dana_analytics(
     year: int | None = None,
     month: int | None = None,
-    name: str | None = None
+    name: str | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_source_dana_analytics(year, month, name)
+    return get_source_dana_analytics(year, month, name, **sheet_context)
 
 @router.get("/monthly-allocation")
 def monthly_allocation(
     year: int | None = None,
     month: int | None = None,
-    name: str | None = None
+    name: str | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_allocation(year, month, name)
+    return get_monthly_allocation(year, month, name, **sheet_context)
 
 @router.get("/spending-per-person")
 def spending_per_person(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_spending_per_person(year, month)
+    return get_spending_per_person(year, month, **sheet_context)
 
 @router.get("/personal-analytics")
 def personal_analytics(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_personal_analytics(year, month)
+    return get_personal_analytics(year, month, **sheet_context)
 
 @router.get("/grocery-vs-food")
 def grocery_vs_food(
     year: int | None = None,
     month: int | None = None,
-    name: str | None = None
+    name: str | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_grocery_vs_food(year, month, name)
+    return get_grocery_vs_food(year, month, name, **sheet_context)
 
 @router.get("/anomalies")
 def anomalies(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_anomalies(year, month)
+    return get_anomalies(year, month, **sheet_context)
 
 @router.get("/latest-insight")
 def latest_insight(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_latest_insight(year, month)
+    return get_latest_insight(year, month, **sheet_context)
 
 @router.get("/available-years")
-def available_years():
-    return get_available_years()
+def available_years(sheet_context=Depends(get_active_sheet_context)):
+    return get_available_years(**sheet_context)
 
 
 @router.get("/budget-forecast")
 def budget_forecast(
     year: int | None = None,
-    month: int | None = None
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_budget_forecast(year, month)
+    return get_budget_forecast(year, month, **sheet_context)
 
 
 @router.post("/configuration")
-def save_configuration(config: dict = Body(...)):
+def save_configuration(
+    config: dict = Body(...),
+    current_user=Depends(require_current_user),
+):
     try:
-        return save_configuration_settings(config)
+        with get_db_connection() as connection:
+            workspace = get_primary_workspace_for_user(
+                connection,
+                user_id=current_user["sub"],
+            )
+
+        return save_configuration_settings(
+            config,
+            sheet_id=workspace["google_sheet_id"] if workspace else None,
+            use_default_sheet=False,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/workspace/configuration")
+def get_workspace_configuration(current_user=Depends(require_current_user)):
+    with get_db_connection() as connection:
+        with connection.transaction():
+            workspace = get_primary_workspace_for_user(
+                connection,
+                user_id=current_user["sub"],
+            )
+
+            if not workspace:
+                workspace = ensure_default_workspace_for_user(
+                    connection,
+                    user_id=current_user["sub"],
+                    user_name=current_user.get("name") or "User",
+                )
+
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    return {
+        "workspace": {
+            "id": str(workspace["id"]),
+            "name": workspace["name"],
+            "role": workspace["role"],
+            "subscription_status": workspace["subscription_status"],
+        },
+        "configuration": {
+            "google_sheet_id": workspace["google_sheet_id"],
+            "google_sheet_sources": workspace["google_sheet_sources"] or [],
+            "max_google_sheet_sources": settings.MAX_GOOGLE_SHEET_SOURCES,
+        },
+    }
+
+
+@router.put("/workspace/configuration")
+def update_workspace_configuration(
+    config: dict = Body(...),
+    current_user=Depends(require_current_user),
+):
+    google_sheet_id = config.get("google_sheet_id")
+    google_sheet_sources = config.get("google_sheet_sources")
+
+    if google_sheet_id is not None:
+        google_sheet_id = str(google_sheet_id).strip() or None
+
+    try:
+        normalized_sources = normalize_google_sheet_sources(
+            google_sheet_sources,
+            google_sheet_id,
+        )
+        validate_google_sheet_sources(normalized_sources)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        with get_db_connection() as connection:
+            with connection.transaction():
+                workspace = update_google_sheet_id_for_user(
+                    connection,
+                    user_id=current_user["sub"],
+                    google_sheet_id=google_sheet_id,
+                    google_sheet_sources=normalized_sources,
+                )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {
+        "status": "ok",
+        "workspace": {
+            "id": str(workspace["id"]),
+            "name": workspace["name"],
+            "role": workspace["role"],
+            "subscription_status": workspace["subscription_status"],
+        },
+        "configuration": {
+            "google_sheet_id": workspace["google_sheet_id"],
+            "google_sheet_sources": workspace["google_sheet_sources"] or [],
+            "max_google_sheet_sources": settings.MAX_GOOGLE_SHEET_SOURCES,
+        },
+    }

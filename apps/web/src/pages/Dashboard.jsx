@@ -51,6 +51,7 @@ import {
   getLatestInsight,
   getAvailableYears,
   getBudgetForecast,
+  getWorkspaceConfiguration,
 } from "../api/dashboardApi";
 
 const Dashboard = ({ onLogout }) => {
@@ -74,6 +75,7 @@ const Dashboard = ({ onLogout }) => {
   const [anomalies, setAnomalies] = useState([]);
   const [insight, setInsight] = useState("");
   const [currentSheetName, setCurrentSheetName] = useState("");
+  const [hasActiveGoogleSheet, setHasActiveGoogleSheet] = useState(false);
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
@@ -137,14 +139,49 @@ const Dashboard = ({ onLogout }) => {
     ));
   };
 
+  const clearDashboardData = () => {
+    setSummary({});
+    setSpending([]);
+    setSaving([]);
+    setIncome([]);
+    setTopSpending([]);
+    setCategoryData([]);
+    setGroceryVsFood([]);
+    setCategoryHeatmap({});
+    setRawTransactions([]);
+    setCategoryTrends({});
+    setSourceDanaAnalytics({});
+    setMonthlyAllocation([]);
+    setPersonalAnalytics({});
+    setBudgetForecast({});
+    setAnomalies([]);
+    setInsight("");
+    setCurrentSheetName("");
+    setHasActiveGoogleSheet(false);
+    setYears([]);
+    setSelectedYear("");
+    setSelectedMonth("");
+  };
+
   const handleSaveConfiguration = ({
     autoBudget: nextAutoBudget,
     paydayStartDay: nextPaydayStartDay,
     privacyMode: nextPrivacyMode,
+    googleSheetId,
   }) => {
     setAutoBudget(nextAutoBudget);
     setPaydayStartDay(nextPaydayStartDay);
     setPrivacyMode(nextPrivacyMode);
+
+    if (googleSheetId === "") {
+      clearDashboardData();
+      return;
+    }
+
+    if (googleSheetId) {
+      setHasActiveGoogleSheet(true);
+      loadInitialData();
+    }
   };
 
   const handleRefreshData = async () => {
@@ -261,12 +298,27 @@ const Dashboard = ({ onLogout }) => {
     try {
       setLoading(true);
 
+      const workspaceConfiguration = await getWorkspaceConfiguration();
+      const googleSheetSources = workspaceConfiguration?.configuration?.google_sheet_sources || [];
+      const googleSheetId = workspaceConfiguration?.configuration?.google_sheet_id;
+      const hasGoogleSheet = googleSheetSources.length > 0 || Boolean(googleSheetId);
+
+      setHasActiveGoogleSheet(hasGoogleSheet);
+
+      if (!hasGoogleSheet) {
+        clearDashboardData();
+        return;
+      }
+
       const availableYears = await getAvailableYears();
 
       setYears(availableYears);
 
       if (availableYears.length > 0) {
         setSelectedYear(availableYears[0]);
+      } else {
+        setSelectedYear("");
+        setSelectedMonth("");
       }
     } catch (err) {
       console.error(err);
@@ -380,6 +432,8 @@ const Dashboard = ({ onLogout }) => {
       </div>
     );
   }
+
+  const shouldShowEmptyDashboard = activeView === "dashboard" && !hasActiveGoogleSheet;
 
   // =========================
   // UI
@@ -618,7 +672,34 @@ const Dashboard = ({ onLogout }) => {
           </div>
         </div>
 
-        {activeView === "dashboard" ? (
+        {shouldShowEmptyDashboard ? (
+          <div className="panel rounded-lg p-6 shadow-lg">
+            <div className="mx-auto flex max-w-2xl flex-col items-center py-12 text-center">
+              <div className="icon-badge rounded-xl p-4">
+                <Settings size={28} />
+              </div>
+
+              <h2 className="mt-5 text-2xl font-bold text-main">
+                Dashboard masih kosong
+              </h2>
+
+              <p className="mt-3 text-sm leading-7 text-muted sm:text-base">
+                Tambahkan Google Spreadsheet ID di Configuration, lalu klik Add
+                Connection. Setelah source terhubung, dashboard akan menganalisa
+                data dari spreadsheet dan menampilkan chart finansial di sini.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setActiveView("configuration")}
+                className="primary-button mt-6 inline-flex rounded-lg px-5 py-2.5 font-semibold"
+              >
+                <Settings size={18} />
+                Buka Configuration
+              </button>
+            </div>
+          </div>
+        ) : activeView === "dashboard" ? (
           <>
             {/* SUMMARY */}
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-6">

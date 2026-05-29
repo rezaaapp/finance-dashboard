@@ -14,6 +14,7 @@ from app.auth import (
 from app.config import settings
 from app.database import get_db_connection
 from app.repositories.users import upsert_user, upsert_user_tokens
+from app.repositories.workspaces import ensure_default_workspace_for_user
 from app.services.google_oauth import (
     build_google_authorization_url,
     exchange_authorization_code,
@@ -102,6 +103,11 @@ async def google_callback(
                     else None,
                     token_expires_at=tokens["token_expires_at"],
                 )
+                workspace = ensure_default_workspace_for_user(
+                    connection,
+                    user_id=str(user["id"]),
+                    user_name=user["name"],
+                )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -116,6 +122,7 @@ async def google_callback(
             "user_id": str(user["id"]),
             "email": user["email"],
             "name": user["name"],
+            "workspace_id": str(workspace["id"]),
         })
 
         return RedirectResponse(
@@ -130,5 +137,12 @@ async def google_callback(
             "email": user["email"],
             "name": user["name"],
             "avatar_url": user["avatar_url"],
+        },
+        "workspace": {
+            "id": str(workspace["id"]),
+            "name": workspace["name"],
+            "role": workspace["role"],
+            "google_sheet_id": workspace["google_sheet_id"],
+            "google_sheet_sources": workspace["google_sheet_sources"] or [],
         },
     }

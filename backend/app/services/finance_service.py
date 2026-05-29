@@ -8,23 +8,117 @@ from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
 import app.cache.data_cache as data_cache
 from datetime import datetime
-from gspread.exceptions import WorksheetNotFound
+from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound
 import pandas as pd
+
+FINANCIAL_DATA_COLUMNS = [
+    "Waktu Transaksi",
+    "Kategori",
+    "Nama Transaksi",
+    "Nama",
+    "Harga",
+    "Bulan",
+]
+
+
+def _empty_financial_data():
+    df = pd.DataFrame(columns=FINANCIAL_DATA_COLUMNS)
+    df["Waktu Transaksi"] = pd.to_datetime(df["Waktu Transaksi"])
+    df["Harga"] = pd.to_numeric(df["Harga"])
+    df["Bulan"] = pd.PeriodIndex([], freq="M")
+
+    return df, df.copy(), df.copy(), df.copy()
+
+
+def _normalize_sheet_ids(sheet_ids=None, sheet_id=None):
+    normalized_sheet_ids = []
+
+    if sheet_ids:
+        normalized_sheet_ids.extend([
+            str(current_sheet_id).strip()
+            for current_sheet_id in sheet_ids
+            if str(current_sheet_id).strip()
+        ])
+
+    if sheet_id:
+        normalized_sheet_ids.append(str(sheet_id).strip())
+
+    return list(dict.fromkeys(normalized_sheet_ids))
+
+
+def _merge_financial_data(financial_data_items):
+    if not financial_data_items:
+        return _empty_financial_data()
+
+    merged_frames = []
+
+    for frame_index in range(4):
+        frames = [
+            financial_data[frame_index]
+            for financial_data in financial_data_items
+            if not financial_data[frame_index].empty
+        ]
+
+        if frames:
+            merged_frame = pd.concat(frames, ignore_index=True)
+        else:
+            merged_frame = _empty_financial_data()[frame_index]
+
+        if not merged_frame.empty:
+            subset = [
+                column
+                for column in [
+                    "Waktu Transaksi",
+                    "Kategori",
+                    "Nama Transaksi",
+                    "Nama",
+                    "Harga",
+                ]
+                if column in merged_frame.columns
+            ]
+            merged_frame = merged_frame.drop_duplicates(subset=subset)
+            merged_frame = merged_frame.sort_values(
+                "Waktu Transaksi",
+                ascending=False,
+            )
+
+        merged_frames.append(merged_frame)
+
+    return tuple(merged_frames)
+
+
+def _get_active_sheet_ids(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    normalized_sheet_ids = _normalize_sheet_ids(sheet_ids, sheet_id)
+
+    if normalized_sheet_ids:
+        return normalized_sheet_ids
+
+    if not use_default_sheet:
+        return []
+
+    return [settings.get_sheet_id_for_year(year)]
 
 
 # =========================
 # CACHE DATA
 # =========================
-def _get_cache_key(year=None):
+def _get_cache_key(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
     if settings.USE_MOCK_DATA:
         return "mock-data"
 
-    return settings.get_sheet_id_for_year(year)
+    active_sheet_ids = _get_active_sheet_ids(
+        year,
+        sheet_id,
+        sheet_ids,
+        use_default_sheet,
+    )
+
+    return ":".join(sorted(active_sheet_ids)) or "workspace-no-google-sheet"
 
 
-def get_financial_data(year=None):
+def get_financial_data(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
     now = datetime.now()
-    cache_key = _get_cache_key(year)
+    cache_key = _get_cache_key(year, sheet_id, sheet_ids, use_default_sheet)
 
     if (
         cache_key in data_cache.cached_data_by_key
@@ -38,9 +132,28 @@ def get_financial_data(year=None):
         print("USING MOCK DATA")
         data = load_mock_financial_data()
     else:
-        sheet_id = settings.get_sheet_id_for_year(year)
-        print(f"FETCH FROM GOOGLE SHEETS: {year or 'latest'}")
-        data = load_and_process_data_from_spreadsheet(sheet_id)
+        active_sheet_ids = _get_active_sheet_ids(
+            year,
+            sheet_id,
+            sheet_ids,
+            use_default_sheet,
+        )
+
+        if not active_sheet_ids:
+            return _empty_financial_data()
+
+        print(f"FETCH FROM {len(active_sheet_ids)} GOOGLE SHEET SOURCE(S): {year or 'latest'}")
+        financial_data_items = []
+
+        for current_sheet_id in active_sheet_ids:
+            try:
+                financial_data_items.append(
+                    load_and_process_data_from_spreadsheet(current_sheet_id)
+                )
+            except SpreadsheetNotFound:
+                print(f"SKIP INVALID GOOGLE SHEET SOURCE: {current_sheet_id}")
+
+        data = _merge_financial_data(financial_data_items)
 
     data_cache.cached_data_by_key[cache_key] = data
     data_cache.last_fetch_time_by_key[cache_key] = now
@@ -48,16 +161,16 @@ def get_financial_data(year=None):
     return data
 
 
-def refresh_financial_data(year=None):
+def refresh_financial_data(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
     if year:
-        cache_key = _get_cache_key(year)
+        cache_key = _get_cache_key(year, sheet_id, sheet_ids, use_default_sheet)
         data_cache.cached_data_by_key.pop(cache_key, None)
         data_cache.last_fetch_time_by_key.pop(cache_key, None)
     else:
         data_cache.cached_data_by_key.clear()
         data_cache.last_fetch_time_by_key.clear()
 
-    return get_financial_data(year)
+    return get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
 
 
 # =========================
@@ -112,8 +225,13 @@ def _trend_vs_last_month(df, year=None, month=None):
 # =========================
 # SUMMARY
 # =========================
-def get_summary(year=None, month=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
+def get_summary(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(
+        year,
+        sheet_id,
+        sheet_ids,
+        use_default_sheet,
+    )
 
     trend_pengeluaran = _trend_vs_last_month(df_pengeluaran, year, month)
     trend_saving = _trend_vs_last_month(df_saving, year, month)
@@ -139,15 +257,24 @@ def get_summary(year=None, month=None):
         "trend_income": trend_income,
         "saving_ratio": round(saving_ratio, 2),
         "surplus": float(surplus),
-        "data_source": settings.get_data_source_for_year(year),
+        "data_source": {
+            "year": str(year or ""),
+            "name": f"Workspace Google Sheets ({len(_normalize_sheet_ids(sheet_ids, sheet_id))} sources)"
+            if _normalize_sheet_ids(sheet_ids, sheet_id)
+            else (
+                "No active Google Sheet"
+                if not use_default_sheet
+                else settings.get_data_source_for_year(year)["name"]
+            ),
+        },
     }
 
 
 # =========================
 # MONTHLY SERIES
 # =========================
-def get_monthly_spending(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_monthly_spending(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     grouped = df_pengeluaran.groupby("Bulan")["Harga"].sum().reset_index()
@@ -158,8 +285,8 @@ def get_monthly_spending(year=None, month=None):
     ]
 
 
-def get_monthly_saving(year=None, month=None):
-    _, _, df_saving, _ = get_financial_data(year)
+def get_monthly_saving(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, _, df_saving, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_saving = _filter(df_saving, year, month)
 
     grouped = df_saving.groupby("Bulan")["Harga"].sum().reset_index()
@@ -170,8 +297,8 @@ def get_monthly_saving(year=None, month=None):
     ]
 
 
-def get_monthly_income(year=None, month=None):
-    _, _, _, df_income = get_financial_data(year)
+def get_monthly_income(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, _, _, df_income = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_income = _filter(df_income, year, month)
 
     grouped = df_income.groupby("Bulan")["Harga"].sum().reset_index()
@@ -185,8 +312,8 @@ def get_monthly_income(year=None, month=None):
 # =========================
 # TOP SPENDING (FIXED BUG IMPORTANT)
 # =========================
-def get_top_spending(year=None, month=None, limit=10):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_top_spending(year=None, month=None, limit=10, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     if df_pengeluaran.empty:
@@ -215,8 +342,8 @@ def get_top_spending(year=None, month=None, limit=10):
 # =========================
 # CATEGORY
 # =========================
-def get_spending_by_category(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_spending_by_category(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     grouped = (
@@ -229,8 +356,8 @@ def get_spending_by_category(year=None, month=None):
     return grouped.to_dict(orient="records")
 
 
-def get_category_heatmap(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_category_heatmap(year=None, month=None, name=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_pengeluaran = _filter_name(df_pengeluaran, name)
 
@@ -285,8 +412,8 @@ def get_category_heatmap(year=None, month=None, name=None):
     }
 
 
-def get_transactions(year=None, month=None, name=None):
-    df_all, _, _, _ = get_financial_data(year)
+def get_transactions(year=None, month=None, name=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    df_all, _, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_transactions = _filter(df_all, year, month)
     df_transactions = _filter_name(df_transactions, name)
 
@@ -312,8 +439,8 @@ def get_transactions(year=None, month=None, name=None):
     ]
 
 
-def get_category_trends(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_category_trends(year=None, month=None, name=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_pengeluaran = _filter_name(df_pengeluaran, name)
 
@@ -403,8 +530,8 @@ def _aggregate_source_dana(df):
     ]
 
 
-def get_source_dana_analytics(year=None, month=None, name=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
+def get_source_dana_analytics(year=None, month=None, name=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
 
     df_pengeluaran = _filter_name(_filter(df_pengeluaran, year, month), name)
     df_saving = _filter_name(_filter(df_saving, year, month), name)
@@ -417,8 +544,8 @@ def get_source_dana_analytics(year=None, month=None, name=None):
     }
 
 
-def get_monthly_allocation(year=None, month=None, name=None):
-    df_all, _, _, _ = get_financial_data(year)
+def get_monthly_allocation(year=None, month=None, name=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    df_all, _, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_all = _filter(df_all, year, month)
     df_all = _filter_name(df_all, name)
 
@@ -428,8 +555,8 @@ def get_monthly_allocation(year=None, month=None, name=None):
 # =========================
 # PERSON
 # =========================
-def get_spending_per_person(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_spending_per_person(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     grouped = df_pengeluaran.groupby("Nama")["Harga"].sum().reset_index()
@@ -444,8 +571,8 @@ def _total_by_name(df, name=None):
     return float(df["Harga"].sum())
 
 
-def get_personal_analytics(year=None, month=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
+def get_personal_analytics(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
 
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_saving = _filter(df_saving, year, month)
@@ -534,8 +661,8 @@ def get_personal_analytics(year=None, month=None):
 # =========================
 # GROCERY VS FOOD
 # =========================
-def get_grocery_vs_food(year=None, month=None, name=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_grocery_vs_food(year=None, month=None, name=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_pengeluaran = _filter_name(df_pengeluaran, name)
 
@@ -561,8 +688,8 @@ def get_grocery_vs_food(year=None, month=None, name=None):
 # =========================
 # ANOMALY
 # =========================
-def get_anomalies(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_anomalies(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
     df_pengeluaran = _filter(df_pengeluaran, year, month)
 
     anomalies = detect_anomaly_pengeluaran(df_pengeluaran)
@@ -578,8 +705,8 @@ def get_anomalies(year=None, month=None):
 # =========================
 # INSIGHT
 # =========================
-def get_latest_insight(year=None, month=None):
-    _, df_pengeluaran, df_saving, df_income = get_financial_data(year)
+def get_latest_insight(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, df_saving, df_income = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
 
     df_pengeluaran = _filter(df_pengeluaran, year, month)
     df_saving = _filter(df_saving, year, month)
@@ -616,7 +743,30 @@ def get_latest_insight(year=None, month=None):
 # =========================
 # AVAILABLE YEARS (FIX FLOAT ISSUE)
 # =========================
-def get_available_years():
+def get_available_years(sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    if not use_default_sheet:
+        if not sheet_id and not sheet_ids:
+            return []
+
+        df_all, _, _, _ = get_financial_data(
+            sheet_id=sheet_id,
+            sheet_ids=sheet_ids,
+            use_default_sheet=False,
+        )
+
+        if df_all.empty:
+            return []
+
+        years = (
+            df_all["Waktu Transaksi"]
+            .dt.year
+            .dropna()
+            .astype(int)
+            .unique()
+        )
+
+        return sorted(years.tolist(), reverse=True)
+
     registry_years = settings.get_available_registry_years()
 
     if registry_years:
@@ -638,8 +788,8 @@ def get_available_years():
 # =========================
 # BUDGETING & ALERTS
 # =========================
-def get_budget_forecast(year=None, month=None):
-    _, df_pengeluaran, _, _ = get_financial_data(year)
+def get_budget_forecast(year=None, month=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    _, df_pengeluaran, _, _ = get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
 
     if df_pengeluaran.empty:
         return {
@@ -755,7 +905,7 @@ def get_budget_forecast(year=None, month=None):
 # =========================
 # CONFIGURATION
 # =========================
-def save_configuration_settings(config):
+def save_configuration_settings(config, sheet_id=None, sheet_ids=None, use_default_sheet=True):
     payday_start_day = int(config.get("payday_start_day", 1))
     privacy_mode = config.get("privacy_mode", "normal")
     auto_budget = bool(config.get("auto_budget", True))
@@ -774,11 +924,27 @@ def save_configuration_settings(config):
     }
 
     if not settings.USE_MOCK_DATA:
-        sheet_id = settings.get_sheet_id_for_year(year)
+        sheet_id = sheet_id or (
+            settings.get_sheet_id_for_year(year) if use_default_sheet else None
+        )
+        if not sheet_id:
+            return {
+                "status": "ok",
+                "message": "Configuration saved locally. Google Sheet ID is not configured yet.",
+                "configuration": configuration,
+                "google_sheets_sync": "skipped",
+            }
+
         client = get_google_sheets_client([
             "https://www.googleapis.com/auth/spreadsheets",
         ])
-        spreadsheet = client.open_by_key(sheet_id)
+
+        try:
+            spreadsheet = client.open_by_key(sheet_id)
+        except SpreadsheetNotFound as exc:
+            raise ValueError(
+                "Google Sheet ID tidak ditemukan atau belum dibagikan ke akun Google yang dipakai backend."
+            ) from exc
 
         try:
             worksheet = spreadsheet.worksheet("Configuration")
