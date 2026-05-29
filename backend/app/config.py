@@ -52,6 +52,11 @@ class Settings:
     DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME")
     DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
     DASHBOARD_AUTH_TOKEN = os.getenv("DASHBOARD_AUTH_TOKEN")
+    SUPER_ADMIN_EMAILS = [
+        email.strip().lower()
+        for email in os.getenv("SUPER_ADMIN_EMAILS", "").split(",")
+        if email.strip()
+    ]
     USE_MOCK_DATA = os.getenv("USE_MOCK_DATA", "false").lower() == "true"
     CORS_ALLOWED_ORIGINS = [
         origin.strip()

@@ -119,6 +119,34 @@ def upsert_workspace_member(
         return cursor.fetchone()
 
 
+def list_workspace_members(connection, *, workspace_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                wm.id,
+                wm.workspace_id,
+                wm.user_id,
+                wm.role,
+                wm.created_at,
+                wm.updated_at,
+                u.email,
+                u.name,
+                u.avatar_url,
+                u.role as global_role
+            from workspace_members wm
+            inner join users u on u.id = wm.user_id
+            where wm.workspace_id = %s
+            order by
+                case when wm.role = 'owner' then 0 else 1 end,
+                wm.created_at asc
+            """,
+            (workspace_id,),
+        )
+
+        return cursor.fetchall()
+
+
 def upsert_workspace_configuration(
     connection,
     *,

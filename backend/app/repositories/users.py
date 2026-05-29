@@ -4,19 +4,164 @@ from typing import Optional
 from psycopg.rows import dict_row
 
 
-def upsert_user(connection, *, email: str, name: str, avatar_url: Optional[str]):
+def upsert_user(
+    connection,
+    *,
+    email: str,
+    name: str,
+    avatar_url: Optional[str],
+    role: str = "user",
+):
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            insert into users (email, name, avatar_url)
-            values (%s, %s, %s)
+            insert into users (email, name, avatar_url, role)
+            values (%s, %s, %s, %s)
             on conflict (email)
             do update set
                 name = excluded.name,
-                avatar_url = coalesce(excluded.avatar_url, users.avatar_url)
-            returning id, email, name, avatar_url, created_at, updated_at
+                avatar_url = coalesce(excluded.avatar_url, users.avatar_url),
+                role = case
+                    when excluded.role = 'super_admin' then 'super_admin'
+                    else users.role
+                end
+            returning id, email, name, avatar_url, role, created_at, updated_at
             """,
-            (email.lower(), name, avatar_url),
+            (email.lower(), name, avatar_url, role),
+        )
+
+        return cursor.fetchone()
+
+
+def list_users(connection):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                email,
+                name,
+                avatar_url,
+                role,
+                created_at,
+                updated_at
+            from users
+            order by
+                case when role = 'super_admin' then 0 else 1 end,
+                case when role = 'owner' then 0 else 1 end,
+                case when role = 'member' then 0 else 1 end,
+                created_at desc
+            """
+        )
+
+        return cursor.fetchall()
+
+
+def get_user_by_id(connection, *, user_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                email,
+                name,
+                avatar_url,
+                role,
+                created_at,
+                updated_at
+            from users
+            where id = %s
+            """,
+            (user_id,),
+        )
+
+        return cursor.fetchone()
+
+
+def upsert_invited_member_user(connection, *, email: str, name: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            insert into users (email, name, avatar_url, role)
+            values (%s, %s, null, 'member')
+            on conflict (email)
+            do update set
+                name = coalesce(nullif(excluded.name, ''), users.name),
+                role = case
+                    when users.role in ('super_admin', 'owner') then users.role
+                    else 'member'
+                end
+            returning id, email, name, avatar_url, role, created_at, updated_at
+            """,
+            (email.lower(), name),
+        )
+
+        return cursor.fetchone()
+
+
+def create_user(
+    connection,
+    *,
+    email: str,
+    name: str,
+    role: str,
+    avatar_url: Optional[str] = None,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            insert into users (email, name, avatar_url, role)
+            values (%s, %s, %s, %s)
+            returning id, email, name, avatar_url, role, created_at, updated_at
+            """,
+            (email.lower(), name, avatar_url, role),
+        )
+
+        return cursor.fetchone()
+
+
+def update_user(connection, *, user_id: str, email: str, name: str, role: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            update users
+            set
+                email = %s,
+                name = %s,
+                role = %s
+            where id = %s
+            returning id, email, name, avatar_url, role, created_at, updated_at
+            """,
+            (email.lower(), name, role, user_id),
+        )
+
+        return cursor.fetchone()
+
+
+def update_user_role(connection, *, user_id: str, role: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            update users
+            set role = %s
+            where id = %s
+            returning id, email, name, avatar_url, role, created_at, updated_at
+            """,
+            (role, user_id),
+        )
+
+        return cursor.fetchone()
+
+
+def delete_user(connection, *, user_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            delete from users
+            where id = %s
+            returning id, email, name, avatar_url, role, created_at, updated_at
+            """,
+            (user_id,),
         )
 
         return cursor.fetchone()

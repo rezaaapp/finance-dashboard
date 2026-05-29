@@ -8,7 +8,9 @@ import {
   Moon,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Sun,
+  UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -25,6 +27,7 @@ import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTre
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
+import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
 import {
@@ -54,7 +57,65 @@ import {
   getWorkspaceConfiguration,
 } from "../api/dashboardApi";
 
-const Dashboard = ({ onLogout }) => {
+const premiumRoles = new Set(["super_admin", "owner", "member"]);
+
+const LockedFeature = ({ title, message }) => (
+  <div className="panel rounded-lg p-6 shadow-lg">
+    <div className="mx-auto flex max-w-2xl flex-col items-center py-10 text-center">
+      <div className="icon-badge rounded-xl p-4">
+        <ShieldCheck size={28} />
+      </div>
+
+      <h2 className="mt-5 text-2xl font-bold text-main">
+        {title}
+      </h2>
+
+      <p className="mt-3 text-sm leading-7 text-muted sm:text-base">
+        {message}
+      </p>
+    </div>
+  </div>
+);
+
+const ProfileWidget = ({ auth, onLogout }) => {
+  const hasSessionEmail = Boolean(auth?.email);
+  const displayName = hasSessionEmail
+    ? auth?.username || auth?.name || "Reza Putra Pratama"
+    : "Reza Putra Pratama";
+  const displayEmail = auth?.email || "rezaaapp@gmail.com";
+  const initial = (displayName || displayEmail || "R").trim().charAt(0).toUpperCase();
+
+  return (
+    <div className="group relative inline-flex">
+      <button
+        type="button"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-bold text-gray-800 shadow-sm transition-colors hover:border-amber-300 hover:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-700"
+        aria-label={`Profile menu ${displayName}`}
+        title={`${displayName} (${displayEmail})`}
+      >
+        {initial || <UserRound size={18} />}
+      </button>
+
+      <div className="invisible absolute right-0 top-full z-50 mt-2 w-40 translate-y-1 opacity-0 transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 shadow-lg transition-colors hover:bg-red-50 dark:border-gray-600 dark:bg-gray-700 dark:text-red-300 dark:hover:bg-red-950/30"
+        >
+          <LogOut size={16} />
+          Logout
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const Dashboard = ({
+  auth,
+  onExitImpersonation,
+  onImpersonate,
+  onLogout,
+}) => {
   // =========================
   // STATE
   // =========================
@@ -112,6 +173,9 @@ const Dashboard = ({ onLogout }) => {
   });
 
   const isDarkMode = theme === "dark";
+  const isSuperAdmin = auth?.role === "super_admin";
+  const hasPremiumAccess = premiumRoles.has(auth?.role);
+  const isTestMode = auth?.provider === "impersonation";
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -225,30 +289,30 @@ const Dashboard = ({ onLogout }) => {
       const incomeData = await getMonthlyIncome(year, month);
       const topSpendingData = await getTopSpending(year, month);
       const categoryDataRes = await getSpendingByCategory(year, month);
-      const groceryVsFoodData = await getGroceryVsFood(
-        year,
-        month,
-        analyticsUserName
-      );
-      const categoryHeatmapData = await getCategoryHeatmap(
-        year,
-        month,
-        analyticsUserName
-      );
-      const transactionsData = await getTransactions(
-        year,
-        month,
-        analyticsUserName
-      );
-      const categoryTrendsData = await getCategoryTrends(
-        year,
-        month,
-        analyticsUserName
-      );
-      const personalAnalyticsData = await getPersonalAnalytics(year, month);
-      const budgetForecastData = await getBudgetForecast(year, month);
-      const anomaliesData = await getAnomalies(year, month);
-      const insightData = await getLatestInsight(year, month);
+      const groceryVsFoodData = hasPremiumAccess
+        ? await getGroceryVsFood(year, month, analyticsUserName)
+        : [];
+      const categoryHeatmapData = hasPremiumAccess
+        ? await getCategoryHeatmap(year, month, analyticsUserName)
+        : {};
+      const transactionsData = hasPremiumAccess
+        ? await getTransactions(year, month, analyticsUserName)
+        : [];
+      const categoryTrendsData = hasPremiumAccess
+        ? await getCategoryTrends(year, month, analyticsUserName)
+        : {};
+      const personalAnalyticsData = hasPremiumAccess
+        ? await getPersonalAnalytics(year, month)
+        : {};
+      const budgetForecastData = hasPremiumAccess
+        ? await getBudgetForecast(year, month)
+        : {};
+      const anomaliesData = hasPremiumAccess
+        ? await getAnomalies(year, month)
+        : [];
+      const insightData = hasPremiumAccess
+        ? await getLatestInsight(year, month)
+        : null;
 
       setSummary(summaryData);
       setCurrentSheetName(
@@ -269,11 +333,13 @@ const Dashboard = ({ onLogout }) => {
       setAnomalies(anomaliesData);
 
       setInsight(
-        `Month ${insightData.bulan} has spending of ${
-          formatPrivateRupiah(insightData.spending, privacyMode)
-        } with a saving ratio of ${
-          insightData.saving_ratio
-        }%. Financial status: ${insightData.status}`
+        insightData
+          ? `Month ${insightData.bulan} has spending of ${
+              formatPrivateRupiah(insightData.spending, privacyMode)
+            } with a saving ratio of ${
+              insightData.saving_ratio
+            }%. Financial status: ${insightData.status}`
+          : ""
       );
 
       setError("");
@@ -289,7 +355,7 @@ const Dashboard = ({ onLogout }) => {
     } finally {
       setLoading(false);
     }
-  }, [onLogout, privacyMode, selectedAnalyticsUser]);
+  }, [hasPremiumAccess, onLogout, privacyMode, selectedAnalyticsUser]);
 
   // =========================
   // INITIAL DATA
@@ -357,7 +423,11 @@ const Dashboard = ({ onLogout }) => {
   // LAZY FETCH ANALYTICS DATA
   // =========================
   useEffect(() => {
-    if (activeView !== "analytics" || selectedYear === "") {
+    if (
+      activeView !== "analytics"
+      || selectedYear === ""
+      || !hasPremiumAccess
+    ) {
       return;
     }
 
@@ -405,6 +475,7 @@ const Dashboard = ({ onLogout }) => {
     };
   }, [
     activeView,
+    hasPremiumAccess,
     onLogout,
     selectedAnalyticsUser,
     selectedMonth,
@@ -529,6 +600,11 @@ const Dashboard = ({ onLogout }) => {
                 Analytics
               </span>
             )}
+            {!isSidebarCollapsed && !hasPremiumAccess && (
+              <span className="ml-auto rounded-full bg-[var(--color-alert-bg)] px-2 py-0.5 text-xs font-bold text-[var(--color-alert-text)]">
+                Locked
+              </span>
+            )}
           </button>
 
           <button
@@ -554,32 +630,151 @@ const Dashboard = ({ onLogout }) => {
                 Budgeting & Alerts
               </span>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveView("configuration")}
-            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
-              isSidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-start gap-3 px-3 py-2"
-            } ${
-              activeView === "configuration"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "bg-transparent"
-            }`}
-            aria-label="Configuration"
-            title="Configuration"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <Settings size={18} />
-            </span>
-            {!isSidebarCollapsed && (
-              <span className="min-w-0 flex-1 truncate font-semibold">
-                Configuration
+            {!isSidebarCollapsed && !hasPremiumAccess && (
+              <span className="ml-auto rounded-full bg-[var(--color-alert-bg)] px-2 py-0.5 text-xs font-bold text-[var(--color-alert-text)]">
+                Locked
               </span>
             )}
           </button>
+
+          {isSidebarCollapsed ? (
+            <div className="group relative">
+              <button
+                type="button"
+                onClick={() => setActiveView("configuration")}
+                className={`nav-link flex min-h-11 w-full items-center justify-center rounded-xl border border-transparent text-left transition-colors duration-200 ${
+                  activeView === "configuration" || activeView === "admin"
+                    ? "bg-[var(--color-accent-bg)] text-accent"
+                    : "bg-transparent"
+                }`}
+                aria-label="Settings"
+                title="Settings"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+                  <Settings size={18} />
+                </span>
+              </button>
+
+              <div className="invisible absolute left-full top-0 z-50 ml-3 w-56 translate-x-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-x-0 group-hover:opacity-100">
+                <p className="px-3 py-2 text-sm font-bold text-main">
+                  Settings
+                </p>
+
+                <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
+                  USER CONTROL
+                </p>
+
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("admin")}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                  >
+                    User Management
+                  </button>
+                )}
+
+                {(isSuperAdmin || auth?.role === "owner") && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("configuration")}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                  >
+                    Invite Member
+                  </button>
+                )}
+
+                <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
+                  INTEGRATIONS
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveView("configuration")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                >
+                  Google Sheets
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="group">
+              <button
+                type="button"
+                onClick={() => setActiveView("configuration")}
+                className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent py-2.5 px-4 text-left transition-colors duration-200 ${
+                  activeView === "configuration" || activeView === "admin"
+                    ? "bg-[var(--color-accent-bg)] text-accent"
+                    : "bg-transparent"
+                }`}
+                aria-label="Settings"
+                title="Settings"
+              >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+                    <Settings size={18} />
+                  </span>
+                <span className="min-w-0 flex-1 truncate font-semibold">
+                  Settings
+                </span>
+                <ChevronRight
+                  size={16}
+                  className="shrink-0 transition-transform duration-200 group-hover:rotate-90"
+                />
+              </button>
+
+              <div className={`overflow-hidden transition-all duration-300 ease-out ${
+                activeView === "configuration" || activeView === "admin"
+                  ? "max-h-80 opacity-100"
+                  : "max-h-0 opacity-0 group-hover:max-h-80 group-hover:opacity-100"
+              }`}>
+                <p className="mt-5 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
+                  USER CONTROL
+                </p>
+
+                <div className="space-y-1">
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveView("admin")}
+                      className={`w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm transition-colors duration-200 ${
+                        activeView === "admin"
+                          ? "bg-[var(--color-accent-bg)] text-accent"
+                          : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                      }`}
+                    >
+                      User Management
+                    </button>
+                  )}
+
+                  {(isSuperAdmin || auth?.role === "owner") && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveView("configuration")}
+                      className="w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm text-[rgba(255,255,255,0.72)] transition-colors duration-200 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                    >
+                      Invite Member
+                    </button>
+                  )}
+                </div>
+
+                <p className="mt-5 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
+                  INTEGRATIONS
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveView("configuration")}
+                  className={`w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm transition-colors duration-200 ${
+                  activeView === "configuration"
+                    ? "bg-[var(--color-accent-bg)] text-accent"
+                    : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                }`}
+              >
+                  Google Sheets
+                </button>
+              </div>
+            </div>
+          )}
         </nav>
 
         <SidebarDataSourceIndicator
@@ -602,7 +797,7 @@ const Dashboard = ({ onLogout }) => {
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto]">
 
           {/* YEAR FILTER */}
           <select
@@ -661,16 +856,33 @@ const Dashboard = ({ onLogout }) => {
               <RefreshCw size={18} />
             </button>
 
-            <button
-              type="button"
-              onClick={onLogout}
-              className="theme-toggle h-11 w-full rounded-lg px-3 py-2 font-semibold sm:w-auto sm:px-4"
-            >
-              <LogOut size={18} />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
+            <div className="col-span-2 flex justify-end sm:col-span-4 xl:col-span-1">
+              <ProfileWidget auth={auth} onLogout={onLogout} />
+            </div>
           </div>
         </div>
+
+        {isTestMode && (
+          <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-bold">
+                Test User Mode
+              </p>
+              <p className="mt-1 truncate text-xs">
+                Anda sedang melihat dashboard sebagai {auth?.username || auth?.email || "test user"}.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onExitImpersonation}
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-950/50"
+            >
+              <LogOut size={16} />
+              Exit Test Mode
+            </button>
+          </div>
+        )}
 
         {shouldShowEmptyDashboard ? (
           <div className="panel rounded-lg p-6 shadow-lg">
@@ -765,23 +977,37 @@ const Dashboard = ({ onLogout }) => {
                 privacyMode={privacyMode}
               />
 
-              <AnomalyTable
-                data={anomalies}
-                privacyMode={privacyMode}
-              />
+              {hasPremiumAccess ? (
+                <AnomalyTable
+                  data={anomalies}
+                  privacyMode={privacyMode}
+                />
+              ) : (
+                <LockedFeature
+                  title="Decision Alert Terkunci"
+                  message="Anomaly detection dan decision alert tersedia untuk Owner dan Member premium."
+                />
+              )}
             </div>
 
             {/* AI INSIGHT */}
-            <div className="panel p-6 rounded-2xl">
-              <h2 className="text-2xl font-bold mb-4 text-accent">
-                AI Financial Insight
-              </h2>
+            {hasPremiumAccess && (
+              <div className="panel p-6 rounded-2xl">
+                <h2 className="text-2xl font-bold mb-4 text-accent">
+                  AI Financial Insight
+                </h2>
 
-              <p className="text-soft leading-8">
-                {insight}
-              </p>
-            </div>
+                <p className="text-soft leading-8">
+                  {insight}
+                </p>
+              </div>
+            )}
           </>
+        ) : activeView === "analytics" && !hasPremiumAccess ? (
+          <LockedFeature
+            title="Advanced Analytics Terkunci"
+            message="Role User Free Plan hanya mendapat grafik dan analisis dasar. Upgrade ke Owner atau Member premium untuk membuka advanced analytics."
+          />
         ) : activeView === "analytics" ? (
           <div className="grid grid-cols-1 gap-6">
             <div className="panel rounded-2xl p-3 shadow-lg">
@@ -871,12 +1097,22 @@ const Dashboard = ({ onLogout }) => {
               )}
             </div>
           </div>
+        ) : activeView === "budgeting" && !hasPremiumAccess ? (
+          <LockedFeature
+            title="Decision Alert Terkunci"
+            message="Budgeting alerts dan decision alert adalah fitur premium untuk Owner dan Member. User Free Plan tetap bisa melihat dashboard dasar."
+          />
         ) : activeView === "budgeting" ? (
           <BudgetingAlerts
             data={budgetForecast}
             theme={theme}
             privacyMode={privacyMode}
             autoBudget={autoBudget}
+          />
+        ) : activeView === "admin" && isSuperAdmin ? (
+          <AdminUsers
+            onImpersonate={onImpersonate}
+            onUnauthorized={onLogout}
           />
         ) : (
           <Configuration
@@ -885,13 +1121,16 @@ const Dashboard = ({ onLogout }) => {
             selectedYear={selectedYear}
             currentSheetName={currentSheetName}
             privacyMode={privacyMode}
+            userRole={auth?.role}
             onSaveChanges={handleSaveConfiguration}
             onUnauthorized={onLogout}
           />
         )}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden">
+      <nav className={`fixed inset-x-0 bottom-0 z-50 grid gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden ${
+        isSuperAdmin ? "grid-cols-5" : "grid-cols-4"
+      }`}>
         <button
           type="button"
           onClick={() => setActiveView("dashboard")}
@@ -916,6 +1155,11 @@ const Dashboard = ({ onLogout }) => {
         >
           <BarChart3 size={18} />
           Analytics
+          {!hasPremiumAccess && (
+            <span className="text-[9px] font-bold text-[var(--color-alert-text)]">
+              Locked
+            </span>
+          )}
         </button>
 
         <button
@@ -929,6 +1173,11 @@ const Dashboard = ({ onLogout }) => {
         >
           <BellRing size={18} />
           Budgeting
+          {!hasPremiumAccess && (
+            <span className="text-[9px] font-bold text-[var(--color-alert-text)]">
+              Locked
+            </span>
+          )}
         </button>
 
         <button
@@ -943,6 +1192,21 @@ const Dashboard = ({ onLogout }) => {
           <Settings size={18} />
           Configuration
         </button>
+
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setActiveView("admin")}
+            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
+              activeView === "admin"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "text-muted"
+            }`}
+          >
+            <ShieldCheck size={18} />
+            Admin
+          </button>
+        )}
       </nav>
     </div>
   );

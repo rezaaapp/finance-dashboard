@@ -10,6 +10,7 @@ const GoogleAuthCallback = ({ onLogin }) => {
     const name = params.get("name");
     const email = params.get("email");
     const userId = params.get("user_id");
+    const role = params.get("role");
 
     if (!token) {
       setError("Token login Google tidak ditemukan.");
@@ -21,6 +22,7 @@ const GoogleAuthCallback = ({ onLogin }) => {
       username: name || email || "Google User",
       email,
       userId,
+      role,
       provider: "google",
     });
 

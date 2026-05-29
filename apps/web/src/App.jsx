@@ -9,13 +9,22 @@ function App() {
     const username = localStorage.getItem("finance-dashboard-username");
     const email = localStorage.getItem("finance-dashboard-email");
     const userId = localStorage.getItem("finance-dashboard-user-id");
+    const role = localStorage.getItem("finance-dashboard-role");
+    const provider = localStorage.getItem("finance-dashboard-provider");
 
     return token
-      ? { token, username, email, userId }
+      ? { token, username, email, userId, role, provider }
       : null;
   });
 
   const handleLogin = (authData) => {
+    if (authData.provider === "impersonation" && auth?.provider !== "impersonation") {
+      localStorage.setItem(
+        "finance-dashboard-impersonator-auth",
+        JSON.stringify(auth)
+      );
+    }
+
     localStorage.setItem("finance-dashboard-token", authData.token);
     localStorage.setItem(
       "finance-dashboard-username",
@@ -30,7 +39,76 @@ function App() {
       localStorage.setItem("finance-dashboard-user-id", authData.userId);
     }
 
-    setAuth(authData);
+    if (authData.role) {
+      localStorage.setItem("finance-dashboard-role", authData.role);
+    }
+
+    if (authData.provider) {
+      localStorage.setItem("finance-dashboard-provider", authData.provider);
+    } else {
+      localStorage.removeItem("finance-dashboard-provider");
+    }
+
+    setAuth({
+      ...authData,
+      username: authData.username || authData.email || "User",
+    });
+  };
+
+  const restoreAuth = (nextAuth) => {
+    localStorage.setItem("finance-dashboard-token", nextAuth.token);
+    localStorage.setItem(
+      "finance-dashboard-username",
+      nextAuth.username || nextAuth.email || "User"
+    );
+
+    if (nextAuth.email) {
+      localStorage.setItem("finance-dashboard-email", nextAuth.email);
+    } else {
+      localStorage.removeItem("finance-dashboard-email");
+    }
+
+    if (nextAuth.userId) {
+      localStorage.setItem("finance-dashboard-user-id", nextAuth.userId);
+    } else {
+      localStorage.removeItem("finance-dashboard-user-id");
+    }
+
+    if (nextAuth.role) {
+      localStorage.setItem("finance-dashboard-role", nextAuth.role);
+    } else {
+      localStorage.removeItem("finance-dashboard-role");
+    }
+
+    if (nextAuth.provider) {
+      localStorage.setItem("finance-dashboard-provider", nextAuth.provider);
+    } else {
+      localStorage.removeItem("finance-dashboard-provider");
+    }
+
+    setAuth({
+      ...nextAuth,
+      username: nextAuth.username || nextAuth.email || "User",
+    });
+  };
+
+  const handleExitImpersonation = () => {
+    const storedAdminAuth = localStorage.getItem("finance-dashboard-impersonator-auth");
+
+    if (!storedAdminAuth) {
+      handleLogout();
+      return;
+    }
+
+    try {
+      const adminAuth = JSON.parse(storedAdminAuth);
+
+      localStorage.removeItem("finance-dashboard-impersonator-auth");
+      restoreAuth(adminAuth);
+    } catch (error) {
+      console.error(error);
+      handleLogout();
+    }
   };
 
   const handleLogout = () => {
@@ -38,6 +116,9 @@ function App() {
     localStorage.removeItem("finance-dashboard-username");
     localStorage.removeItem("finance-dashboard-email");
     localStorage.removeItem("finance-dashboard-user-id");
+    localStorage.removeItem("finance-dashboard-role");
+    localStorage.removeItem("finance-dashboard-provider");
+    localStorage.removeItem("finance-dashboard-impersonator-auth");
     setAuth(null);
   };
 
@@ -49,7 +130,14 @@ function App() {
     return <Login onLogin={handleLogin} />;
   }
 
-  return <Dashboard onLogout={handleLogout} />;
+  return (
+    <Dashboard
+      auth={auth}
+      onExitImpersonation={handleExitImpersonation}
+      onImpersonate={handleLogin}
+      onLogout={handleLogout}
+    />
+  );
 }
 
 export default App;

@@ -42,6 +42,7 @@ def login(payload: LoginRequest):
     return {
         "token": settings.DASHBOARD_AUTH_TOKEN,
         "username": payload.username,
+        "role": "super_admin",
     }
 
 
@@ -93,6 +94,9 @@ async def google_callback(
                     email=profile["email"],
                     name=profile["name"],
                     avatar_url=profile["avatar_url"],
+                    role="super_admin"
+                    if profile["email"].lower() in settings.SUPER_ADMIN_EMAILS
+                    else "user",
                 )
                 upsert_user_tokens(
                     connection,
@@ -122,6 +126,7 @@ async def google_callback(
             "user_id": str(user["id"]),
             "email": user["email"],
             "name": user["name"],
+            "role": user["role"],
             "workspace_id": str(workspace["id"]),
         })
 
@@ -137,6 +142,7 @@ async def google_callback(
             "email": user["email"],
             "name": user["name"],
             "avatar_url": user["avatar_url"],
+            "role": user["role"],
         },
         "workspace": {
             "id": str(workspace["id"]),

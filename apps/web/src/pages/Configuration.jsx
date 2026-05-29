@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Copy,
   Eye,
+  MailPlus,
   Link2,
   LoaderCircle,
   Plus,
@@ -16,6 +17,8 @@ import { useEffect, useState } from "react";
 
 import {
   getWorkspaceConfiguration,
+  getWorkspaceMembers,
+  inviteWorkspaceMember,
   refreshDashboardData,
   saveConfiguration,
   updateWorkspaceConfiguration,
@@ -61,7 +64,7 @@ const ConfigurationCard = ({
   description,
   children,
 }) => (
-  <section className="panel rounded-lg p-5 shadow-lg">
+  <section className="rounded-lg border border-gray-100 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
     <div className="mb-5 flex items-start gap-3">
       <div className="icon-badge rounded-xl p-3">
         <Icon size={22} />
@@ -89,6 +92,7 @@ const Configuration = ({
   selectedYear,
   currentSheetName,
   privacyMode,
+  userRole = "user",
   onSaveChanges,
   onUnauthorized,
 }) => {
@@ -96,6 +100,7 @@ const Configuration = ({
   const [draftPaydayStartDay, setDraftPaydayStartDay] = useState(paydayStartDay);
   const [draftPrivacyMode, setDraftPrivacyMode] = useState(privacyMode);
   const [workspaceName, setWorkspaceName] = useState("");
+  const [workspaceMembers, setWorkspaceMembers] = useState([]);
   const [activeGoogleSheetSources, setActiveGoogleSheetSources] = useState([]);
   const [maxGoogleSheetSources, setMaxGoogleSheetSources] = useState(5);
   const [draftGoogleSheetId, setDraftGoogleSheetId] = useState("");
@@ -103,10 +108,15 @@ const Configuration = ({
   const [isConnectingSheet, setIsConnectingSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDisconnectingSheet, setIsDisconnectingSheet] = useState(false);
+  const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isLoadingWorkspaceConfiguration, setIsLoadingWorkspaceConfiguration] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
   const [showSaved, setShowSaved] = useState(false);
   const [notification, setNotification] = useState(null);
   const [workspaceConfigurationError, setWorkspaceConfigurationError] = useState("");
+  const isGoogleSheetReadOnly = userRole === "member";
+  const canInviteMembers = userRole === "owner" || userRole === "super_admin";
 
   useEffect(() => {
     setDraftAutoBudget(autoBudget);
@@ -159,8 +169,10 @@ const Configuration = ({
         }
 
         const sources = normalizeGoogleSheetSources(response?.configuration);
+        const membersResponse = await getWorkspaceMembers();
 
         setWorkspaceName(response?.workspace?.name || "");
+        setWorkspaceMembers(membersResponse?.members || []);
         setActiveGoogleSheetSources(sources);
         setMaxGoogleSheetSources(
           response?.configuration?.max_google_sheet_sources || 5
@@ -407,6 +419,49 @@ const Configuration = ({
     }
   };
 
+  const handleInviteMember = async (event) => {
+    event.preventDefault();
+
+    try {
+      setIsInvitingMember(true);
+      setNotification(null);
+      setWorkspaceConfigurationError("");
+
+      const response = await inviteWorkspaceMember({
+        email: inviteEmail.trim(),
+        name: inviteName.trim(),
+      });
+
+      setWorkspaceMembers(response?.members || []);
+      setInviteEmail("");
+      setInviteName("");
+      setNotification({
+        type: "success",
+        title: "Member invited",
+        message: `${response?.member?.email || "Member"} sekarang terhubung ke workspace sebagai member.`,
+      });
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const message = err?.response?.data?.detail
+        || "Member gagal diundang ke workspace.";
+
+      setWorkspaceConfigurationError(message);
+      setNotification({
+        type: "error",
+        title: "Invite gagal",
+        message,
+      });
+    } finally {
+      setIsInvitingMember(false);
+    }
+  };
+
   return (
   <div className="min-w-0 overflow-x-hidden">
     {notification && (
@@ -549,10 +604,14 @@ const Configuration = ({
             type="button"
             onClick={handleAddConnection}
             disabled={
+              isGoogleSheetReadOnly
+              ||
               isConnectingSheet
               || activeGoogleSheetSources.length >= maxGoogleSheetSources
             }
-            className="secondary-button min-h-9 rounded-lg px-3 py-1.5 text-sm font-semibold"
+            className={`secondary-button min-h-9 rounded-lg px-3 py-1.5 text-sm font-semibold ${
+              isGoogleSheetReadOnly ? "hidden" : ""
+            }`}
           >
             {isConnectingSheet ? (
               <LoaderCircle size={15} className="animate-spin" />
@@ -592,20 +651,33 @@ const Configuration = ({
                       <Copy size={15} />
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDisconnectGoogleSheet(source.id)}
-                      disabled={isDisconnectingSheet}
-                      className="theme-toggle h-9 w-9 rounded-lg p-0 text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label={`Delete Source ${index + 1} connection`}
-                      title="Delete Connection"
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${source.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="theme-toggle inline-flex h-9 w-9 rounded-lg p-0"
+                      aria-label={`Open Source ${index + 1} in Google Sheets`}
+                      title="Open Google Sheets"
                     >
-                      {isDisconnectingSheet ? (
-                        <LoaderCircle size={15} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={15} />
-                      )}
-                    </button>
+                      <Link2 size={15} />
+                    </a>
+
+                    {!isGoogleSheetReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnectGoogleSheet(source.id)}
+                        disabled={isDisconnectingSheet}
+                        className="theme-toggle h-9 w-9 rounded-lg p-0 text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label={`Delete Source ${index + 1} connection`}
+                        title="Delete Connection"
+                      >
+                        {isDisconnectingSheet ? (
+                          <LoaderCircle size={15} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={15} />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -621,7 +693,16 @@ const Configuration = ({
           {activeGoogleSheetSources.length}/{maxGoogleSheetSources} sources connected.
         </p>
 
-        {isAddingConnection && activeGoogleSheetSources.length < maxGoogleSheetSources && (
+        {isGoogleSheetReadOnly && (
+          <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm font-semibold text-muted">
+            Role Member bisa membuka shortcut Google Sheets, tetapi konfigurasi
+            source bersifat read-only.
+          </p>
+        )}
+
+        {!isGoogleSheetReadOnly
+          && isAddingConnection
+          && activeGoogleSheetSources.length < maxGoogleSheetSources && (
           <>
             <label className="mt-5 block text-sm font-semibold text-muted">
               New Google Sheet ID
@@ -672,7 +753,95 @@ const Configuration = ({
           <Eye size={15} />
           This setting syncs with the dashboard privacy control after saving.
         </p>
+
       </ConfigurationCard>
+
+      {canInviteMembers && (
+        <ConfigurationCard
+          icon={MailPlus}
+          title="Workspace Members"
+          description="Manage team access and invite new members to this financial workspace."
+        >
+          <form onSubmit={handleInviteMember} className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-muted">
+                  Email
+                </span>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  placeholder="pasangan@example.com"
+                  className="form-control w-full rounded-xl px-4 py-3 text-sm"
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-muted">
+                  Member Name
+                </span>
+                <input
+                  value={inviteName}
+                  onChange={(event) => setInviteName(event.target.value)}
+                  placeholder="Nama member (opsional)"
+                  className="form-control w-full rounded-xl px-4 py-3 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-stretch sm:justify-end">
+              <button
+                type="submit"
+                disabled={isInvitingMember}
+                className="primary-button w-full rounded-lg px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              >
+                {isInvitingMember ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <MailPlus size={16} />
+                )}
+                {isInvitingMember ? "Inviting..." : "Invite Member"}
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted">
+              Current Members
+            </p>
+
+            {workspaceMembers.length > 0 ? (
+              <ul className="space-y-2">
+                {workspaceMembers.map((member) => (
+                  <li
+                    key={member.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3 dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-main">
+                        {member.name}
+                      </p>
+                      <p className="truncate text-xs text-muted">
+                        {member.email}
+                      </p>
+                    </div>
+
+                    <span className="shrink-0 rounded-full bg-[var(--color-accent-bg)] px-2 py-1 text-xs font-bold text-accent">
+                      {member.workspace_role}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">
+                Belum ada member di workspace ini.
+              </p>
+            )}
+          </div>
+        </ConfigurationCard>
+      )}
     </div>
 
     <div className="mt-8 flex justify-stretch sm:justify-end">

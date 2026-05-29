@@ -209,5 +209,28 @@ export const updateWorkspaceConfiguration = async (configuration) => {
 
   return response.data;
 };
+
+export const getWorkspaceMembers = async () => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/workspace/members`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
+export const inviteWorkspaceMember = async (member) => {
+  const response = await axios.post(
+    `${DASHBOARD_API_URL}/workspace/members`,
+    member,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
     
 

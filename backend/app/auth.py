@@ -75,12 +75,44 @@ def require_current_user(
     return auth_payload
 
 
+def require_super_admin(auth_payload=Depends(require_auth)):
+    if auth_payload is True:
+        return {
+            "sub": "legacy-admin",
+            "email": settings.DASHBOARD_USERNAME,
+            "name": settings.DASHBOARD_USERNAME,
+            "role": "super_admin",
+        }
+
+    if auth_payload.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required",
+        )
+
+    return auth_payload
+
+
+def require_premium_role(auth_payload=Depends(require_auth)):
+    if auth_payload is True:
+        return auth_payload
+
+    if auth_payload.get("role") not in {"super_admin", "owner", "member"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Premium access required",
+        )
+
+    return auth_payload
+
+
 def create_internal_token(user):
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user["id"]),
         "email": user["email"],
         "name": user["name"],
+        "role": user["role"],
         "iat": now,
         "exp": now + timedelta(minutes=settings.JWT_EXPIRES_IN_MINUTES),
     }

@@ -1,12 +1,16 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
-from app.auth import require_auth, require_current_user
+from pydantic import BaseModel
+from app.auth import require_auth, require_current_user, require_premium_role
 from app.database import get_db_connection
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
+    list_workspace_members,
     normalize_google_sheet_sources,
+    upsert_workspace_member,
     update_google_sheet_id_for_user,
 )
+from app.repositories.users import upsert_invited_member_user
 from scripts.data_processing import get_google_sheets_client
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
@@ -65,6 +69,39 @@ def get_active_sheet_context(auth_payload=Depends(require_auth)):
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+
+class WorkspaceMemberInvite(BaseModel):
+    email: str
+    name: str | None = None
+
+
+def serialize_workspace_member(member):
+    return {
+        "id": str(member["id"]),
+        "workspace_id": str(member["workspace_id"]),
+        "user_id": str(member["user_id"]),
+        "email": member["email"],
+        "name": member["name"],
+        "avatar_url": member["avatar_url"],
+        "workspace_role": member["role"],
+        "role": member["global_role"],
+        "created_at": member["created_at"],
+        "updated_at": member["updated_at"],
+    }
+
+
+def ensure_can_invite_workspace_member(current_user, workspace):
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if current_user.get("role") == "super_admin" or workspace["role"] == "owner":
+        return
+
+    raise HTTPException(
+        status_code=403,
+        detail="Only workspace owners can invite members.",
+    )
 
 @router.get("/summary")
 def summary(
@@ -138,6 +175,7 @@ def category_heatmap(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_category_heatmap(year, month, name, **sheet_context)
@@ -148,6 +186,7 @@ def transactions(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_transactions(year, month, name, **sheet_context)
@@ -158,6 +197,7 @@ def category_trends(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_category_trends(year, month, name, **sheet_context)
@@ -167,6 +207,7 @@ def source_dana_analytics(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_source_dana_analytics(year, month, name, **sheet_context)
@@ -176,6 +217,7 @@ def monthly_allocation(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_monthly_allocation(year, month, name, **sheet_context)
@@ -192,6 +234,7 @@ def spending_per_person(
 def personal_analytics(
     year: int | None = None,
     month: int | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_personal_analytics(year, month, **sheet_context)
@@ -201,6 +244,7 @@ def grocery_vs_food(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_grocery_vs_food(year, month, name, **sheet_context)
@@ -209,6 +253,7 @@ def grocery_vs_food(
 def anomalies(
     year: int | None = None,
     month: int | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_anomalies(year, month, **sheet_context)
@@ -217,6 +262,7 @@ def anomalies(
 def latest_insight(
     year: int | None = None,
     month: int | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_latest_insight(year, month, **sheet_context)
@@ -230,6 +276,7 @@ def available_years(sheet_context=Depends(get_active_sheet_context)):
 def budget_forecast(
     year: int | None = None,
     month: int | None = None,
+    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     return get_budget_forecast(year, month, **sheet_context)
@@ -290,11 +337,96 @@ def get_workspace_configuration(current_user=Depends(require_current_user)):
     }
 
 
+@router.get("/workspace/members")
+def get_workspace_members(current_user=Depends(require_current_user)):
+    with get_db_connection() as connection:
+        workspace = get_primary_workspace_for_user(
+            connection,
+            user_id=current_user["sub"],
+        )
+
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        members = list_workspace_members(
+            connection,
+            workspace_id=str(workspace["id"]),
+        )
+
+    return {
+        "workspace": {
+            "id": str(workspace["id"]),
+            "name": workspace["name"],
+            "role": workspace["role"],
+        },
+        "members": [serialize_workspace_member(member) for member in members],
+    }
+
+
+@router.post("/workspace/members")
+def invite_workspace_member(
+    payload: WorkspaceMemberInvite,
+    current_user=Depends(require_current_user),
+):
+    email = payload.email.strip().lower()
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+
+    invited_name = (
+        payload.name.strip()
+        if payload.name and payload.name.strip()
+        else email.split("@")[0]
+    )
+
+    with get_db_connection() as connection:
+        with connection.transaction():
+            workspace = get_primary_workspace_for_user(
+                connection,
+                user_id=current_user["sub"],
+            )
+            ensure_can_invite_workspace_member(current_user, workspace)
+
+            invited_user = upsert_invited_member_user(
+                connection,
+                email=email,
+                name=invited_name,
+            )
+            membership = upsert_workspace_member(
+                connection,
+                workspace_id=str(workspace["id"]),
+                user_id=str(invited_user["id"]),
+                role="member",
+            )
+            members = list_workspace_members(
+                connection,
+                workspace_id=str(workspace["id"]),
+            )
+
+    return {
+        "status": "ok",
+        "member": {
+            "id": str(invited_user["id"]),
+            "email": invited_user["email"],
+            "name": invited_user["name"],
+            "role": invited_user["role"],
+            "workspace_role": membership["role"],
+        },
+        "members": [serialize_workspace_member(member) for member in members],
+    }
+
+
 @router.put("/workspace/configuration")
 def update_workspace_configuration(
     config: dict = Body(...),
     current_user=Depends(require_current_user),
 ):
+    if current_user.get("role") == "member":
+        raise HTTPException(
+            status_code=403,
+            detail="Members can view Google Sheets shortcuts but cannot change workspace configuration.",
+        )
+
     google_sheet_id = config.get("google_sheet_id")
     google_sheet_sources = config.get("google_sheet_sources")
 
