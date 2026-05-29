@@ -10,16 +10,20 @@
     "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",
     "preview:web": "npm --prefix apps/web run preview",
     "preview:landing": "npm --prefix apps/landing run preview",
+    "db:check": "tsx backend/node/checkDatabaseConnection.ts",
+    "db:seed": "tsx backend/node/seedInitialWorkspace.ts",
     "classify:financial-data": "tsx backend/node/runSyncAndClassifyFinancialData.ts"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
     "axios": "^1.16.1",
     "googleapis": "^144.0.0",
+    "pg": "^8.21.0",
     "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
+    "@types/pg": "^8.20.0",
     "tailwindcss": "^4.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

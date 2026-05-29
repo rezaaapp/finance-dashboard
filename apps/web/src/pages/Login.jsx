@@ -1,7 +1,7 @@
-import { Lock, LogIn, User } from "lucide-react";
+import { KeyRound, Lock, LogIn, User } from "lucide-react";
 import { useState } from "react";
 
-import { login } from "../api/authApi";
+import { getGoogleLoginUrl, login } from "../api/authApi";
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState("");
@@ -41,6 +41,10 @@ const Login = ({ onLogin }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = getGoogleLoginUrl();
   };
 
   return (
@@ -109,6 +113,23 @@ const Login = ({ onLogin }) => {
         >
           <LogIn size={18} />
           {loading ? "Signing in..." : "Login"}
+        </button>
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-[var(--color-border)]" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+            atau
+          </span>
+          <div className="h-px flex-1 bg-[var(--color-border)]" />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          className="secondary-button w-full rounded-xl px-4 py-3 font-semibold"
+        >
+          <KeyRound size={18} />
+          Login dengan Google
         </button>
       </form>
     </div>

@@ -197,6 +197,7 @@ select {
 }
 
 .primary-button,
+.secondary-button,
 .theme-toggle {
   min-height: 42px;
   display: inline-flex;
@@ -214,6 +215,18 @@ select {
 
 .primary-button:hover {
   background: var(--color-accent-hover);
+}
+
+.secondary-button {
+  background: var(--color-panel);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.secondary-button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-panel-hover);
 }
 
 .theme-toggle {

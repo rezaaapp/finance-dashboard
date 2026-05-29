@@ -38,3 +38,5 @@ export const AUTH_API_URL = DASHBOARD_API_URL.replace(
   /\/api\/dashboard$/,
   "/api/auth"
 );
+
+export const AUTH_BASE_URL = AUTH_API_URL.replace(/\/api\/auth$/, "/auth");

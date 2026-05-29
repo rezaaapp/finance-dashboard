@@ -1,7 +1,9 @@
 from secrets import compare_digest
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
 
 from app.config import settings
 
@@ -32,15 +34,70 @@ def require_auth(
         )
 
     is_valid_scheme = credentials.scheme.lower() == "bearer"
-    is_valid_token = compare_digest(
-        credentials.credentials,
-        settings.DASHBOARD_AUTH_TOKEN
-    )
 
-    if not is_valid_scheme or not is_valid_token:
+    if not is_valid_scheme:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
         )
 
-    return True
+    bearer_token = credentials.credentials
+    is_static_token = compare_digest(
+        bearer_token,
+        settings.DASHBOARD_AUTH_TOKEN
+    )
+
+    if is_static_token:
+        return True
+
+    try:
+        return jwt.decode(
+            bearer_token,
+            settings.JWT_SECRET,
+            algorithms=["HS256"],
+        )
+    except jwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        ) from exc
+
+
+def create_internal_token(user):
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user["id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.JWT_EXPIRES_IN_MINUTES),
+    }
+
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+
+
+def create_oauth_state():
+    now = datetime.now(timezone.utc)
+    payload = {
+        "purpose": "google_oauth",
+        "iat": now,
+        "exp": now + timedelta(minutes=10),
+    }
+
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+
+
+def verify_oauth_state(state: str):
+    try:
+        payload = jwt.decode(state, settings.JWT_SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state",
+        ) from exc
+
+    if payload.get("purpose") != "google_oauth":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state",
+        )

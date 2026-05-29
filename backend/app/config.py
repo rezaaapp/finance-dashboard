@@ -26,6 +26,26 @@ safe_load_dotenv(REPO_ROOT / ".env")
 safe_load_dotenv(BACKEND_ROOT / ".env", override=True)
 
 class Settings:
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    DATABASE_SSL = os.getenv("DATABASE_SSL", "true").lower() != "false"
+    DATABASE_SSL_REJECT_UNAUTHORIZED = (
+        os.getenv("DATABASE_SSL_REJECT_UNAUTHORIZED", "true").lower()
+        != "false"
+    )
+    DATABASE_POOL_MAX = int(os.getenv("DATABASE_POOL_MAX", "10"))
+
+    GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+    GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+    GOOGLE_OAUTH_REDIRECT_URI = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
+    FRONTEND_AUTH_REDIRECT_URL = os.getenv("FRONTEND_AUTH_REDIRECT_URL")
+    JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("DASHBOARD_AUTH_TOKEN")
+    JWT_EXPIRES_IN_MINUTES = int(os.getenv("JWT_EXPIRES_IN_MINUTES", "10080"))
+    TOKEN_ENCRYPTION_SECRET = (
+        os.getenv("TOKEN_ENCRYPTION_SECRET")
+        or os.getenv("JWT_SECRET")
+        or os.getenv("DASHBOARD_AUTH_TOKEN")
+    )
+
     GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
     GOOGLE_SHEET_REGISTRY_JSON = os.getenv("GOOGLE_SHEET_REGISTRY_JSON", "{}")
     DASHBOARD_USERNAME = os.getenv("DASHBOARD_USERNAME")
@@ -87,6 +107,35 @@ class Settings:
 
     if not DASHBOARD_AUTH_TOKEN:
         raise ValueError("DASHBOARD_AUTH_TOKEN belum diset di .env")
+
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL belum diset di .env")
+
+    if not JWT_SECRET:
+        raise ValueError("JWT_SECRET atau DASHBOARD_AUTH_TOKEN belum diset di .env")
+
+    if not TOKEN_ENCRYPTION_SECRET:
+        raise ValueError(
+            "TOKEN_ENCRYPTION_SECRET, JWT_SECRET, atau DASHBOARD_AUTH_TOKEN "
+            "belum diset di .env"
+        )
+
+    def require_google_oauth_settings(self):
+        missing_keys = [
+            key
+            for key in [
+                "GOOGLE_OAUTH_CLIENT_ID",
+                "GOOGLE_OAUTH_CLIENT_SECRET",
+                "GOOGLE_OAUTH_REDIRECT_URI",
+            ]
+            if not getattr(self, key)
+        ]
+
+        if missing_keys:
+            raise ValueError(
+                "Google OAuth belum dikonfigurasi: "
+                + ", ".join(missing_keys)
+            )
 
     def get_available_registry_years(self):
         return sorted(

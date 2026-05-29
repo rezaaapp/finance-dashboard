@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.config import settings
+from app.database import close_database_pool
 
 app = FastAPI()
 
@@ -32,6 +33,11 @@ def root():
 def health_check():
     return {"status": "ok"}
 
+
+@app.on_event("shutdown")
+def shutdown_database_pool():
+    close_database_pool()
+
 # =========================
 # ROUTER
 # =========================
@@ -39,6 +45,13 @@ app.include_router(
     auth_router,
     prefix="/api/auth",
     tags=["Auth"]
+)
+
+app.include_router(
+    auth_router,
+    prefix="/auth",
+    tags=["Auth"],
+    include_in_schema=False,
 )
 
 app.include_router(
