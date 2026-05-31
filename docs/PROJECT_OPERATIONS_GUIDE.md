@@ -2,6 +2,30 @@
 
 Dokumen ini adalah panduan operasional project Financial Dashboard agar kamu bisa menjalankan, merawat, dan mengupdate data tanpa perlu meminta instruksi manual setiap kali.
 
+## Production Direction Notice
+
+Project ini masih dalam tahap development. Instruksi lokal di dokumen ini tetap
+valid untuk menjalankan project saat ini, termasuk penggunaan:
+
+- service account credentials untuk local development, personal testing, demo
+  internal, atau controlled testing
+- `GOOGLE_SHEET_REGISTRY_JSON` sebagai registry spreadsheet lokal/tahunan
+- generated AI classification JSON lokal di `backend/output/`
+
+Arah production yang lebih aman bukan memakai shared service account sebagai
+default onboarding user publik. Target arsitektur production adalah:
+
+- Google OAuth per user/workspace
+- refresh token disimpan terenkripsi
+- sumber Google Sheet disimpan di PostgreSQL
+- transaksi disinkronkan ke PostgreSQL
+- hasil AI classification disimpan di PostgreSQL
+- dashboard analytics membaca data dari PostgreSQL
+
+Bagian-bagian di bawah masih mempertahankan command lokal yang berguna untuk
+development saat ini. Jika ada perbedaan antara workflow lokal dan arah
+production, ikuti notice ini sebagai arah desain production.
+
 ## 1. Ringkasan Project
 
 Project ini terdiri dari:
@@ -108,7 +132,7 @@ GEMINI_CLASSIFICATION_MODEL=gemini-2.0-flash
 GEMINI_CLASSIFICATION_BATCH_SIZE=25
 ```
 
-Google service account, pilih salah satu:
+Google service account untuk lokal/testing, pilih salah satu:
 
 ```env
 GOOGLE_SERVICE_ACCOUNT_JSON=full_json_service_account
@@ -125,6 +149,12 @@ atau untuk local saja:
 ```env
 GOOGLE_APPLICATION_CREDENTIALS=backend/scripts/credentials.json
 ```
+
+Service account credentials hanya boleh dipakai untuk local development,
+personal testing, demo internal, atau controlled testing. Jangan gunakan service
+account sebagai mekanisme onboarding default untuk public user. Arah production
+adalah Google OAuth per user/workspace dengan refresh token yang disimpan
+terenkripsi.
 
 Frontend env penting:
 
@@ -193,11 +223,15 @@ Biasanya klik refresh dari UI sudah cukup.
 
 ## 7. AI Classification: Needs, Wants, Savings
 
-File hasil klasifikasi:
+File hasil klasifikasi lokal:
 
 ```text
 backend/output/financial-classification-reference.json
 ```
+
+File ini adalah generated local output. Isinya dapat mengandung data turunan
+dari transaksi pribadi, seperti nama transaksi, kategori, label Needs/Wants/
+Savings, dan metadata klasifikasi. File ini tidak boleh di-commit.
 
 Untuk menjalankan klasifikasi ulang setelah ada data baru di spreadsheet:
 
@@ -214,6 +248,15 @@ Script ini akan:
 - resume dari output lama jika sudah ada
 - hanya melabeli pasangan transaksi baru
 - menyimpan hasil ke `backend/output/financial-classification-reference.json`
+
+Untuk arah production, hasil AI classification sebaiknya disimpan di PostgreSQL,
+bukan file JSON lokal. Metadata yang perlu disiapkan untuk desain production:
+
+- label classification
+- confidence score
+- model name
+- prompt version
+- status manual override
 
 Jika terkena quota Gemini:
 
@@ -323,7 +366,8 @@ Backend endpoint:
 POST /api/dashboard/configuration
 ```
 
-Jika Google Sheets service account punya akses editor, backend akan menulis konfigurasi ke worksheet `Configuration`.
+Untuk workflow lokal/testing, jika Google Sheets service account punya akses
+editor, backend akan menulis konfigurasi ke worksheet `Configuration`.
 
 ## 12. Budgeting & Alerts
 
@@ -353,6 +397,12 @@ Runtime: Docker
 Root Directory: backend
 Dockerfile Path: backend/Dockerfile
 ```
+
+Catatan production direction: konfigurasi Render saat ini boleh dipakai untuk
+deployment development/internal demo. Untuk public user, jangan jadikan shared
+service account sebagai onboarding default. Arah production adalah Google OAuth
+per user/workspace, penyimpanan token terenkripsi, dan data operasional di
+PostgreSQL.
 
 Health check:
 
@@ -461,6 +511,7 @@ backend/.env
 apps/web/.env
 apps/landing/.env
 backend/scripts/credentials.json
+backend/output/*.json
 *.pem
 *.key
 service-account*.json
@@ -472,6 +523,12 @@ Jika GitHub push protection mendeteksi secret:
 2. Hapus secret dari history.
 3. Rotate service account key di Google Cloud.
 
+Checklist lengkap ada di:
+
+```text
+docs/SECURITY_CHECKLIST.md
+```
+
 ## 17. Troubleshooting Cepat
 
 ### Failed to load available years
@@ -481,7 +538,7 @@ Cek:
 - backend hidup di `http://127.0.0.1:8000`
 - token login valid
 - `GOOGLE_SHEET_REGISTRY_JSON` valid
-- service account punya akses ke spreadsheet
+- untuk workflow lokal, service account punya akses ke spreadsheet
 
 ### Tidak bisa login di production
 
@@ -494,7 +551,8 @@ Cek:
 
 ### Google auth MalformedError
 
-Pastikan service account JSON lengkap memiliki:
+Untuk workflow lokal/testing yang memakai service account, pastikan service
+account JSON lengkap memiliki:
 
 ```text
 type
@@ -503,6 +561,9 @@ private_key
 client_email
 token_uri
 ```
+
+Untuk public user di production, jangan arahkan user ke shared service account.
+Arah production adalah OAuth per user/workspace.
 
 ### Gemini quota exceeded
 
@@ -555,15 +616,20 @@ npm.cmd run classify:financial-data
 
 ## 19. File Output Penting
 
-Classification master reference:
+Classification reference lokal:
 
 ```text
 backend/output/financial-classification-reference.json
 ```
 
-File ini boleh dipakai untuk caching ke Supabase atau sebagai master map lokal.
+File ini adalah generated local output dari proses AI classification. Isinya
+dapat mengandung data turunan transaksi pribadi, sehingga tidak boleh
+di-commit.
 
-Untuk production Render, file `backend/output` tidak ikut deploy karena berisi data sensitif dan di-ignore Git. Jika ingin `Monthly Budget Allocation Trend` tetap aktif di production tanpa commit file JSON, encode file ini ke base64:
+Untuk workflow development/internal demo di Render, file `backend/output` tidak
+ikut deploy karena berisi data sensitif dan di-ignore Git. Jika benar-benar
+perlu menjalankan `Monthly Budget Allocation Trend` di deployment internal tanpa
+commit file JSON, encode file ini ke base64:
 
 ```powershell
 Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
@@ -575,6 +641,10 @@ Lalu simpan hasilnya sebagai environment variable Render:
 ```env
 FINANCIAL_CLASSIFICATION_JSON_BASE64=hasil_base64_financial_classification_reference
 ```
+
+Jangan gunakan pola file JSON/base64 ini sebagai desain final untuk public user.
+Arah production adalah menyimpan hasil AI classification di PostgreSQL, termasuk
+label, confidence, model name, prompt version, dan status manual override.
 
 ## 20. Catatan Prinsip Bahasa
 

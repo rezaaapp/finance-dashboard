@@ -10,6 +10,7 @@
     "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",
     "preview:web": "npm --prefix apps/web run preview",
     "preview:landing": "npm --prefix apps/landing run preview",
+    "security:check": "powershell -ExecutionPolicy Bypass -File scripts/security-check.ps1",
     "db:check": "tsx backend/node/checkDatabaseConnection.ts",
     "db:seed": "tsx backend/node/seedInitialWorkspace.ts",
     "db:backfill-workspaces": "tsx backend/node/backfillUserWorkspaces.ts",
