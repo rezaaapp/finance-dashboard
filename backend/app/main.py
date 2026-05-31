@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.config import settings
-from app.database import close_database_pool
+from app.database import check_database_connection, close_database_pool
 
 app = FastAPI()
 
@@ -33,6 +34,26 @@ def root():
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/health/db")
+def database_health_check():
+    result = check_database_connection()
+
+    if result["ok"]:
+        return {
+            "status": "ok",
+            "database": "connected",
+        }
+
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "error",
+            "database": "unavailable",
+            "message": "database connection failed",
+        },
+    )
 
 
 @app.on_event("shutdown")

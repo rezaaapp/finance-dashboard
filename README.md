@@ -66,6 +66,9 @@ File env utama:
 Isi semua nilai lokal dengan placeholder aman terlebih dahulu. Masukkan secret
 asli hanya di file `.env` lokal atau environment variable provider deployment.
 
+Panduan database Supabase/PostgreSQL tersedia di
+[docs/DATABASE.md](docs/DATABASE.md).
+
 ## Local Development
 
 Install dependency Node.js dari root:
@@ -177,6 +180,7 @@ Validasi koneksi database dan seed awal bila environment sudah siap:
 
 ```powershell
 npm run db:check
+npm run db:migrate
 npm run db:seed
 ```
 

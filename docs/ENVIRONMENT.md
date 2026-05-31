@@ -74,7 +74,13 @@ Variabel target OAuth:
 
 | Variabel | Wajib | Mode | Keterangan |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | Ya untuk database/PostgreSQL | OAuth target / multi-user | URL koneksi PostgreSQL untuk data user, workspace, sumber sheet, token, transaksi, dan arah production. Gunakan placeholder di example. |
+| `DATABASE_URL` | Ya untuk database/PostgreSQL | Runtime app / OAuth target / multi-user | URL koneksi PostgreSQL untuk runtime aplikasi, termasuk FastAPI dan script database Node saat ini. Gunakan placeholder di example. |
+| `DATABASE_MIGRATION_URL` | Opsional | Migration/direct connection | URL koneksi PostgreSQL terpisah untuk migration runner atau direct/session connection jika provider membutuhkan URL berbeda untuk schema changes. Kosongkan jika tidak diperlukan. |
+| `DATABASE_SSL` | Opsional | Semua mode database | `true` mengaktifkan SSL dan direkomendasikan untuk hosted Supabase/PostgreSQL. Local PostgreSQL dapat memakai `false`. Default runtime saat ini adalah SSL aktif jika variabel tidak diisi. |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | Opsional | Semua mode database | Mengontrol verifikasi sertifikat SSL. Gunakan `true` jika sertifikat server dapat diverifikasi; gunakan `false` hanya untuk kebutuhan lokal/proxy yang memang memerlukan relaxed verification. |
+| `DATABASE_POOL_MAX` | Opsional | Semua mode database | Batas maksimum koneksi pool database. Default saat ini `10`. |
+| `DATABASE_IDLE_TIMEOUT_MS` | Opsional | Node database scripts | Timeout idle pool Node dalam milidetik. Default saat ini `30000`. |
+| `DATABASE_CONNECTION_TIMEOUT_MS` | Opsional | Node database scripts | Timeout koneksi pool Node dalam milidetik. Default saat ini `10000`. |
 | `GOOGLE_SHEET_ID` | Ya untuk workflow lokal single sheet | Dev service account | ID Google Sheet utama untuk backend lokal. Jangan isi dengan ID asli di example. |
 | `GOOGLE_SHEET_REGISTRY_JSON` | Ya untuk workflow lokal multi-year | Dev service account | JSON registry spreadsheet tahunan, misalnya mapping tahun ke sheet. Dipakai saat ini untuk local/dev workflow. |
 | `DASHBOARD_USERNAME` | Ya untuk auth lokal saat ini | Dev/current auth | Username login dashboard lokal/internal. Jangan gunakan nilai pribadi di example. |
