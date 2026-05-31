@@ -41,10 +41,19 @@ class Settings:
 
     GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
     GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-    GOOGLE_OAUTH_REDIRECT_URI = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
+    GOOGLE_OAUTH_REDIRECT_URI = os.getenv(
+        "GOOGLE_OAUTH_REDIRECT_URI",
+        "http://127.0.0.1:8000/api/google/oauth/callback",
+    )
+    GOOGLE_OAUTH_SCOPES = os.getenv(
+        "GOOGLE_OAUTH_SCOPES",
+        "openid email profile https://www.googleapis.com/auth/spreadsheets.readonly",
+    )
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")
     FRONTEND_AUTH_REDIRECT_URL = os.getenv("FRONTEND_AUTH_REDIRECT_URL")
     JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("DASHBOARD_AUTH_TOKEN")
     JWT_EXPIRES_IN_MINUTES = int(os.getenv("JWT_EXPIRES_IN_MINUTES", "10080"))
+    TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY")
     TOKEN_ENCRYPTION_SECRET = (
         os.getenv("TOKEN_ENCRYPTION_SECRET")
         or os.getenv("JWT_SECRET")
@@ -130,6 +139,7 @@ class Settings:
                 "GOOGLE_OAUTH_CLIENT_ID",
                 "GOOGLE_OAUTH_CLIENT_SECRET",
                 "GOOGLE_OAUTH_REDIRECT_URI",
+                "GOOGLE_OAUTH_SCOPES",
             ]
             if not getattr(self, key)
         ]

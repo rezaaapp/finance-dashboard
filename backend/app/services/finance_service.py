@@ -8,7 +8,7 @@ from scripts.anomaly_detection import detect_anomaly_pengeluaran
 from app.config import settings
 import app.cache.data_cache as data_cache
 from datetime import datetime
-from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound
+from gspread.exceptions import APIError, SpreadsheetNotFound, WorksheetNotFound
 import pandas as pd
 
 FINANCIAL_DATA_COLUMNS = [
@@ -116,10 +116,12 @@ def _get_cache_key(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=T
     return ":".join(sorted(active_sheet_ids)) or "workspace-no-google-sheet"
 
 
-def get_financial_data(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
-    now = datetime.now()
-    cache_key = _get_cache_key(year, sheet_id, sheet_ids, use_default_sheet)
+def _is_google_sheets_quota_error(error):
+    response = getattr(error, "response", None)
+    return getattr(response, "status_code", None) == 429
 
+
+def _get_cached_financial_data(cache_key, now):
     if (
         cache_key in data_cache.cached_data_by_key
         and cache_key in data_cache.last_fetch_time_by_key
@@ -128,49 +130,115 @@ def get_financial_data(year=None, sheet_id=None, sheet_ids=None, use_default_she
         print(f"USING CACHE: {cache_key}")
         return data_cache.cached_data_by_key[cache_key]
 
-    if settings.USE_MOCK_DATA:
-        print("USING MOCK DATA")
-        data = load_mock_financial_data()
-    else:
-        active_sheet_ids = _get_active_sheet_ids(
-            year,
-            sheet_id,
-            sheet_ids,
-            use_default_sheet,
-        )
+    return None
 
-        if not active_sheet_ids:
-            return _empty_financial_data()
 
-        print(f"FETCH FROM {len(active_sheet_ids)} GOOGLE SHEET SOURCE(S): {year or 'latest'}")
-        financial_data_items = []
+def get_financial_data(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
+    now = datetime.now()
+    cache_key = _get_cache_key(year, sheet_id, sheet_ids, use_default_sheet)
+    cached_data = _get_cached_financial_data(cache_key, now)
 
-        for current_sheet_id in active_sheet_ids:
-            try:
-                financial_data_items.append(
-                    load_and_process_data_from_spreadsheet(current_sheet_id)
-                )
-            except SpreadsheetNotFound:
-                print(f"SKIP INVALID GOOGLE SHEET SOURCE: {current_sheet_id}")
+    if cached_data is not None:
+        return cached_data
 
-        data = _merge_financial_data(financial_data_items)
+    fetch_lock = data_cache.get_fetch_lock(cache_key)
 
-    data_cache.cached_data_by_key[cache_key] = data
-    data_cache.last_fetch_time_by_key[cache_key] = now
+    with fetch_lock:
+        now = datetime.now()
+        cached_data = _get_cached_financial_data(cache_key, now)
 
-    return data
+        if cached_data is not None:
+            return cached_data
+
+        if settings.USE_MOCK_DATA:
+            print("USING MOCK DATA")
+            data = load_mock_financial_data()
+        else:
+            active_sheet_ids = _get_active_sheet_ids(
+                year,
+                sheet_id,
+                sheet_ids,
+                use_default_sheet,
+            )
+
+            if not active_sheet_ids:
+                return _empty_financial_data()
+
+            print(f"FETCH FROM {len(active_sheet_ids)} GOOGLE SHEET SOURCE(S): {year or 'latest'}")
+            financial_data_items = []
+
+            for current_sheet_id in active_sheet_ids:
+                try:
+                    financial_data_items.append(
+                        load_and_process_data_from_spreadsheet(current_sheet_id)
+                    )
+                except SpreadsheetNotFound:
+                    print(f"SKIP INVALID GOOGLE SHEET SOURCE: {current_sheet_id}")
+                except APIError as error:
+                    if (
+                        _is_google_sheets_quota_error(error)
+                        and cache_key in data_cache.cached_data_by_key
+                    ):
+                        print(f"USING STALE CACHE AFTER GOOGLE SHEETS QUOTA ERROR: {cache_key}")
+                        return data_cache.cached_data_by_key[cache_key]
+
+                    raise
+
+            data = _merge_financial_data(financial_data_items)
+
+        data_cache.cached_data_by_key[cache_key] = data
+        data_cache.last_fetch_time_by_key[cache_key] = datetime.now()
+
+        return data
 
 
 def refresh_financial_data(year=None, sheet_id=None, sheet_ids=None, use_default_sheet=True):
     if year:
         cache_key = _get_cache_key(year, sheet_id, sheet_ids, use_default_sheet)
+        stale_data = data_cache.cached_data_by_key.get(cache_key)
+        stale_fetch_time = data_cache.last_fetch_time_by_key.get(cache_key)
         data_cache.cached_data_by_key.pop(cache_key, None)
         data_cache.last_fetch_time_by_key.pop(cache_key, None)
+
+        try:
+            return get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
+        except APIError as error:
+            if _is_google_sheets_quota_error(error) and stale_data is not None:
+                data_cache.cached_data_by_key[cache_key] = stale_data
+                data_cache.last_fetch_time_by_key[cache_key] = (
+                    stale_fetch_time or datetime.now()
+                )
+                print(f"USING STALE CACHE AFTER REFRESH QUOTA ERROR: {cache_key}")
+                return stale_data
+
+            raise
     else:
+        stale_cache_by_key = data_cache.cached_data_by_key.copy()
+        stale_fetch_time_by_key = data_cache.last_fetch_time_by_key.copy()
         data_cache.cached_data_by_key.clear()
         data_cache.last_fetch_time_by_key.clear()
 
-    return get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
+        try:
+            return get_financial_data(year, sheet_id, sheet_ids, use_default_sheet)
+        except APIError as error:
+            if _is_google_sheets_quota_error(error) and stale_cache_by_key:
+                data_cache.cached_data_by_key.update(stale_cache_by_key)
+                data_cache.last_fetch_time_by_key.update(stale_fetch_time_by_key)
+                fallback_cache_key = _get_cache_key(
+                    year,
+                    sheet_id,
+                    sheet_ids,
+                    use_default_sheet,
+                )
+
+                if fallback_cache_key in stale_cache_by_key:
+                    print(
+                        "USING STALE CACHE AFTER REFRESH QUOTA ERROR: "
+                        f"{fallback_cache_key}"
+                    )
+                    return stale_cache_by_key[fallback_cache_key]
+
+            raise
 
 
 # =========================

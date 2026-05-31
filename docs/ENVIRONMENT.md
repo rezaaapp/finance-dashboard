@@ -67,6 +67,7 @@ Variabel target OAuth:
 - `GOOGLE_OAUTH_CLIENT_SECRET`
 - `GOOGLE_OAUTH_REDIRECT_URI`
 - `GOOGLE_OAUTH_SCOPES`
+- `FRONTEND_URL`
 - `TOKEN_ENCRYPTION_KEY`
 - `DATABASE_URL`
 
@@ -97,14 +98,18 @@ Variabel target OAuth:
 | `GOOGLE_AUTH_MODE` | Target production | OAuth target | Mode akses Google. Arah production adalah `oauth`; service account hanya untuk dev/testing. |
 | `GOOGLE_OAUTH_CLIENT_ID` | Target production | OAuth target | Client ID Google OAuth untuk onboarding per user/workspace. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Target production | OAuth target | Client secret Google OAuth. Secret, simpan hanya di env provider atau file lokal ignored. |
-| `GOOGLE_OAUTH_REDIRECT_URI` | Target production | OAuth target | Callback URL backend untuk menerima respons OAuth. |
-| `GOOGLE_OAUTH_SCOPES` | Target production | OAuth target | Scope Google yang dibutuhkan, misalnya akses read-only spreadsheet dan profil user. |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Target production | OAuth target | Callback URL backend untuk menerima respons OAuth. Default lokal: `http://127.0.0.1:8000/api/google/oauth/callback`. |
+| `GOOGLE_OAUTH_SCOPES` | Target production | OAuth target | Scope Google yang dibutuhkan. Default Week 3/4: `openid email profile https://www.googleapis.com/auth/spreadsheets.readonly`. `openid email profile` dipakai untuk mengambil identitas dasar user/email, sedangkan `spreadsheets.readonly` dipakai untuk membaca Google Sheets. |
+| `FRONTEND_URL` | Target production | OAuth target | Base URL frontend untuk redirect UX setelah alur OAuth siap. Default lokal: `http://127.0.0.1:5173`. |
 | `TOKEN_ENCRYPTION_KEY` | Target production | OAuth target | Key untuk enkripsi token OAuth/refresh token. Secret, wajib kuat dan tidak boleh di-commit. |
 
 Catatan: file example juga dapat berisi variabel pendukung seperti
 `JWT_SECRET`, `TOKEN_ENCRYPTION_SECRET`, `SUPER_ADMIN_EMAILS`,
 `FRONTEND_AUTH_REDIRECT_URL`, dan konfigurasi pool database. Ikuti
 `backend/.env.example` sebagai sumber template lokal.
+
+Panduan setup Google Cloud dan OAuth ada di
+[`docs/GOOGLE_OAUTH.md`](GOOGLE_OAUTH.md).
 
 ## Dashboard Frontend Environment Variables
 

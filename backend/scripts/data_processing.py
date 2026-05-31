@@ -8,6 +8,8 @@ import json
 import os
 import sys
 
+from gspread.utils import absolute_range_name
+
 
 REQUIRED_SERVICE_ACCOUNT_FIELDS = {
     "type",
@@ -386,15 +388,39 @@ def load_and_process_data_from_spreadsheet(sheet_id):
     spreadsheet = client.open_by_key(sheet_id)
 
     df_list = []
+    worksheets = spreadsheet.worksheets()
+    ranges = [
+        absolute_range_name(worksheet.title)
+        for worksheet in worksheets
+    ]
 
-    # --- ambil semua sheet ---
-    for worksheet in spreadsheet.worksheets():
-        sheet_name = worksheet.title
-        records = worksheet.get_all_records()
+    if not ranges:
+        raise ValueError("Tidak ada data yang bisa diproses")
+
+    values_response = spreadsheet.values_batch_get(ranges)
+    value_ranges = values_response.get("valueRanges", [])
+
+    # Ambil seluruh worksheet dalam satu Sheets API read request.
+    for worksheet, value_range in zip(worksheets, value_ranges):
+        values = value_range.get("values", [])
+
+        if len(values) < 2:
+            continue  # skip sheet kosong atau hanya header
+
+        headers = [str(header).strip() for header in values[0]]
+        records = []
+
+        for row in values[1:]:
+            if not any(str(value).strip() for value in row):
+                continue
+
+            padded_row = row + [""] * (len(headers) - len(row))
+            records.append(dict(zip(headers, padded_row[:len(headers)])))
 
         if not records:
-            continue  # skip sheet kosong
+            continue
 
+        sheet_name = worksheet.title
         df = pd.DataFrame(records)
         df["Sheet"] = sheet_name
         df_list.append(df)

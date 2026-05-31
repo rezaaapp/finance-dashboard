@@ -126,10 +126,14 @@ Arah production adalah Google OAuth per user/workspace. Konfigurasi terkait:
 - `GOOGLE_OAUTH_CLIENT_SECRET`
 - `GOOGLE_OAUTH_REDIRECT_URI`
 - `GOOGLE_OAUTH_SCOPES`
+- `FRONTEND_URL`
 - `TOKEN_ENCRYPTION_KEY` atau `TOKEN_ENCRYPTION_SECRET`
 
 Dengan OAuth, setiap user/workspace menghubungkan akses Google Sheets miliknya
 sendiri, dan token harus disimpan secara aman serta dienkripsi.
+
+Panduan setup Google Cloud OAuth tersedia di
+[docs/GOOGLE_OAUTH.md](docs/GOOGLE_OAUTH.md).
 
 ## AI Classification
 

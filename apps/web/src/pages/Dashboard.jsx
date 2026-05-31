@@ -141,7 +141,11 @@ const Dashboard = ({
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [activeView, setActiveView] = useState("dashboard");
+  const [activeView, setActiveView] = useState(() => (
+    window.location.pathname.startsWith("/settings")
+      ? "configuration"
+      : "dashboard"
+  ));
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);

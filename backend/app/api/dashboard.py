@@ -11,22 +11,21 @@ from app.repositories.workspaces import (
     update_google_sheet_id_for_user,
 )
 from app.repositories.users import upsert_invited_member_user
-from scripts.data_processing import get_google_sheets_client
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
 
 
 def validate_google_sheet_sources(sources):
-    client = get_google_sheets_client([
-        "https://www.googleapis.com/auth/spreadsheets.readonly",
-    ])
-
     for source in sources:
         try:
-            client.open_by_key(source["id"])
             load_and_process_data_from_spreadsheet(source["id"])
         except Exception as exc:
             detail = str(exc)
+
+            if "429" in detail or "Quota exceeded" in detail:
+                raise ValueError(
+                    "Kuota baca Google Sheets sedang habis. Tunggu sekitar 1 menit, lalu coba lagi."
+                ) from exc
 
             if "Tidak ada data yang bisa diproses" in detail:
                 raise ValueError(

@@ -29,6 +29,12 @@ Bagian-bagian di bawah masih mempertahankan command lokal yang berguna untuk
 development saat ini. Jika ada perbedaan antara workflow lokal dan arah
 production, ikuti notice ini sebagai arah desain production.
 
+Panduan setup Google OAuth ada di:
+
+```text
+docs/GOOGLE_OAUTH.md
+```
+
 ## 1. Ringkasan Project
 
 Project ini terdiri dari:
@@ -158,6 +164,17 @@ personal testing, demo internal, atau controlled testing. Jangan gunakan service
 account sebagai mekanisme onboarding default untuk public user. Arah production
 adalah Google OAuth per user/workspace dengan refresh token yang disimpan
 terenkripsi.
+
+Konfigurasi OAuth foundation:
+
+```env
+GOOGLE_OAUTH_CLIENT_ID=replace_with_google_oauth_client_id.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=replace_with_google_oauth_client_secret
+GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/google/oauth/callback
+GOOGLE_OAUTH_SCOPES=openid email profile https://www.googleapis.com/auth/spreadsheets.readonly
+FRONTEND_URL=http://127.0.0.1:5173
+TOKEN_ENCRYPTION_KEY=replace_with_fernet_key_generated_by_Fernet_generate_key
+```
 
 Frontend env penting:
 

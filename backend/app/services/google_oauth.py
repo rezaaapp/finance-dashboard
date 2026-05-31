@@ -9,12 +9,6 @@ from app.config import settings
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
-GOOGLE_SCOPES = (
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/spreadsheets",
-)
 
 
 def build_google_authorization_url(*, state: str):
@@ -24,7 +18,7 @@ def build_google_authorization_url(*, state: str):
         "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
         "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
         "response_type": "code",
-        "scope": " ".join(GOOGLE_SCOPES),
+        "scope": settings.GOOGLE_OAUTH_SCOPES,
         "access_type": "offline",
         "prompt": "consent",
         "state": state,
@@ -59,6 +53,7 @@ async def exchange_authorization_code(*, code: str):
         "access_token": token_payload["access_token"],
         "refresh_token": token_payload.get("refresh_token"),
         "token_expires_at": token_expires_at,
+        "scope": token_payload.get("scope") or settings.GOOGLE_OAUTH_SCOPES,
     }
 
 

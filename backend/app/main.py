@@ -1,14 +1,40 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from gspread.exceptions import APIError
+
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
+from app.api.google_connection import router as google_connection_router
+from app.api.google_oauth import router as google_oauth_router
 from app.config import settings
 from app.database import check_database_connection, close_database_pool
 
 app = FastAPI()
+
+
+@app.exception_handler(APIError)
+def handle_google_sheets_api_error(_request, exc):
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", 500)
+
+    if status_code == 429:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": (
+                    "Kuota baca Google Sheets sedang habis. "
+                    "Tunggu sekitar 1 menit, lalu coba lagi."
+                )
+            },
+        )
+
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": "Google Sheets API error."},
+    )
 
 # =========================
 # CORS
@@ -81,5 +107,8 @@ app.include_router(
     prefix="/api/dashboard",
     tags=["Dashboard"]
 )
+
+app.include_router(google_connection_router)
+app.include_router(google_oauth_router)
 
 app.include_router(admin_router)
