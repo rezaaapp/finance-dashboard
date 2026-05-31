@@ -22,6 +22,9 @@ default onboarding user publik. Target arsitektur production adalah:
 - hasil AI classification disimpan di PostgreSQL
 - dashboard analytics membaca data dari PostgreSQL
 
+Panduan database Supabase/PostgreSQL tersedia di
+`docs/DATABASE.md`.
+
 Bagian-bagian di bawah masih mempertahankan command lokal yang berguna untuk
 development saat ini. Jika ada perbedaan antara workflow lokal dan arah
 production, ikuti notice ini sebagai arah desain production.

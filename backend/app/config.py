@@ -27,12 +27,17 @@ safe_load_dotenv(BACKEND_ROOT / ".env", override=True)
 
 class Settings:
     DATABASE_URL = os.getenv("DATABASE_URL")
+    DATABASE_MIGRATION_URL = os.getenv("DATABASE_MIGRATION_URL")
     DATABASE_SSL = os.getenv("DATABASE_SSL", "true").lower() != "false"
     DATABASE_SSL_REJECT_UNAUTHORIZED = (
         os.getenv("DATABASE_SSL_REJECT_UNAUTHORIZED", "true").lower()
         != "false"
     )
     DATABASE_POOL_MAX = int(os.getenv("DATABASE_POOL_MAX", "10"))
+    DATABASE_IDLE_TIMEOUT_MS = int(os.getenv("DATABASE_IDLE_TIMEOUT_MS", "30000"))
+    DATABASE_CONNECTION_TIMEOUT_MS = int(
+        os.getenv("DATABASE_CONNECTION_TIMEOUT_MS", "10000")
+    )
 
     GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
     GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
@@ -117,9 +122,6 @@ class Settings:
 
     if not DASHBOARD_AUTH_TOKEN:
         raise ValueError("DASHBOARD_AUTH_TOKEN belum diset di .env")
-
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL belum diset di .env")
 
     if not JWT_SECRET:
         raise ValueError("JWT_SECRET atau DASHBOARD_AUTH_TOKEN belum diset di .env")
