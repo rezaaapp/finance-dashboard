@@ -2,6 +2,7 @@ import {
   Bot,
   CalendarDays,
   CheckCircle2,
+  Cloud,
   Copy,
   Eye,
   MailPlus,
@@ -9,6 +10,7 @@ import {
   LoaderCircle,
   Plus,
   Trash2,
+  Unplug,
   XCircle,
   Settings,
   SlidersHorizontal,
@@ -23,6 +25,11 @@ import {
   saveConfiguration,
   updateWorkspaceConfiguration,
 } from "../api/dashboardApi";
+import {
+  disconnectGoogleOAuth,
+  getGoogleOAuthConnectionStatus,
+  startGoogleOAuth,
+} from "../api/googleOAuthApi";
 
 import { PRIVACY_MODES } from "../utils/privacy";
 
@@ -63,10 +70,11 @@ const ConfigurationCard = ({
   title,
   description,
   children,
+  className = "",
 }) => (
-  <section className="rounded-lg border border-gray-100 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
-    <div className="mb-5 flex items-start gap-3">
-      <div className="icon-badge rounded-xl p-3">
+  <section className={`rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:p-8 ${className}`}>
+    <div className="mb-6 flex items-start gap-4">
+      <div className="icon-badge rounded-2xl p-3">
         <Icon size={22} />
       </div>
 
@@ -106,14 +114,21 @@ const Configuration = ({
   const [draftGoogleSheetId, setDraftGoogleSheetId] = useState("");
   const [isAddingConnection, setIsAddingConnection] = useState(false);
   const [isConnectingSheet, setIsConnectingSheet] = useState(false);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDisconnectingSheet, setIsDisconnectingSheet] = useState(false);
+  const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
+  const [isLoadingGoogleConnection, setIsLoadingGoogleConnection] = useState(true);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [isLoadingWorkspaceConfiguration, setIsLoadingWorkspaceConfiguration] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [showSaved, setShowSaved] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [googleConnection, setGoogleConnection] = useState({
+    connected: false,
+  });
+  const [googleConnectionError, setGoogleConnectionError] = useState("");
   const [workspaceConfigurationError, setWorkspaceConfigurationError] = useState("");
   const isGoogleSheetReadOnly = userRole === "member";
   const canInviteMembers = userRole === "owner" || userRole === "super_admin";
@@ -207,6 +222,80 @@ const Configuration = ({
       isMounted = false;
     };
   }, [onUnauthorized]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadGoogleConnection = async () => {
+      try {
+        setIsLoadingGoogleConnection(true);
+        setGoogleConnectionError("");
+
+        const response = await getGoogleOAuthConnectionStatus();
+
+        if (isMounted) {
+          setGoogleConnection(response || { connected: false });
+        }
+      } catch (err) {
+        console.error(err);
+
+        if (err?.response?.status === 401) {
+          onUnauthorized();
+          return;
+        }
+
+        if (isMounted) {
+          setGoogleConnectionError("Google connection status is not available.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingGoogleConnection(false);
+        }
+      }
+    };
+
+    loadGoogleConnection();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [onUnauthorized]);
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    const googleConnected = queryParams.get("google_connected");
+
+    if (!googleConnected) {
+      return;
+    }
+
+    if (googleConnected === "success") {
+      setNotification({
+        type: "success",
+        title: "Google connected",
+        message: "Google account access is connected for this workspace.",
+      });
+      getGoogleOAuthConnectionStatus()
+        .then((response) => {
+          setGoogleConnection(response || { connected: false });
+        })
+        .catch((err) => {
+          console.error(err);
+          setGoogleConnectionError("Google connection status is not available.");
+        });
+    } else if (googleConnected === "failed") {
+      setNotification({
+        type: "error",
+        title: "Google connection failed",
+        message: "Google account access was not connected. Try again from this page.",
+      });
+    }
+
+    queryParams.delete("google_connected");
+    const nextQuery = queryParams.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, []);
 
   const handleSave = async () => {
     try {
@@ -344,6 +433,77 @@ const Configuration = ({
     }
   };
 
+  const handleConnectGoogle = async () => {
+    try {
+      setIsConnectingGoogle(true);
+      setGoogleConnectionError("");
+      setNotification(null);
+
+      const response = await startGoogleOAuth();
+
+      if (!response?.auth_url) {
+        throw new Error("Google authorization URL is not available.");
+      }
+
+      window.location.href = response.auth_url;
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const message = err?.response?.data?.detail
+        || "Google connection could not be started.";
+
+      setGoogleConnectionError(message);
+      setNotification({
+        type: "error",
+        title: "Google connection failed",
+        message,
+      });
+      setIsConnectingGoogle(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    try {
+      setIsDisconnectingGoogle(true);
+      setGoogleConnectionError("");
+      setNotification(null);
+
+      await disconnectGoogleOAuth();
+      const response = await getGoogleOAuthConnectionStatus();
+
+      setGoogleConnection(response || { connected: false });
+      setNotification({
+        type: "success",
+        title: "Google disconnected",
+        message: "Google account access has been disconnected.",
+      });
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const message = err?.response?.data?.detail
+        || "Google connection could not be disconnected.";
+
+      setGoogleConnectionError(message);
+      setNotification({
+        type: "error",
+        title: "Disconnect failed",
+        message,
+      });
+    } finally {
+      setIsDisconnectingGoogle(false);
+    }
+  };
+
   const handleCopyGoogleSheetId = async (sheetId) => {
     if (!sheetId) {
       return;
@@ -463,7 +623,7 @@ const Configuration = ({
   };
 
   return (
-  <div className="min-w-0 overflow-x-hidden">
+  <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden">
     {notification && (
       <div
         className={`fixed right-4 top-4 z-[80] flex w-[calc(100vw-2rem)] max-w-sm items-start gap-3 rounded-lg border px-4 py-3 shadow-lg ${
@@ -491,7 +651,7 @@ const Configuration = ({
       </div>
     )}
 
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         <h1 className="text-2xl font-bold text-main sm:text-3xl">
           Configuration
@@ -512,7 +672,7 @@ const Configuration = ({
       </div>
     </div>
 
-    <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
       <ConfigurationCard
         icon={CalendarDays}
         title="Financial Cycle Settings"
@@ -585,6 +745,7 @@ const Configuration = ({
         icon={Link2}
         title="System & Integration"
         description="Workspace-level Google Sheets source and account controls."
+        className="lg:col-span-2"
       >
         <label className="block text-sm font-semibold text-muted">
           Workspace
@@ -592,8 +753,96 @@ const Configuration = ({
         <input
           readOnly
           value={workspaceName || "No workspace found"}
-          className="form-control mt-2 w-full cursor-default rounded-xl px-4 py-3 text-sm"
+          className="form-control mt-2 w-full cursor-default rounded-2xl px-4 py-3 text-sm font-semibold"
         />
+
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:p-8">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--color-accent-bg)] text-accent">
+              <Cloud size={21} />
+            </div>
+
+            <div className="min-w-0">
+              <h3 className="text-lg font-bold leading-7 text-main">
+                Google Sheets Connection
+              </h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+                Connect your Google account to access Google Sheets data.
+              </p>
+            </div>
+          </div>
+
+          <div className="my-6 h-px bg-gray-200 dark:bg-[var(--color-border)]" />
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-subtle">
+                Connection Status
+              </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <span className={`inline-flex min-h-7 items-center rounded-full px-3 py-1 text-xs font-bold ${
+                  googleConnection.connected
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300"
+                }`}>
+                  {isLoadingGoogleConnection
+                    ? "Checking..."
+                    : googleConnection.connected ? "Connected" : "Not Connected"}
+                </span>
+
+                {googleConnection.connected && googleConnection.google_email && (
+                  <span className="min-w-0 max-w-full truncate text-sm font-semibold text-main">
+                    Connected as: {googleConnection.google_email}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:min-w-[320px]">
+              <button
+                type="button"
+                onClick={handleConnectGoogle}
+                disabled={isLoadingGoogleConnection || isConnectingGoogle}
+                className="primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isConnectingGoogle ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <Cloud size={16} />
+                )}
+                {googleConnection.connected ? "Reconnect Google" : "Connect Google"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDisconnectGoogle}
+                disabled={
+                  isLoadingGoogleConnection
+                  || isDisconnectingGoogle
+                  || !googleConnection.connected
+                }
+                className="secondary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400 disabled:opacity-100 dark:disabled:border-white/10 dark:disabled:bg-white/5 dark:disabled:text-gray-500"
+              >
+                {isDisconnectingGoogle ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <Unplug size={16} />
+                )}
+                Disconnect
+              </button>
+            </div>
+          </div>
+
+          {googleConnectionError && (
+            <div className="mt-6 flex w-full items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 shadow-sm dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
+              <XCircle size={17} className="mt-0.5 shrink-0" />
+              <p className="min-w-0">
+                {googleConnectionError}
+              </p>
+            </div>
+          )}
+        </div>
 
         <div className="mt-5 flex items-center justify-between gap-3">
           <label className="block text-sm font-semibold text-muted">
