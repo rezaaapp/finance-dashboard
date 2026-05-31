@@ -7,12 +7,12 @@ export type TrackedSpreadsheet = {
 };
 
 export type FinancialClassificationPrediction = {
-  input_title: string;
-  input_category: string;
-  cleaned_merchant: string;
-  allocation_type: "Needs" | "Wants" | "Savings";
-  confidence_score: number;
-};
+   input_title: string;
+   input_category: string;
+   cleaned_merchant: string;
+   allocation_type: "Needs" | "Wants" | "Savings" | "Income";
+   confidence_score: number;
+ };
 
 type UniqueTransactionPair = {
   input_title: string;
@@ -43,17 +43,19 @@ const ai = new GoogleGenAI({
 const SYSTEM_INSTRUCTION = `
 You are an expert financial data engineer specializing in the Indonesian market.
 Analyze the input array of transaction pairs.
-Your sole task is to assign an accurate 50/30/20 budget allocation type
-("Needs", "Wants", or "Savings") to each pair based on financial rules and
+Your sole task is to assign an accurate budget allocation type
+("Needs", "Wants", "Savings", or "Income") to each pair based on financial rules and
 clean up the merchant name.
 
-Indonesian context:
+Indonesican context:
 - "Kopi", "Cafe", "Gojek/Grab Food", "Jajan", snacks, restaurants,
   entertainment, beauty, cosmetics, and non-essential shopping are usually Wants.
 - "PLN", "Listrik", "Sewa Apartemen", "Sembako", rent, electricity, water,
   internet, insurance, groceries, health, and essential transportation are usually Needs.
 - "Bibit", "Ajaib", "Saham", "Investasi", "Reksadana", deposits, emergency
   funds, and explicit saving transfers are Savings.
+- "Gaji", "Bonus", "Hadiah", "Refund", "Cashback", "Investasi returns",
+  "Dividen", "Bunga", and any incoming money that increases your total wealth are Income.
 
 Return only raw JSON. Do not include markdown, explanations, or prose.
 The JSON must match:
@@ -63,7 +65,7 @@ The JSON must match:
       "input_title": "string",
       "input_category": "string",
       "cleaned_merchant": "string",
-      "allocation_type": "Needs" | "Wants" | "Savings",
+      "allocation_type": "Needs" | "Wants" | "Savings" | "Income",
       "confidence_score": number
     }
   ]
@@ -157,15 +159,15 @@ const getGoogleSheetsAuth = () => {
 };
 
 const validatePrediction = (
-  prediction: FinancialClassificationPrediction
-) => (
-  prediction
-  && typeof prediction.input_title === "string"
-  && typeof prediction.input_category === "string"
-  && typeof prediction.cleaned_merchant === "string"
-  && ["Needs", "Wants", "Savings"].includes(prediction.allocation_type)
-  && typeof prediction.confidence_score === "number"
-);
+   prediction: FinancialClassificationPrediction
+ ) => (
+   prediction
+   && typeof prediction.input_title === "string"
+   && typeof prediction.input_category === "string"
+   && typeof prediction.cleaned_merchant === "string"
+   && ["Needs", "Wants", "Savings", "Income"].includes(prediction.allocation_type)
+   && typeof prediction.confidence_score === "number"
+ );
 
 export async function syncAndClassifyFinancialData(
   sheets: TrackedSpreadsheet[],
@@ -211,41 +213,60 @@ export async function syncAndClassifyFinancialData(
         range: quoteSheetName(worksheetTitle),
       });
 
-      const rows = valuesResponse.data.values ?? [];
+       const rows = valuesResponse.data.values ?? [];
 
-      if (rows.length < 2) {
-        continue;
-      }
+       if (rows.length === 0) {
+         continue;
+       }
 
-      const headers = rows[0];
-      const titleIndex = findColumnIndex(headers, "Nama Transaksi");
-      const categoryIndex = findColumnIndex(headers, "Kategori");
+       // Find header row containing both "Nama Transaksi" and "Kategori"
+       let headerRowIndex = -1;
+       const maxRowsToSearch = Math.min(10, rows.length);
+       for (let i = 0; i < maxRowsToSearch; i++) {
+         const titleIdx = findColumnIndex(rows[i], "Nama Transaksi");
+         const categoryIdx = findColumnIndex(rows[i], "Kategori");
+         if (titleIdx !== -1 && categoryIdx !== -1) {
+           headerRowIndex = i;
+           break;
+         }
+       }
 
-      if (titleIndex === -1 || categoryIndex === -1) {
-        continue;
-      }
+       if (headerRowIndex === -1) {
+         // Header not found in first rows; skip this worksheet
+         continue;
+       }
 
-      for (const row of rows.slice(1)) {
-        const title = String(row[titleIndex] ?? "").trim();
-        const category = String(row[categoryIndex] ?? "").trim();
+       const headers = rows[headerRowIndex];
+       const titleIndex = findColumnIndex(headers, "Nama Transaksi");
+       const categoryIndex = findColumnIndex(headers, "Kategori");
 
-        if (!category) {
-          continue;
-        }
+       if (titleIndex === -1 || categoryIndex === -1) {
+         continue;
+       }
 
-        if (!title) {
-          continue;
-        }
+       // Process data rows after the header row
+       for (let r = headerRowIndex + 1; r < rows.length; r++) {
+         const row = rows[r];
+         const title = String(row[titleIndex] ?? "").trim();
+         const category = String(row[categoryIndex] ?? "").trim();
 
-        const compositeKey = buildCompositeKey(title, category);
+         if (!category) {
+           continue;
+         }
 
-        if (!uniquePairsByKey.has(compositeKey)) {
-          uniquePairsByKey.set(compositeKey, {
-            input_title: title,
-            input_category: category,
-          });
-        }
-      }
+         if (!title) {
+           continue;
+         }
+
+         const compositeKey = buildCompositeKey(title, category);
+
+         if (!uniquePairsByKey.has(compositeKey)) {
+           uniquePairsByKey.set(compositeKey, {
+             input_title: title,
+             input_category: category,
+           });
+         }
+       }
     }
   }
 
