@@ -45,6 +45,10 @@ class Settings:
         "GOOGLE_OAUTH_REDIRECT_URI",
         "http://127.0.0.1:8000/api/google/oauth/callback",
     )
+    GOOGLE_LOGIN_REDIRECT_URI = os.getenv(
+        "GOOGLE_LOGIN_REDIRECT_URI",
+        "http://127.0.0.1:8000/auth/google/callback",
+    )
     GOOGLE_OAUTH_SCOPES = os.getenv(
         "GOOGLE_OAUTH_SCOPES",
         "openid email profile https://www.googleapis.com/auth/spreadsheets.readonly",

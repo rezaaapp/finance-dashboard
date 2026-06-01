@@ -6,9 +6,11 @@ from gspread.exceptions import APIError
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
+from app.api.data_sources import router as data_sources_router
 from app.api.dashboard import router as dashboard_router
 from app.api.google_connection import router as google_connection_router
 from app.api.google_oauth import router as google_oauth_router
+from app.api.sync_jobs import router as sync_jobs_router
 from app.config import settings
 from app.database import check_database_connection, close_database_pool
 
@@ -110,5 +112,7 @@ app.include_router(
 
 app.include_router(google_connection_router)
 app.include_router(google_oauth_router)
+app.include_router(data_sources_router)
+app.include_router(sync_jobs_router)
 
 app.include_router(admin_router)

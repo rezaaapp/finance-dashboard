@@ -13,9 +13,10 @@ import {
 } from "../../utils/privacy";
 import { categoricalChartColors, chartTheme } from "../../theme/chartTheme";
 
-const PieCategoryChart = ({ data, theme = "dark", privacyMode }) => {
+const PieCategoryChart = ({ data = [], theme = "dark", privacyMode }) => {
   const colors = chartTheme[theme] || chartTheme.dark;
   const chartData = maskChartRows(data, ["Harga"], privacyMode);
+  const hasData = chartData.some((row) => Number(row.Harga || 0) > 0);
 
   return (
     <div className="panel rounded-lg p-5 shadow-lg">
@@ -24,7 +25,12 @@ const PieCategoryChart = ({ data, theme = "dark", privacyMode }) => {
         Spending by Category
       </h2>
 
-      <div className="h-[320px]">
+      {!hasData ? (
+        <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
+          No expense categories available for this period.
+        </div>
+      ) : (
+        <div className="h-[320px] min-w-0">
 
         <ResponsiveContainer width="100%" height="100%">
 
@@ -64,7 +70,8 @@ const PieCategoryChart = ({ data, theme = "dark", privacyMode }) => {
 
         </ResponsiveContainer>
 
-      </div>
+        </div>
+      )}
 
     </div>
   );

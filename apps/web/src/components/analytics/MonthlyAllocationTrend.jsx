@@ -148,7 +148,7 @@ const MonthlyAllocationTrend = ({
           Monthly Budget Allocation Trend
         </h2>
         <p className="mt-1 text-sm text-muted">
-          50/30/20 allocation view powered by AI transaction classification.
+          50/30/20 allocation view from synced transaction direction and category data.
         </p>
       </div>
 

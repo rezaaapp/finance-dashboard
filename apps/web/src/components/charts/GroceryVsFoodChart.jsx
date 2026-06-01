@@ -88,9 +88,12 @@ const CustomTooltip = ({
   );
 };
 
-const GroceryVsFoodChart = ({ data, theme = "dark", privacyMode }) => {
+const GroceryVsFoodChart = ({ data = [], theme = "dark", privacyMode }) => {
   const colors = chartTheme[theme] || chartTheme.dark;
   const chartData = maskChartRows(data, ["Grocery", "Makanan"], privacyMode);
+  const hasData = chartData.some((row) => (
+    Number(row.Grocery || 0) > 0 || Number(row.Makanan || 0) > 0
+  ));
 
   return (
     <div className="panel rounded-2xl p-5 shadow-lg">
@@ -104,9 +107,17 @@ const GroceryVsFoodChart = ({ data, theme = "dark", privacyMode }) => {
         </div>
       </div>
 
-      <div className="h-[360px]">
+      {!hasData ? (
+        <div className="flex h-[360px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
+          No grocery or food expenses available for this period.
+        </div>
+      ) : (
+        <div className="h-[360px] min-w-0">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+          >
             <CartesianGrid
               strokeDasharray="3 3"
               stroke={colors.grid}
@@ -151,7 +162,8 @@ const GroceryVsFoodChart = ({ data, theme = "dark", privacyMode }) => {
             />
           </BarChart>
         </ResponsiveContainer>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

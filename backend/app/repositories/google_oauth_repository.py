@@ -1,16 +1,23 @@
 from psycopg.rows import dict_row
 
 
+def _normalize_scopes(scopes: str | list[str] | tuple[str, ...]):
+    if isinstance(scopes, str):
+        return [scope for scope in scopes.split() if scope]
+
+    return list(scopes or [])
+
+
 def upsert_google_oauth_connection(
     connection,
     *,
     workspace_id: str,
     user_id: str,
-    google_email: str,
+    google_email: str | None,
     access_token_encrypted: str,
     refresh_token_encrypted: str | None,
     token_expiry,
-    scopes: str,
+    scopes: str | list[str] | tuple[str, ...],
     status: str = "active",
 ):
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -53,11 +60,11 @@ def upsert_google_oauth_connection(
             (
                 workspace_id,
                 user_id,
-                google_email.lower(),
+                google_email.lower() if google_email else None,
                 access_token_encrypted,
                 refresh_token_encrypted,
                 token_expiry,
-                scopes,
+                _normalize_scopes(scopes),
                 status,
             ),
         )
@@ -72,8 +79,22 @@ def get_active_google_oauth_connection(
     user_id: str | None = None,
 ):
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
+        if user_id:
+            where_clause = """
+            where workspace_id = %s
+              and user_id = %s
+              and status = 'active'
             """
+            params = (workspace_id, user_id)
+        else:
+            where_clause = """
+            where workspace_id = %s
+              and status = 'active'
+            """
+            params = (workspace_id,)
+
+        cursor.execute(
+            f"""
             select
                 id,
                 workspace_id,
@@ -87,13 +108,11 @@ def get_active_google_oauth_connection(
                 created_at,
                 updated_at
             from google_oauth_connections
-            where workspace_id = %s
-              and (%s is null or user_id = %s)
-              and status = 'active'
+            {where_clause}
             order by updated_at desc
             limit 1
             """,
-            (workspace_id, user_id, user_id),
+            params,
         )
 
         return cursor.fetchone()
@@ -106,8 +125,22 @@ def get_google_oauth_connection_status(
     user_id: str | None = None,
 ):
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
+        if user_id:
+            where_clause = """
+            where workspace_id = %s
+              and user_id = %s
+              and status = 'active'
             """
+            params = (workspace_id, user_id)
+        else:
+            where_clause = """
+            where workspace_id = %s
+              and status = 'active'
+            """
+            params = (workspace_id,)
+
+        cursor.execute(
+            f"""
             select
                 id,
                 workspace_id,
@@ -116,13 +149,11 @@ def get_google_oauth_connection_status(
                 status,
                 updated_at
             from google_oauth_connections
-            where workspace_id = %s
-              and (%s is null or user_id = %s)
-              and status = 'active'
+            {where_clause}
             order by updated_at desc
             limit 1
             """,
-            (workspace_id, user_id, user_id),
+            params,
         )
 
         return cursor.fetchone()
@@ -135,17 +166,29 @@ def disconnect_google_oauth_connection(
     user_id: str | None = None,
 ):
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
+        if user_id:
+            where_clause = """
+            where workspace_id = %s
+              and user_id = %s
+              and status = 'active'
             """
+            params = (workspace_id, user_id)
+        else:
+            where_clause = """
+            where workspace_id = %s
+              and status = 'active'
+            """
+            params = (workspace_id,)
+
+        cursor.execute(
+            f"""
             update google_oauth_connections
             set
                 status = 'disconnected',
                 access_token_encrypted = null,
                 refresh_token_encrypted = null,
                 updated_at = now()
-            where workspace_id = %s
-              and (%s is null or user_id = %s)
-              and status = 'active'
+            {where_clause}
             returning
                 id,
                 workspace_id,
@@ -154,7 +197,7 @@ def disconnect_google_oauth_connection(
                 status,
                 updated_at
             """,
-            (workspace_id, user_id, user_id),
+            params,
         )
 
         return cursor.fetchone()

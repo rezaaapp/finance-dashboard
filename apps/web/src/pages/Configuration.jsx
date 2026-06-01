@@ -3,33 +3,37 @@ import {
   CalendarDays,
   CheckCircle2,
   Cloud,
-  Copy,
   Eye,
   MailPlus,
   Link2,
   LoaderCircle,
-  Plus,
+  RefreshCw,
   Trash2,
   Unplug,
   XCircle,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   getWorkspaceConfiguration,
   getWorkspaceMembers,
   inviteWorkspaceMember,
-  refreshDashboardData,
   saveConfiguration,
-  updateWorkspaceConfiguration,
 } from "../api/dashboardApi";
 import {
   disconnectGoogleOAuth,
   getGoogleOAuthConnectionStatus,
   startGoogleOAuth,
 } from "../api/googleOAuthApi";
+import {
+  createGoogleSheetSource,
+  deleteGoogleSheetSource,
+  getGoogleSheetSources,
+  syncGoogleSheetSource,
+  testGoogleSheetSource,
+} from "../api/googleSheetSourcesApi";
 
 import { PRIVACY_MODES } from "../utils/privacy";
 
@@ -39,30 +43,80 @@ const privacyOptions = [
   { label: "Guest", value: PRIVACY_MODES.guest },
 ];
 
-const truncateMiddle = (value, head = 6, tail = 6) => {
-  if (!value || value.length <= head + tail + 3) {
-    return value;
+const formatSyncTimestamp = (value) => {
+  if (!value) {
+    return "Never synced";
   }
 
-  return `${value.slice(0, head)}...${value.slice(-tail)}`;
+  try {
+    return new Intl.DateTimeFormat("en", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return "Last sync unavailable";
+  }
 };
 
-const normalizeGoogleSheetSources = (configuration = {}) => {
-  if (Array.isArray(configuration.google_sheet_sources)) {
-    return configuration.google_sheet_sources
-      .map((source, index) => ({
-        id: source.id || source.google_sheet_id || "",
-        label: source.label || `Source ${index + 1}`,
-      }))
-      .filter((source) => source.id);
+const formatReasonLabel = (reason) => (
+  String(reason || "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+);
+
+const hasReasonEntries = (reasons = {}) => Object.keys(reasons || {}).length > 0;
+
+const SyncReasonBreakdown = ({ title, reasons, tone = "muted" }) => {
+  if (!hasReasonEntries(reasons)) {
+    return null;
   }
 
-  return configuration.google_sheet_id
-    ? [{
-        id: configuration.google_sheet_id,
-        label: "Source 1",
-      }]
-    : [];
+  const toneClass = tone === "warning"
+    ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200"
+    : "border-gray-200 bg-white text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]";
+
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+      <p className="font-semibold text-main">{title}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {Object.entries(reasons).map(([reason, count]) => (
+          <span
+            key={reason}
+            className="rounded-lg border border-current/20 px-2 py-1 font-semibold"
+          >
+            {formatReasonLabel(reason)}: {count}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const SyncSamples = ({ title, samples = [] }) => {
+  if (!samples.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
+      <p className="font-semibold text-main">{title}</p>
+      <ul className="mt-2 space-y-1">
+        {samples.slice(0, 6).map((sample, index) => (
+          <li
+            key={`${sample.sheet_name}-${sample.row_number}-${sample.reason}-${index}`}
+            className="text-muted"
+          >
+            {sample.sheet_name || "Unknown sheet"}
+            {sample.row_number ? ` row ${sample.row_number}` : ""}:{" "}
+            {formatReasonLabel(sample.reason)}
+            {sample.category ? ` (${sample.category})` : ""}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 };
 
 const ConfigurationCard = ({
@@ -98,7 +152,6 @@ const Configuration = ({
   autoBudget,
   paydayStartDay,
   selectedYear,
-  currentSheetName,
   privacyMode,
   userRole = "user",
   onSaveChanges,
@@ -109,29 +162,54 @@ const Configuration = ({
   const [draftPrivacyMode, setDraftPrivacyMode] = useState(privacyMode);
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
-  const [activeGoogleSheetSources, setActiveGoogleSheetSources] = useState([]);
-  const [maxGoogleSheetSources, setMaxGoogleSheetSources] = useState(5);
-  const [draftGoogleSheetId, setDraftGoogleSheetId] = useState("");
-  const [isAddingConnection, setIsAddingConnection] = useState(false);
-  const [isConnectingSheet, setIsConnectingSheet] = useState(false);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDisconnectingSheet, setIsDisconnectingSheet] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
   const [isLoadingGoogleConnection, setIsLoadingGoogleConnection] = useState(true);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const [isTestingSource, setIsTestingSource] = useState(false);
+  const [isSavingSource, setIsSavingSource] = useState(false);
+  const [syncingSourceId, setSyncingSourceId] = useState("");
+  const [deletingSourceId, setDeletingSourceId] = useState("");
   const [isInvitingMember, setIsInvitingMember] = useState(false);
-  const [isLoadingWorkspaceConfiguration, setIsLoadingWorkspaceConfiguration] = useState(true);
+  const [, setIsLoadingWorkspaceConfiguration] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState("");
   const [showSaved, setShowSaved] = useState(false);
   const [notification, setNotification] = useState(null);
   const [googleConnection, setGoogleConnection] = useState({
     connected: false,
   });
+  const [googleSheetSources, setGoogleSheetSources] = useState([]);
+  const [sourceTestResult, setSourceTestResult] = useState(null);
+  const [sourceError, setSourceError] = useState("");
+  const [syncResults, setSyncResults] = useState({});
   const [googleConnectionError, setGoogleConnectionError] = useState("");
   const [workspaceConfigurationError, setWorkspaceConfigurationError] = useState("");
-  const isGoogleSheetReadOnly = userRole === "member";
   const canInviteMembers = userRole === "owner" || userRole === "super_admin";
+
+  const loadGoogleSheetSources = useCallback(async () => {
+    try {
+      setIsLoadingSources(true);
+      setSourceError("");
+
+      const response = await getGoogleSheetSources();
+
+      setGoogleSheetSources(response?.sources || []);
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      setSourceError("Google Sheet sources are not available.");
+    } finally {
+      setIsLoadingSources(false);
+    }
+  }, [onUnauthorized]);
 
   useEffect(() => {
     setDraftAutoBudget(autoBudget);
@@ -183,19 +261,10 @@ const Configuration = ({
           return;
         }
 
-        const sources = normalizeGoogleSheetSources(response?.configuration);
         const membersResponse = await getWorkspaceMembers();
 
         setWorkspaceName(response?.workspace?.name || "");
         setWorkspaceMembers(membersResponse?.members || []);
-        setActiveGoogleSheetSources(sources);
-        setMaxGoogleSheetSources(
-          response?.configuration?.max_google_sheet_sources || 5
-        );
-        setDraftGoogleSheetId("");
-        setIsAddingConnection(
-          sources.length < (response?.configuration?.max_google_sheet_sources || 5)
-        );
       } catch (err) {
         console.error(err);
 
@@ -222,6 +291,15 @@ const Configuration = ({
       isMounted = false;
     };
   }, [onUnauthorized]);
+
+  useEffect(() => {
+    if (!googleConnection.connected) {
+      setGoogleSheetSources([]);
+      return;
+    }
+
+    loadGoogleSheetSources();
+  }, [googleConnection.connected, loadGoogleSheetSources]);
 
   useEffect(() => {
     let isMounted = true;
@@ -278,6 +356,9 @@ const Configuration = ({
       getGoogleOAuthConnectionStatus()
         .then((response) => {
           setGoogleConnection(response || { connected: false });
+          if (response?.connected) {
+            loadGoogleSheetSources();
+          }
         })
         .catch((err) => {
           console.error(err);
@@ -295,7 +376,7 @@ const Configuration = ({
     const nextQuery = queryParams.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
     window.history.replaceState({}, "", nextUrl);
-  }, []);
+  }, [loadGoogleSheetSources]);
 
   const handleSave = async () => {
     try {
@@ -351,61 +432,28 @@ const Configuration = ({
     }
   };
 
-  const connectGoogleSheetSource = async (googleSheetId) => {
-    if (!googleSheetId) {
-      throw new Error("Masukkan Google Sheet ID terlebih dahulu.");
-    }
-
-    if (activeGoogleSheetSources.some((source) => source.id === googleSheetId)) {
-      throw new Error("Google Sheet ID ini sudah aktif di workspace.");
-    }
-
-    const nextDraftSources = [
-      ...activeGoogleSheetSources,
-      {
-        id: googleSheetId,
-        label: `Source ${activeGoogleSheetSources.length + 1}`,
-      },
-    ];
-
-    if (nextDraftSources.length > maxGoogleSheetSources) {
-      throw new Error(`Maximum ${maxGoogleSheetSources} Google Sheet sources are allowed.`);
-    }
-
-    const workspaceResponse = await updateWorkspaceConfiguration({
-      google_sheet_id: nextDraftSources[0]?.id || null,
-      google_sheet_sources: nextDraftSources,
-    });
-    const nextSources = normalizeGoogleSheetSources(workspaceResponse?.configuration);
-
-    await refreshDashboardData(selectedYear || undefined);
-
-    setWorkspaceName(workspaceResponse?.workspace?.name || workspaceName);
-    setActiveGoogleSheetSources(nextSources);
-    setDraftGoogleSheetId("");
-    setIsAddingConnection(nextSources.length < maxGoogleSheetSources);
-
-    return nextSources;
-  };
-
-  const handleAddConnection = async () => {
+  const handleTestGoogleSheetSource = async () => {
     try {
-      setIsConnectingSheet(true);
+      setIsTestingSource(true);
       setNotification(null);
-      setWorkspaceConfigurationError("");
+      setSourceError("");
+      setSourceTestResult(null);
 
-      const nextSources = await connectGoogleSheetSource(draftGoogleSheetId.trim());
-
-      onSaveChanges({
-        paydayStartDay: draftPaydayStartDay,
-        autoBudget: draftAutoBudget,
-        privacyMode: draftPrivacyMode,
-        googleSheetId: nextSources[0]?.id || "",
+      const response = await testGoogleSheetSource({
+        spreadsheet_url: spreadsheetUrl.trim(),
       });
+
+      setSourceTestResult(response);
+
+      if (!response?.valid) {
+        setSourceError(response?.message || "Google Sheet connection test failed.");
+        return;
+      }
+
       setNotification({
         type: "success",
-        title: "Google Sheet connected",
-        message: `Backend processed the spreadsheet. Workspace sekarang terhubung ke ${nextSources.length} source.`,
+        title: "Google Sheet verified",
+        message: `${response.spreadsheet_title || "Spreadsheet"} is accessible.`,
       });
     } catch (err) {
       console.error(err);
@@ -415,21 +463,153 @@ const Configuration = ({
         return;
       }
 
-      const backendDetail = err?.response?.data?.detail;
-      const message = backendDetail?.includes("format datanya tidak sesuai")
-        ? `${backendDetail} Pastikan sheet memiliki header transaksi yang benar dan minimal satu baris data.`
-        : backendDetail
-        || err?.message
-        || "Google Sheet ID gagal diproses. Periksa ID spreadsheet dan akses Google Sheets.";
+      const message = err?.response?.data?.detail
+        || "Google Sheet connection test failed.";
 
-      setWorkspaceConfigurationError(message);
+      setSourceError(message);
+    } finally {
+      setIsTestingSource(false);
+    }
+  };
+
+  const handleSaveGoogleSheetSource = async () => {
+    try {
+      setIsSavingSource(true);
+      setNotification(null);
+      setSourceError("");
+
+      const response = await createGoogleSheetSource({
+        spreadsheet_url: spreadsheetUrl.trim(),
+      });
+
+      setSpreadsheetUrl("");
+      setSourceTestResult(null);
+      setNotification({
+        type: "success",
+        title: "Google Sheet source saved",
+        message: `${response?.spreadsheet_title || "Google Spreadsheet"} is ready to sync.`,
+      });
+      await loadGoogleSheetSources();
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const message = err?.response?.data?.detail
+        || "Google Sheet source could not be saved.";
+
+      setSourceError(message);
       setNotification({
         type: "error",
-        title: "Google Sheet gagal diproses",
+        title: "Save source failed",
         message,
       });
     } finally {
-      setIsConnectingSheet(false);
+      setIsSavingSource(false);
+    }
+  };
+
+  const handleSyncSource = async (sourceId) => {
+    try {
+      setSyncingSourceId(sourceId);
+      setSourceError("");
+      setNotification(null);
+
+      const response = await syncGoogleSheetSource(sourceId);
+
+      setSyncResults((currentResults) => ({
+        ...currentResults,
+        [sourceId]: response,
+      }));
+      setNotification({
+        type: "success",
+        title: "Sync complete",
+        message: `${response?.inserted_rows || 0} inserted, ${response?.updated_rows || 0} updated.`,
+      });
+      await loadGoogleSheetSources();
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const detail = err?.response?.data?.detail;
+      const message = typeof detail === "string"
+        ? detail
+        : detail?.message || "Google Sheet sync failed.";
+
+      setSourceError(message);
+
+      if (detail?.job_id) {
+        setSyncResults((currentResults) => ({
+          ...currentResults,
+          [sourceId]: {
+            job_id: detail.job_id,
+            status: "failed",
+            total_rows: 0,
+            inserted_rows: 0,
+            updated_rows: 0,
+            skipped_rows: 0,
+            failed_rows: 0,
+          },
+        }));
+      }
+    } finally {
+      setSyncingSourceId("");
+    }
+  };
+
+  const handleDeleteSource = async (sourceId) => {
+    const shouldDelete = window.confirm(
+      "Delete this Google Sheet source? Existing synced transactions will stay in the database."
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setDeletingSourceId(sourceId);
+      setSourceError("");
+      setNotification(null);
+
+      await deleteGoogleSheetSource(sourceId);
+
+      setSyncResults((currentResults) => {
+        const nextResults = { ...currentResults };
+        delete nextResults[sourceId];
+        return nextResults;
+      });
+      setNotification({
+        type: "success",
+        title: "Source deleted",
+        message: "Google Sheet source was removed from saved sources.",
+      });
+      await loadGoogleSheetSources();
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const message = err?.response?.data?.detail
+        || "Google Sheet source could not be deleted.";
+
+      setSourceError(message);
+      setNotification({
+        type: "error",
+        title: "Delete source failed",
+        message,
+      });
+    } finally {
+      setDeletingSourceId("");
     }
   };
 
@@ -501,81 +681,6 @@ const Configuration = ({
       });
     } finally {
       setIsDisconnectingGoogle(false);
-    }
-  };
-
-  const handleCopyGoogleSheetId = async (sheetId) => {
-    if (!sheetId) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(sheetId);
-      setNotification({
-        type: "success",
-        title: "Google Sheet ID disalin",
-        message: "ID spreadsheet aktif sudah disalin ke clipboard.",
-      });
-    } catch (err) {
-      console.error(err);
-      setNotification({
-        type: "error",
-        title: "Gagal menyalin",
-        message: "Browser tidak mengizinkan akses clipboard.",
-      });
-    }
-  };
-
-  const handleDisconnectGoogleSheet = async (sheetId) => {
-    try {
-      setIsDisconnectingSheet(true);
-      setNotification(null);
-      setWorkspaceConfigurationError("");
-      const remainingSources = activeGoogleSheetSources
-        .filter((source) => source.id !== sheetId);
-
-      const workspaceResponse = await updateWorkspaceConfiguration({
-        google_sheet_id: remainingSources[0]?.id || null,
-        google_sheet_sources: remainingSources,
-      });
-      const nextSources = normalizeGoogleSheetSources(workspaceResponse?.configuration);
-
-      setActiveGoogleSheetSources(nextSources);
-      setDraftGoogleSheetId("");
-      setIsAddingConnection(nextSources.length < maxGoogleSheetSources);
-      setWorkspaceName(workspaceResponse?.workspace?.name || workspaceName);
-      onSaveChanges({
-        paydayStartDay: draftPaydayStartDay,
-        autoBudget: draftAutoBudget,
-        privacyMode: draftPrivacyMode,
-        googleSheetId: nextSources[0]?.id || "",
-      });
-      setNotification({
-        type: "success",
-        title: "Koneksi Google Sheet dihapus",
-        message: nextSources.length > 0
-          ? `Workspace masih terhubung ke ${nextSources.length} source.`
-          : "Workspace tidak lagi terhubung ke Google Sheet mana pun.",
-      });
-    } catch (err) {
-      console.error(err);
-
-      if (err?.response?.status === 401) {
-        onUnauthorized();
-        return;
-      }
-
-      const message = err?.response?.data?.detail
-        || "Koneksi Google Sheet gagal dihapus.";
-
-      setWorkspaceConfigurationError(message);
-      setNotification({
-        type: "error",
-        title: "Gagal menghapus koneksi",
-        message,
-      });
-    } finally {
-      setIsDisconnectingSheet(false);
     }
   };
 
@@ -844,134 +949,299 @@ const Configuration = ({
           )}
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <label className="block text-sm font-semibold text-muted">
-            Active Google Sheet Connections
-          </label>
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:p-8">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-lg font-bold text-main">
+              Google Sheet Data Sources
+            </h3>
+            <p className="text-sm leading-6 text-muted">
+              Paste a spreadsheet URL, test access, then sync all valid monthly tabs.
+            </p>
+          </div>
 
-          <button
-            type="button"
-            onClick={handleAddConnection}
-            disabled={
-              isGoogleSheetReadOnly
-              ||
-              isConnectingSheet
-              || activeGoogleSheetSources.length >= maxGoogleSheetSources
-            }
-            className={`secondary-button min-h-9 rounded-lg px-3 py-1.5 text-sm font-semibold ${
-              isGoogleSheetReadOnly ? "hidden" : ""
-            }`}
-          >
-            {isConnectingSheet ? (
-              <LoaderCircle size={15} className="animate-spin" />
-            ) : (
-              <Plus size={15} />
-            )}
-            {isConnectingSheet ? "Processing..." : "Add Connection"}
-          </button>
-        </div>
-        <div className="mt-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-          {activeGoogleSheetSources.length > 0 ? (
-            <ul className="space-y-2">
-              {activeGoogleSheetSources.map((source, index) => (
-                <li
-                  key={source.id}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2"
-                >
-                  <span className="whitespace-nowrap text-xs font-semibold text-muted">
-                    🟢 Source {index + 1}
+          {!googleConnection.connected ? (
+            <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+              Connect Google first to add spreadsheet sources.
+            </div>
+          ) : (
+            <>
+              <div className="mt-6 grid grid-cols-1 gap-4">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-muted">
+                    Spreadsheet URL
                   </span>
+                  <input
+                    value={spreadsheetUrl}
+                    onChange={(event) => {
+                      setSpreadsheetUrl(event.target.value);
+                      setSourceTestResult(null);
+                    }}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="form-control w-full rounded-2xl px-4 py-3 text-sm"
+                  />
+                </label>
 
-                  <span
-                    className="min-w-0 truncate font-mono text-sm font-semibold text-main"
-                    title={source.id}
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+                  <p>This spreadsheet will sync all valid monthly tabs.</p>
+                  <p>Transaction year will be detected from Waktu Transaksi.</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleTestGoogleSheetSource}
+                    disabled={isTestingSource || !spreadsheetUrl.trim()}
+                    className="secondary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {truncateMiddle(source.id)}
-                  </span>
+                    {isTestingSource ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={16} />
+                    )}
+                    {isTestingSource ? "Testing..." : "Test Connection"}
+                  </button>
 
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleCopyGoogleSheetId(source.id)}
-                      className="theme-toggle h-9 w-9 rounded-lg p-0"
-                      aria-label={`Copy Source ${index + 1} ID`}
-                      title="Copy ID"
-                    >
-                      <Copy size={15} />
-                    </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveGoogleSheetSource}
+                    disabled={
+                      isSavingSource
+                      || !sourceTestResult?.valid
+                    }
+                    className="primary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSavingSource ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <Link2 size={16} />
+                    )}
+                    {isSavingSource ? "Saving..." : "Save Source"}
+                  </button>
+                </div>
 
-                    <a
-                      href={`https://docs.google.com/spreadsheets/d/${source.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="theme-toggle inline-flex h-9 w-9 rounded-lg p-0"
-                      aria-label={`Open Source ${index + 1} in Google Sheets`}
-                      title="Open Google Sheets"
-                    >
-                      <Link2 size={15} />
-                    </a>
-
-                    {!isGoogleSheetReadOnly && (
-                      <button
-                        type="button"
-                        onClick={() => handleDisconnectGoogleSheet(source.id)}
-                        disabled={isDisconnectingSheet}
-                        className="theme-toggle h-9 w-9 rounded-lg p-0 text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label={`Delete Source ${index + 1} connection`}
-                        title="Delete Connection"
-                      >
-                        {isDisconnectingSheet ? (
-                          <LoaderCircle size={15} className="animate-spin" />
-                        ) : (
-                          <Trash2 size={15} />
+                {sourceTestResult && (
+                  <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm leading-6 ${
+                    sourceTestResult.valid
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                      : "border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300"
+                  }`}>
+                    {sourceTestResult.valid ? (
+                      <>
+                        <p className="font-bold">
+                          {sourceTestResult.spreadsheet_title || "Google Sheet reachable"}
+                        </p>
+                        <p className="mt-1">
+                          Tabs: {(sourceTestResult.tabs || []).join(", ") || "No tabs found"}
+                        </p>
+                        <p className="mt-1">
+                          Detected tabs: {(sourceTestResult.detected_tabs || []).join(", ") || "No transaction tabs detected"}
+                        </p>
+                        {(sourceTestResult.skipped_tabs || []).length > 0 && (
+                          <p className="mt-1">
+                            Skipped tabs: {sourceTestResult.skipped_tabs.join(", ")}
+                          </p>
                         )}
-                      </button>
+                      </>
+                    ) : (
+                      <p>{sourceTestResult.message || "Connection test failed."}</p>
                     )}
                   </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm font-semibold text-muted">
-              No Google Sheet connected. Dashboard data will stay empty.
-            </p>
+                )}
+
+                {sourceError && (
+                  <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
+                    <XCircle size={17} className="mt-0.5 shrink-0" />
+                    <p className="min-w-0">{sourceError}</p>
+                  </div>
+                )}
+
+                <div className="mt-8">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-bold text-main">
+                      Saved Sources
+                    </p>
+                    <button
+                      type="button"
+                      onClick={loadGoogleSheetSources}
+                      disabled={isLoadingSources}
+                      className="secondary-button min-h-9 rounded-xl px-3 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isLoadingSources ? (
+                        <LoaderCircle size={15} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={15} />
+                      )}
+                      Refresh
+                    </button>
+                  </div>
+
+                  {isLoadingSources ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+                      Loading sources...
+                    </div>
+                  ) : googleSheetSources.length > 0 ? (
+                    <ul className="space-y-3">
+                      {googleSheetSources.map((source) => {
+                        const syncResult = syncResults[source.source_id];
+                        const sourceTitle = String(
+                          source.spreadsheet_title || "Google Spreadsheet"
+                        ).trim();
+                        const sourceStatus = source.status === "disabled"
+                          ? "Disabled"
+                          : source.status === "error"
+                            ? "Error"
+                            : "Active";
+
+                        return (
+                          <li
+                            key={source.source_id}
+                            className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]"
+                          >
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className="line-clamp-2 break-words text-sm font-bold leading-5 text-main"
+                                  title={sourceTitle}
+                                >
+                                  {sourceTitle}
+                                </p>
+                                <p className="mt-1 text-xs text-muted">
+                                  Spreadsheet-level sync - {sourceStatus}
+                                </p>
+                                <div className="mt-2 space-y-1 text-xs leading-5 text-muted">
+                                  <p>Syncs all valid monthly tabs.</p>
+                                  <p>Year is detected from Waktu Transaksi.</p>
+                                  {source.sheet_name && (
+                                    <p>Selected tab: {source.sheet_name}</p>
+                                  )}
+                                </div>
+                                <p className="mt-2 text-xs text-muted">
+                                  {formatSyncTimestamp(source.last_synced_at)}
+                                </p>
+                              </div>
+
+                              <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSyncSource(source.source_id)}
+                                  disabled={
+                                    syncingSourceId === source.source_id
+                                    || deletingSourceId === source.source_id
+                                  }
+                                  className="primary-button min-h-10 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {syncingSourceId === source.source_id ? (
+                                    <LoaderCircle size={16} className="animate-spin" />
+                                  ) : (
+                                    <RefreshCw size={16} />
+                                  )}
+                                  {syncingSourceId === source.source_id ? "Syncing..." : "Sync Now"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSource(source.source_id)}
+                                  disabled={
+                                    deletingSourceId === source.source_id
+                                    || syncingSourceId === source.source_id
+                                  }
+                                  className="secondary-button min-h-10 rounded-2xl border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                                >
+                                  {deletingSourceId === source.source_id ? (
+                                    <LoaderCircle size={16} className="animate-spin" />
+                                  ) : (
+                                    <Trash2 size={16} />
+                                  )}
+                                  {deletingSourceId === source.source_id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {syncResult && (
+                              <>
+                                <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+                                  {[
+                                    ["Total", syncResult.total_rows],
+                                    ["Inserted", syncResult.inserted_rows],
+                                    ["Updated", syncResult.updated_rows],
+                                    ["Skipped", syncResult.skipped_rows],
+                                    ["Failed", syncResult.failed_rows],
+                                  ].map(([label, value]) => (
+                                    <div
+                                      key={label}
+                                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]"
+                                    >
+                                      <p className="font-semibold text-muted">{label}</p>
+                                      <p className="mt-1 text-base font-bold text-main">
+                                        {value ?? 0}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="mt-3 space-y-1 text-xs leading-5 text-muted">
+                                  {(syncResult.failed_rows || 0) > 0 && (
+                                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+                                      Some rows were not imported. Review reasons below.
+                                    </p>
+                                  )}
+                                  {(syncResult.processed_tabs || []).length > 0 && (
+                                    <p>
+                                      Processed tabs: {syncResult.processed_tabs.join(", ")}
+                                    </p>
+                                  )}
+                                  {(syncResult.skipped_tabs || []).length > 0 && (
+                                    <p>
+                                      Skipped tabs: {syncResult.skipped_tabs.join(", ")}
+                                    </p>
+                                  )}
+                                  {(syncResult.failed_tabs || []).length > 0 && (
+                                    <p>
+                                      Failed tabs: {syncResult.failed_tabs.join(", ")}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {(hasReasonEntries(syncResult.failed_reasons)
+                                  || hasReasonEntries(syncResult.skipped_reasons)
+                                  || (syncResult.failed_samples || []).length > 0
+                                  || (syncResult.skipped_samples || []).length > 0) && (
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-5 md:grid-cols-2">
+                                    <SyncReasonBreakdown
+                                      title="Failed reasons"
+                                      reasons={syncResult.failed_reasons}
+                                      tone="warning"
+                                    />
+                                    <SyncReasonBreakdown
+                                      title="Skipped reasons"
+                                      reasons={syncResult.skipped_reasons}
+                                    />
+                                    <SyncSamples
+                                      title="Failed samples"
+                                      samples={syncResult.failed_samples || []}
+                                    />
+                                    <SyncSamples
+                                      title="Skipped samples"
+                                      samples={syncResult.skipped_samples || []}
+                                    />
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+                      No Google Sheet sources saved yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
-
-        <p className="mt-2 text-xs text-muted">
-          {activeGoogleSheetSources.length}/{maxGoogleSheetSources} sources connected.
-        </p>
-
-        {isGoogleSheetReadOnly && (
-          <p className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm font-semibold text-muted">
-            Role Member bisa membuka shortcut Google Sheets, tetapi konfigurasi
-            source bersifat read-only.
-          </p>
-        )}
-
-        {!isGoogleSheetReadOnly
-          && isAddingConnection
-          && activeGoogleSheetSources.length < maxGoogleSheetSources && (
-          <>
-            <label className="mt-5 block text-sm font-semibold text-muted">
-              New Google Sheet ID
-            </label>
-            <input
-              value={draftGoogleSheetId}
-              onChange={(event) => setDraftGoogleSheetId(event.target.value)}
-              disabled={isLoadingWorkspaceConfiguration || isConnectingSheet}
-              placeholder="Paste spreadsheet ID from Google Sheets URL"
-              className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-70"
-            />
-          </>
-        )}
-
-        <p className="mt-3 text-sm leading-6 text-muted">
-          {activeGoogleSheetSources.length > 0
-            ? `🟢 Data successfully aggregated from ${activeGoogleSheetSources.length} sources.`
-            : `Active source: ${currentSheetName || "No active Google Sheets source"}.`}
-        </p>
-
         {workspaceConfigurationError && (
           <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {workspaceConfigurationError}

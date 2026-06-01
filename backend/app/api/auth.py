@@ -50,7 +50,8 @@ def login(payload: LoginRequest):
 def google_login():
     try:
         authorization_url = build_google_authorization_url(
-            state=create_oauth_state()
+            state=create_oauth_state(),
+            redirect_uri=settings.GOOGLE_LOGIN_REDIRECT_URI,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -76,7 +77,10 @@ async def google_callback(
     verify_oauth_state(state)
 
     try:
-        tokens = await exchange_authorization_code(code=code)
+        tokens = await exchange_authorization_code(
+            code=code,
+            redirect_uri=settings.GOOGLE_LOGIN_REDIRECT_URI,
+        )
         profile = await fetch_google_user_profile(
             access_token=tokens["access_token"]
         )

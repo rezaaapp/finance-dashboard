@@ -56,6 +56,7 @@ import {
   getBudgetForecast,
   getWorkspaceConfiguration,
 } from "../api/dashboardApi";
+import { getGoogleSheetSources } from "../api/googleSheetSourcesApi";
 
 const premiumRoles = new Set(["super_admin", "owner", "member"]);
 
@@ -368,10 +369,18 @@ const Dashboard = ({
     try {
       setLoading(true);
 
-      const workspaceConfiguration = await getWorkspaceConfiguration();
+      const [workspaceConfiguration, dataSourcesResponse] = await Promise.all([
+        getWorkspaceConfiguration(),
+        getGoogleSheetSources(),
+      ]);
       const googleSheetSources = workspaceConfiguration?.configuration?.google_sheet_sources || [];
       const googleSheetId = workspaceConfiguration?.configuration?.google_sheet_id;
-      const hasGoogleSheet = googleSheetSources.length > 0 || Boolean(googleSheetId);
+      const syncedSources = dataSourcesResponse?.sources || [];
+      const hasGoogleSheet = (
+        googleSheetSources.length > 0
+        || syncedSources.length > 0
+        || Boolean(googleSheetId)
+      );
 
       setHasActiveGoogleSheet(hasGoogleSheet);
 
@@ -380,7 +389,10 @@ const Dashboard = ({
         return;
       }
 
-      const availableYears = await getAvailableYears();
+      const availableYearsPayload = await getAvailableYears();
+      const availableYears = Array.isArray(availableYearsPayload)
+        ? availableYearsPayload
+        : availableYearsPayload?.years || [];
 
       setYears(availableYears);
 
@@ -809,6 +821,11 @@ const Dashboard = ({
             onChange={(e) => setSelectedYear(e.target.value)}
             className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
           >
+            {years.length === 0 && (
+              <option value="">
+                No synced data
+              </option>
+            )}
             {years.map((year) => (
               <option key={year} value={year}>
                 {year}

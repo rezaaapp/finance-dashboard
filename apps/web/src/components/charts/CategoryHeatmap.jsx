@@ -271,7 +271,20 @@ const CategoryHeatmap = ({
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const displayPrivacyMode = privacyMode === "guest" ? "normal" : privacyMode;
   const rows = useMemo(() => (
-    (data?.rows ?? []).map((row) => ({
+    [...(data?.rows ?? [])]
+      .sort((first, second) => {
+        const firstTotal = Number(first.total_amount ?? first.total ?? 0);
+        const secondTotal = Number(second.total_amount ?? second.total ?? 0);
+
+        if (secondTotal !== firstTotal) {
+          return secondTotal - firstTotal;
+        }
+
+        return String(first.kategori || "").localeCompare(
+          String(second.kategori || "")
+        );
+      })
+      .map((row) => ({
       ...row,
       total: maskNumber(row.total, privacyMode),
       months: row.months.map((month) => ({
@@ -389,7 +402,7 @@ const CategoryHeatmap = ({
           <div
             className="grid min-w-[720px] gap-2"
             style={{
-              gridTemplateColumns: `minmax(160px, 1.2fr) repeat(${months.length}, minmax(86px, 1fr))`,
+              gridTemplateColumns: `minmax(220px, 1.4fr) repeat(${months.length}, minmax(86px, 1fr))`,
             }}
           >
             <div className="text-xs font-semibold uppercase text-muted">
@@ -407,8 +420,13 @@ const CategoryHeatmap = ({
 
             {rows.map((row) => (
               <div key={row.kategori} className="contents">
-                <div className="flex min-h-12 items-center text-sm font-semibold text-main">
-                  {row.kategori}
+                <div
+                  className="flex min-h-12 min-w-0 items-center text-sm font-semibold text-main"
+                  title={row.kategori}
+                >
+                  <span className="truncate">
+                    {row.kategori}
+                  </span>
                 </div>
 
                 {row.months.map((month) => {

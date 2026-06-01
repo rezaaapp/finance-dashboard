@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Body, Depends, HTTPException
+from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from app.auth import require_auth, require_current_user, require_premium_role
 from app.database import get_db_connection
@@ -11,6 +12,7 @@ from app.repositories.workspaces import (
     update_google_sheet_id_for_user,
 )
 from app.repositories.users import upsert_invited_member_user
+from app.repositories import analytics_repository as analytics
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
 
@@ -40,6 +42,7 @@ def validate_google_sheet_sources(sources):
 def get_active_sheet_context(auth_payload=Depends(require_auth)):
     if auth_payload is True:
         return {
+            "workspace_id": None,
             "sheet_id": None,
             "sheet_ids": [],
             "use_default_sheet": False,
@@ -61,9 +64,55 @@ def get_active_sheet_context(auth_payload=Depends(require_auth)):
     ]
 
     return {
+        "workspace_id": str(workspace["id"]) if workspace else None,
         "sheet_id": workspace["google_sheet_id"] if workspace else None,
         "sheet_ids": sheet_ids,
         "use_default_sheet": False,
+    }
+
+
+def get_transaction_available_years(auth_payload=Depends(require_auth)):
+    if auth_payload is True:
+        return []
+
+    with get_db_connection() as connection:
+        workspace = get_primary_workspace_for_user(
+            connection,
+            user_id=auth_payload["sub"],
+        )
+
+        if not workspace:
+            return []
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    select distinct
+                        extract(year from transaction_date)::int as year
+                    from transactions
+                    where workspace_id = %s
+                      and transaction_date is not null
+                      and transaction_date <= current_date
+                    order by year desc
+                    """,
+                    (str(workspace["id"]),),
+                )
+
+                return [
+                    row[0]
+                    for row in cursor.fetchall()
+                    if row[0] is not None
+                ]
+        except UndefinedTable:
+            return []
+
+
+def legacy_sheet_context(sheet_context: dict):
+    return {
+        key: value
+        for key, value in sheet_context.items()
+        if key != "workspace_id"
     }
 
 
@@ -108,7 +157,16 @@ def summary(
     month: int = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_summary(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_summary(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_summary(year, month, **legacy_sheet_context(sheet_context))
 
 
 @router.post("/refresh")
@@ -118,7 +176,7 @@ def refresh_data(
 ):
     df_all, df_pengeluaran, df_saving, df_income = refresh_financial_data(
         year,
-        **sheet_context,
+        **legacy_sheet_context(sheet_context),
     )
 
     return {
@@ -135,7 +193,17 @@ def monthly_spending(
     month: int = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_spending(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_monthly_totals(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                direction="expense",
+            )
+
+    return get_monthly_spending(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/monthly-saving")
 def monthly_saving(
@@ -143,7 +211,17 @@ def monthly_saving(
     month: int = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_saving(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_monthly_totals(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                direction="saving_transfer",
+            )
+
+    return get_monthly_saving(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/monthly-income")
 def monthly_income(
@@ -151,7 +229,17 @@ def monthly_income(
     month: int = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_income(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_monthly_totals(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                direction="income",
+            )
+
+    return get_monthly_income(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/top-spending")
 def top_spending(
@@ -159,7 +247,16 @@ def top_spending(
     month: int = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_top_spending(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_top_spending(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_top_spending(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/spending-by-category")
 def spending_by_category(
@@ -167,7 +264,16 @@ def spending_by_category(
     month: int  = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_spending_by_category(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_spending_by_category(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_spending_by_category(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/category-heatmap")
 def category_heatmap(
@@ -177,7 +283,17 @@ def category_heatmap(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_category_heatmap(year, month, name, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_category_heatmap(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                name=name,
+            )
+
+    return get_category_heatmap(year, month, name, **legacy_sheet_context(sheet_context))
 
 
 @router.get("/transactions")
@@ -188,7 +304,17 @@ def transactions(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_transactions(year, month, name, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_transactions(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                name=name,
+            )
+
+    return get_transactions(year, month, name, **legacy_sheet_context(sheet_context))
 
 
 @router.get("/category-trends")
@@ -199,7 +325,17 @@ def category_trends(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_category_trends(year, month, name, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_category_trends(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                name=name,
+            )
+
+    return get_category_trends(year, month, name, **legacy_sheet_context(sheet_context))
 
 @router.get("/source-dana-analytics")
 def source_dana_analytics(
@@ -209,7 +345,17 @@ def source_dana_analytics(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_source_dana_analytics(year, month, name, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_source_dana_analytics(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                name=name,
+            )
+
+    return get_source_dana_analytics(year, month, name, **legacy_sheet_context(sheet_context))
 
 @router.get("/monthly-allocation")
 def monthly_allocation(
@@ -219,7 +365,17 @@ def monthly_allocation(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_monthly_allocation(year, month, name, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_monthly_allocation(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                name=name,
+            )
+
+    return get_monthly_allocation(year, month, name, **legacy_sheet_context(sheet_context))
 
 @router.get("/spending-per-person")
 def spending_per_person(
@@ -227,7 +383,7 @@ def spending_per_person(
     month: int | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_spending_per_person(year, month, **sheet_context)
+    return get_spending_per_person(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/personal-analytics")
 def personal_analytics(
@@ -236,7 +392,16 @@ def personal_analytics(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_personal_analytics(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_personal_analytics(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_personal_analytics(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/grocery-vs-food")
 def grocery_vs_food(
@@ -246,7 +411,17 @@ def grocery_vs_food(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_grocery_vs_food(year, month, name, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_grocery_vs_food(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+                name=name,
+            )
+
+    return get_grocery_vs_food(year, month, name, **legacy_sheet_context(sheet_context))
 
 @router.get("/anomalies")
 def anomalies(
@@ -255,7 +430,16 @@ def anomalies(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_anomalies(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_anomalies(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_anomalies(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/latest-insight")
 def latest_insight(
@@ -264,11 +448,20 @@ def latest_insight(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_latest_insight(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_latest_insight(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_latest_insight(year, month, **legacy_sheet_context(sheet_context))
 
 @router.get("/available-years")
-def available_years(sheet_context=Depends(get_active_sheet_context)):
-    return get_available_years(**sheet_context)
+def available_years(years=Depends(get_transaction_available_years)):
+    return years
 
 
 @router.get("/budget-forecast")
@@ -278,7 +471,16 @@ def budget_forecast(
     premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
-    return get_budget_forecast(year, month, **sheet_context)
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_budget_forecast(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return get_budget_forecast(year, month, **legacy_sheet_context(sheet_context))
 
 
 @router.post("/configuration")
