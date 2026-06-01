@@ -49,4 +49,14 @@ export const GOOGLE_API_URL = DASHBOARD_API_URL.replace(
   "/api/google"
 );
 
+export const DATA_SOURCES_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/data-sources"
+);
+
+export const SYNC_JOBS_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/sync-jobs"
+);
+
 export const AUTH_BASE_URL = AUTH_API_URL.replace(/\/api\/auth$/, "/auth");

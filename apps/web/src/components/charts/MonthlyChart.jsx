@@ -17,13 +17,14 @@ import { chartTheme } from "../../theme/chartTheme";
 
 const MonthlyChart = ({
   title,
-  data,
+  data = [],
   dataKey = "total",
   theme = "dark",
   privacyMode,
 }) => {
   const colors = chartTheme[theme] || chartTheme.dark;
   const chartData = maskChartRows(data, [dataKey], privacyMode);
+  const hasData = chartData.some((row) => Number(row[dataKey] || 0) > 0);
 
   return (
     <div className="panel rounded-lg p-5 shadow-lg">
@@ -38,11 +39,19 @@ const MonthlyChart = ({
         </div>
       </div>
 
-      <div className="h-[320px]">
+      {!hasData ? (
+        <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
+          No synced transactions available for this period.
+        </div>
+      ) : (
+        <div className="h-[320px] min-w-0">
 
         <ResponsiveContainer width="100%" height="100%">
 
-          <LineChart data={chartData}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+          >
 
             <CartesianGrid
               strokeDasharray="3 3"
@@ -94,7 +103,8 @@ const MonthlyChart = ({
 
         </ResponsiveContainer>
 
-      </div>
+        </div>
+      )}
 
     </div>
   );

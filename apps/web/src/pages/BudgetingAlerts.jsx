@@ -230,7 +230,7 @@ const BudgetingAlerts = ({
           <div className="rounded-xl border border-[var(--color-border)] p-4">
             <div className="mb-4 flex items-center justify-between">
               <p className="text-sm font-semibold text-muted">
-                Forecast Budget
+                Budget Target
               </p>
               <Wallet size={20} className="text-accent" />
             </div>
@@ -272,18 +272,22 @@ const BudgetingAlerts = ({
 
         <div className="mt-6">
           <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <div>
+          <div>
               <h3 className="text-base font-bold text-main">
                 Manual Budget Editor
               </h3>
               <p className="text-sm text-muted">
-                {autoBudget
-                  ? "Switch to Manual to edit the budget amount per category."
-                  : "Edit the budget per category; alerts and charts will follow the manual amount."}
+                Budget targets are optional. When no target is configured, this view only shows actual expense spending from synced transactions.
               </p>
             </div>
           </div>
 
+          {budgetRows.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-muted">
+              No expense category data available for budgeting.
+            </div>
+          ) : (
+          <>
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
@@ -297,7 +301,7 @@ const BudgetingAlerts = ({
                   <th className="px-3 py-3 text-right">
                     {renderHeaderWithTooltip(
                       "Historical Suggestion",
-                      "Budget suggestion from the historical average per category. The system uses all months before the active period; if no previous month exists, it uses the available month data.",
+                      "Currently not configured from a budget table. The backend returns zero by default and actual spending remains the source of truth.",
                       "right"
                     )}
                   </th>
@@ -465,6 +469,8 @@ const BudgetingAlerts = ({
               );
             })}
           </div>
+          </>
+          )}
         </div>
       </section>
 
@@ -547,13 +553,18 @@ const BudgetingAlerts = ({
       <section className="panel rounded-2xl p-4 shadow-lg sm:p-5">
         <div className="mb-6">
           <h2 className="text-xl font-bold text-main">
-            Next Month Budget Forecast
+            Expense Budget View
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Method: {data?.method ?? "historical_average"}
+            Method: {data?.method ?? "actual_spending"}
           </p>
         </div>
 
+        {budgetRows.length === 0 ? (
+          <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
+            No expense data available for this period.
+          </div>
+        ) : (
         <div className="h-[460px] md:h-[380px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
@@ -610,7 +621,7 @@ const BudgetingAlerts = ({
               />
               <Bar
                 dataKey="effective_budget"
-                name={autoBudget ? "AI Forecast Budget" : "Manual Budget"}
+                name={autoBudget ? "Configured Budget" : "Manual Budget"}
                 fill={dashboardChartPalette.navy}
                 radius={isMobileChart ? [0, 6, 6, 0] : [6, 6, 0, 0]}
               />
@@ -623,6 +634,7 @@ const BudgetingAlerts = ({
             </BarChart>
           </ResponsiveContainer>
         </div>
+        )}
       </section>
     </div>
   );

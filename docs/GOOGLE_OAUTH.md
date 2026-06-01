@@ -79,6 +79,7 @@ Backend membutuhkan env berikut untuk fondasi OAuth:
 GOOGLE_OAUTH_CLIENT_ID=replace_with_google_oauth_client_id.apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=replace_with_google_oauth_client_secret
 GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/google/oauth/callback
+GOOGLE_LOGIN_REDIRECT_URI=http://127.0.0.1:8000/auth/google/callback
 GOOGLE_OAUTH_SCOPES=openid email profile https://www.googleapis.com/auth/spreadsheets.readonly
 FRONTEND_URL=http://127.0.0.1:5173
 TOKEN_ENCRYPTION_KEY=replace_with_fernet_key_generated_by_Fernet_generate_key
@@ -118,6 +119,27 @@ browser ke frontend dengan status sederhana:
 
 Token Google, encrypted token, dan client secret tidak boleh dikirim ke browser.
 
+## OAuth Flow Separation
+
+Google Sheets Connection dan legacy Google login memakai callback berbeda:
+
+```text
+Google Sheets Connection:
+GET /api/google/oauth/start
+GET /api/google/oauth/callback
+
+Legacy Google login:
+GET /auth/google
+GET /auth/google/callback
+```
+
+`/api/google/oauth/callback` hanya menerima state dari
+`/api/google/oauth/start`, yaitu state yang berisi `user_id`, `workspace_id`,
+`nonce`, dan `created_at`. Jangan arahkan `/auth/google` ke callback ini.
+
+Jika legacy login masih dipakai, konfigurasikan `GOOGLE_LOGIN_REDIRECT_URI`
+ke `/auth/google/callback`.
+
 ## Dashboard UI Flow
 
 Dashboard menampilkan card `Google Sheets Connection` di halaman Configuration.
@@ -149,6 +171,18 @@ Nilai ini harus sama persis antara:
 - `GOOGLE_OAUTH_REDIRECT_URI` di backend `.env`
 - route backend yang akan dibuat pada task OAuth endpoint berikutnya
 
+Google Cloud Console harus memuat redirect URI berikut untuk Google Sheets:
+
+```text
+http://127.0.0.1:8000/api/google/oauth/callback
+```
+
+Jika legacy Google login dipakai, tambahkan juga:
+
+```text
+http://127.0.0.1:8000/auth/google/callback
+```
+
 ## Redirect URI Production
 
 Gunakan domain backend production, bukan domain frontend. Contoh:
@@ -173,6 +207,20 @@ Cek hal berikut:
 - Path harus sama, misalnya `/api/google/oauth/callback`.
 - Tidak ada trailing slash tambahan.
 - Setelah mengubah Google Cloud Console, tunggu sebentar lalu coba ulang.
+
+## Troubleshooting `Required parameter is missing: response_type`
+
+Error Google `invalid_request` dengan pesan `Required parameter is missing:
+response_type` berarti authorization URL yang diterima Google tidak lengkap.
+Endpoint `GET /api/google/oauth/start` harus menghasilkan `auth_url` ke:
+
+```text
+https://accounts.google.com/o/oauth2/v2/auth
+```
+
+Pastikan query parameter di `auth_url` mencakup `response_type=code`,
+`client_id`, `redirect_uri`, `scope`, `state`, `access_type=offline`, dan
+`prompt=consent`. Client secret tidak boleh muncul di authorization URL.
 
 ## Week 3 Limitation
 
