@@ -6,6 +6,11 @@ import os
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 
+
+def _env_bool(key, default="false"):
+    return os.getenv(key, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def safe_load_dotenv(path, override=False):
     for key, value in dotenv_values(path).items():
         if value is None:
@@ -76,6 +81,14 @@ class Settings:
         if email.strip()
     ]
     USE_MOCK_DATA = os.getenv("USE_MOCK_DATA", "false").lower() == "true"
+    AI_CLASSIFICATION_ENABLED = _env_bool("AI_CLASSIFICATION_ENABLED", "false")
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "rule_based")
+    AI_MODEL = os.getenv("AI_MODEL", "none")
+    AI_ONLY_LOW_CONFIDENCE = _env_bool("AI_ONLY_LOW_CONFIDENCE", "true")
+    AI_CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.75"))
+    AI_MAX_TRANSACTIONS_PER_RUN = int(
+        os.getenv("AI_MAX_TRANSACTIONS_PER_RUN", "500")
+    )
     CORS_ALLOWED_ORIGINS = [
         origin.strip()
         for origin in os.getenv(

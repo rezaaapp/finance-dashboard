@@ -6,6 +6,7 @@ from gspread.exceptions import APIError
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
+from app.api.classifications import router as classifications_router
 from app.api.data_sources import router as data_sources_router
 from app.api.dashboard import router as dashboard_router
 from app.api.google_connection import router as google_connection_router
@@ -114,5 +115,6 @@ app.include_router(google_connection_router)
 app.include_router(google_oauth_router)
 app.include_router(data_sources_router)
 app.include_router(sync_jobs_router)
+app.include_router(classifications_router)
 
 app.include_router(admin_router)

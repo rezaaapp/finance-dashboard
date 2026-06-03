@@ -4,9 +4,16 @@
 
 Data flow:
 
-Google OAuth -> Google Sheet Source -> Sync Job -> Transactions -> Dashboard Analytics
+Google OAuth -> Google Sheet Source -> Sync Job -> Transactions -> Rule-Based Classification -> Dashboard Analytics
 
 The sync uses the connected user's Google OAuth token to read Google Sheets and stores normalized rows in `public.transactions`. Dashboard analytics use `public.transactions` as the source of truth.
+
+After Sync Now writes inserted or updated transactions, the backend runs
+rule-based classification for those transaction IDs. User-defined
+classification rules are applied before built-in rules, and manual overrides
+(`method = 'manual'` or `status = 'manual_override'`) are not overwritten.
+The standalone `POST /api/classifications/run` endpoint remains available for
+backfill and manual debug runs.
 
 ## Required Columns
 
@@ -129,6 +136,8 @@ Sync responses may include:
 - `skipped_reasons`
 - `failed_samples`
 - `skipped_samples`
+- `classification`
+- `warnings`
 
 Safe reasons:
 
@@ -145,6 +154,11 @@ Safe reasons:
 - `database_write_failed`
 
 Samples include only `sheet_name`, `row_number`, `reason`, and optional `category`. They do not include full title, amount, note, raw row, token, or credentials.
+
+`classification` contains safe counters such as `processed`, `classified`,
+`updated`, `low_confidence`, `skipped_manual`, `errors`, and `duration_ms`.
+If classification fails after transaction sync succeeds, the sync response can
+still be successful and include `warnings: ["classification_failed"]`.
 
 ## Dashboard Source Of Truth
 
@@ -921,4 +935,6 @@ Sebuah sync dianggap sehat jika:
 
 ## Known Limitation
 
-Classification is rule-based for Week 4. AI-assisted classification is intentionally deferred to Week 5.
+Sync Now automatically runs Week 5 rule-based classification for inserted and
+updated transactions. AI-assisted classification remains disabled and is not
+used by sync.

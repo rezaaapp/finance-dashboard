@@ -68,6 +68,14 @@ const formatReasonLabel = (reason) => (
 
 const hasReasonEntries = (reasons = {}) => Object.keys(reasons || {}).length > 0;
 
+const formatClassificationSummary = (classification) => {
+  if (!classification) {
+    return "";
+  }
+
+  return `Classification: ${classification.processed || 0} transactions processed, ${classification.low_confidence || 0} low confidence.`;
+};
+
 const SyncReasonBreakdown = ({ title, reasons, tone = "muted" }) => {
   if (!hasReasonEntries(reasons)) {
     return null;
@@ -527,7 +535,10 @@ const Configuration = ({
       setNotification({
         type: "success",
         title: "Sync complete",
-        message: `${response?.inserted_rows || 0} inserted, ${response?.updated_rows || 0} updated.`,
+        message: [
+          `${response?.inserted_rows || 0} inserted, ${response?.updated_rows || 0} updated.`,
+          formatClassificationSummary(response?.classification),
+        ].filter(Boolean).join(" "),
       });
       await loadGoogleSheetSources();
     } catch (err) {
@@ -1180,6 +1191,20 @@ const Configuration = ({
                                 </div>
 
                                 <div className="mt-3 space-y-1 text-xs leading-5 text-muted">
+                                  {syncResult.classification && (
+                                    <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 font-semibold text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                      {formatClassificationSummary(syncResult.classification)}
+                                      {" "}
+                                      Skipped manual: {syncResult.classification.skipped_manual || 0}.
+                                      {" "}
+                                      Errors: {syncResult.classification.errors || 0}.
+                                    </p>
+                                  )}
+                                  {(syncResult.warnings || []).includes("classification_failed") && (
+                                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+                                      Classification did not finish. You can run classification manually later.
+                                    </p>
+                                  )}
                                   {(syncResult.failed_rows || 0) > 0 && (
                                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
                                       Some rows were not imported. Review reasons below.
