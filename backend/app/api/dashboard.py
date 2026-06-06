@@ -2,7 +2,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from app.auth import require_auth, require_current_user, require_premium_role
+from app.config import settings
 from app.database import get_db_connection
+from app.repositories.insight_settings_repository import get_effective_insight_settings
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
@@ -13,6 +15,7 @@ from app.repositories.workspaces import (
 )
 from app.repositories.users import upsert_invited_member_user
 from app.repositories import analytics_repository as analytics
+from app.services.financial_insight_service import generate_rule_based_insights
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
 
@@ -275,6 +278,47 @@ def spending_by_category(
 
     return get_spending_by_category(year, month, **legacy_sheet_context(sheet_context))
 
+
+@router.get("/financial-types")
+def financial_types(
+    year: int | None = None,
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
+):
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_financial_type_breakdown(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return [
+        {"type": "need", "amount": 0, "count": 0},
+        {"type": "want", "amount": 0, "count": 0},
+        {"type": "saving", "amount": 0, "count": 0},
+        {"type": "income", "amount": 0, "count": 0},
+        {"type": "uncategorized", "amount": 0, "count": 0},
+    ]
+
+
+@router.get("/monthly-financial-types")
+def monthly_financial_types(
+    year: int,
+    sheet_context=Depends(get_active_sheet_context),
+):
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return analytics.get_monthly_financial_type_breakdown(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+            )
+
+    return []
+
+
 @router.get("/category-heatmap")
 def category_heatmap(
     year: int | None = None,
@@ -432,11 +476,17 @@ def anomalies(
 ):
     if sheet_context.get("workspace_id"):
         with get_db_connection() as connection:
+            insight_settings = get_effective_insight_settings(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                default_settings=settings.get_default_insight_settings(),
+            )
             return analytics.get_anomalies(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                insight_settings=insight_settings,
             )
 
     return get_anomalies(year, month, **legacy_sheet_context(sheet_context))
@@ -458,6 +508,36 @@ def latest_insight(
             )
 
     return get_latest_insight(year, month, **legacy_sheet_context(sheet_context))
+
+
+@router.get("/rule-based-insights")
+def rule_based_insights(
+    year: int | None = None,
+    month: int | None = None,
+    sheet_context=Depends(get_active_sheet_context),
+):
+    if sheet_context.get("workspace_id"):
+        with get_db_connection() as connection:
+            return generate_rule_based_insights(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                year=year,
+                month=month,
+            )
+
+    return {
+        "period": str(year or "all"),
+        "summary": "Not enough data to generate insights yet.",
+        "highlights": [],
+        "metrics": {
+            "need_ratio": 0,
+            "want_ratio": 0,
+            "saving_rate": 0,
+            "uncategorized_count": 0,
+            "settings_source": "default",
+        },
+    }
+
 
 @router.get("/available-years")
 def available_years(years=Depends(get_transaction_available_years)):

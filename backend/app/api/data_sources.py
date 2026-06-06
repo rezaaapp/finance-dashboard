@@ -36,6 +36,7 @@ from app.services.google_sheet_tab_filter import (
     get_syncable_tabs,
     is_skipped_tab,
 )
+from app.services.classification_service import classify_transactions_by_ids
 from app.services.sheet_header_validator import validate_sheet_header
 from app.services.transaction_normalizer import (
     map_sheet_rows,
@@ -85,6 +86,8 @@ def _serialize_sync_response(
     skipped_reasons: dict | None = None,
     failed_samples: list[dict] | None = None,
     skipped_samples: list[dict] | None = None,
+    classification: dict | None = None,
+    warnings: list[str] | None = None,
 ):
     response = {
         "job_id": str(job["id"]),
@@ -109,6 +112,8 @@ def _serialize_sync_response(
     response["skipped_reasons"] = skipped_reasons or {}
     response["failed_samples"] = failed_samples or []
     response["skipped_samples"] = skipped_samples or []
+    response["classification"] = classification
+    response["warnings"] = warnings or []
 
     return response
 
@@ -445,6 +450,9 @@ def sync_google_sheet_source(
             skipped_reasons = {}
             failed_samples = []
             skipped_samples = []
+            synced_transaction_ids = []
+            classification_summary = None
+            sync_warnings = []
 
             if not tabs_to_sync:
                 raise ValueError("Spreadsheet has no syncable tabs")
@@ -598,6 +606,12 @@ def sync_google_sheet_source(
                         updated_rows += batch_result["updated"]
                         skipped_rows += batch_result["skipped"]
                         failed_rows += batch_result["failed"]
+                        synced_transaction_ids.extend(
+                            batch_result.get("inserted_transaction_ids", [])
+                        )
+                        synced_transaction_ids.extend(
+                            batch_result.get("updated_transaction_ids", [])
+                        )
                         processed_tabs.append(tab_name)
                     except Exception:
                         failed_rows += len(normalized_rows)
@@ -622,6 +636,25 @@ def sync_google_sheet_source(
                         skipped_rows=skipped_rows,
                         failed_rows=failed_rows,
                     )
+
+            try:
+                classification_summary = classify_transactions_by_ids(
+                    connection,
+                    workspace_id=workspace_id,
+                    transaction_ids=synced_transaction_ids,
+                    force_rule_reclassify=True,
+                )
+            except Exception:
+                classification_summary = {
+                    "processed": 0,
+                    "classified": 0,
+                    "updated": 0,
+                    "low_confidence": 0,
+                    "skipped_manual": 0,
+                    "errors": 1,
+                    "duration_ms": 0,
+                }
+                sync_warnings.append("classification_failed")
 
             with connection.transaction():
                 reason_summary = _format_reason_summary(
@@ -691,6 +724,8 @@ def sync_google_sheet_source(
         skipped_reasons=skipped_reasons,
         failed_samples=failed_samples,
         skipped_samples=skipped_samples,
+        classification=classification_summary,
+        warnings=sync_warnings,
     )
 
 

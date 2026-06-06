@@ -1,8 +1,12 @@
 from collections import defaultdict
+from datetime import date
 from math import sqrt
 
 from psycopg.errors import UndefinedTable
 from psycopg.rows import dict_row
+
+
+FINANCIAL_TYPES = ("need", "want", "saving", "income", "uncategorized")
 
 
 def _month_expr():
@@ -22,6 +26,35 @@ def _category_label_expr():
         coalesce(
             nullif(raw_payload->>'_category_normalized', ''),
             nullif(raw_category, ''),
+            'Uncategorized'
+        )
+    """
+
+
+def _classification_financial_type_expr():
+    return """
+        case
+            when c.financial_type in (
+                'need', 'want', 'saving', 'income', 'uncategorized'
+            ) then c.financial_type
+            when c.direction = 'income' then 'income'
+            when c.direction = 'saving_transfer' then 'saving'
+            when c.direction = 'expense' then 'uncategorized'
+            when t.direction = 'income' then 'income'
+            when t.direction = 'saving_transfer' then 'saving'
+            when t.direction = 'expense' then 'uncategorized'
+            else 'uncategorized'
+        end
+    """
+
+
+def _classification_category_expr():
+    return """
+        coalesce(
+            nullif(c.category, ''),
+            nullif(c.category_normalized, ''),
+            nullif(t.raw_payload->>'_category_normalized', ''),
+            nullif(t.raw_category, ''),
             'Uncategorized'
         )
     """
@@ -237,6 +270,121 @@ def get_spending_by_category(connection, *, workspace_id: str, year=None, month=
         }
         for row in rows
     ]
+
+
+def get_financial_type_breakdown(connection, *, workspace_id: str, year=None, month=None):
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+
+    if year:
+        clauses.append("extract(year from t.transaction_date)::int = %s")
+        params.append(int(year))
+
+    if month:
+        clauses.append("extract(month from t.transaction_date)::int = %s")
+        params.append(int(month))
+
+    financial_type_expr = _classification_financial_type_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select
+            {financial_type_expr} as financial_type,
+            coalesce(sum(t.amount), 0) as amount,
+            count(t.id) as row_count
+        from transactions t
+        left join transaction_classifications c
+          on c.workspace_id = t.workspace_id
+         and c.transaction_id = t.id
+         and c.is_current = true
+        where {" and ".join(clauses)}
+        group by 1
+        """,
+        params,
+    )
+    totals = {
+        financial_type: {"amount": 0.0, "count": 0}
+        for financial_type in FINANCIAL_TYPES
+    }
+
+    for row in rows:
+        financial_type = row["financial_type"] or "uncategorized"
+
+        if financial_type not in totals:
+            financial_type = "uncategorized"
+
+        totals[financial_type]["amount"] += float(row["amount"] or 0)
+        totals[financial_type]["count"] += int(row["row_count"] or 0)
+
+    return [
+        {
+            "type": financial_type,
+            "amount": totals[financial_type]["amount"],
+            "count": totals[financial_type]["count"],
+        }
+        for financial_type in FINANCIAL_TYPES
+    ]
+
+
+def get_monthly_financial_type_breakdown(connection, *, workspace_id: str, year: int):
+    selected_year = int(year)
+    today = date.today()
+
+    if selected_year > today.year:
+        return []
+
+    max_month = today.month if selected_year == today.year else 12
+    financial_type_expr = _classification_financial_type_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select
+            extract(month from t.transaction_date)::int as month,
+            {financial_type_expr} as financial_type,
+            coalesce(sum(t.amount), 0) as amount
+        from transactions t
+        left join transaction_classifications c
+          on c.workspace_id = t.workspace_id
+         and c.transaction_id = t.id
+         and c.is_current = true
+        where t.workspace_id = %s
+          and t.transaction_date is not null
+          and t.transaction_date <= current_date
+          and extract(year from t.transaction_date)::int = %s
+        group by 1, 2
+        order by 1, 2
+        """,
+        (workspace_id, selected_year),
+    )
+    month_rows = {
+        month: {
+            "month": month,
+            "need": 0.0,
+            "want": 0.0,
+            "saving": 0.0,
+            "income": 0.0,
+            "uncategorized": 0.0,
+        }
+        for month in range(1, max_month + 1)
+    }
+
+    for row in rows:
+        month = int(row["month"] or 0)
+        financial_type = row["financial_type"] or "uncategorized"
+
+        if month not in month_rows:
+            continue
+
+        if financial_type not in FINANCIAL_TYPES:
+            financial_type = "uncategorized"
+
+        month_rows[month][financial_type] += float(row["amount"] or 0)
+
+    return [month_rows[month] for month in sorted(month_rows)]
 
 
 def get_top_spending(connection, *, workspace_id: str, year=None, month=None, limit=10):
@@ -674,24 +822,80 @@ def get_personal_analytics(connection, *, workspace_id: str, year=None, month=No
     }
 
 
-def get_anomalies(connection, *, workspace_id: str, year=None, month=None):
-    where_clause, params = _filters(year, month, "expense")
+def get_anomalies(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    insight_settings: dict | None = None,
+):
+    anomaly_warning_multiplier = float(
+        (insight_settings or {}).get("anomaly_warning_multiplier", 2.0)
+    )
+    anomaly_danger_multiplier = float(
+        (insight_settings or {}).get("anomaly_danger_multiplier", 3.0)
+    )
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+
+    if year:
+        clauses.append("extract(year from t.transaction_date)::int = %s")
+        params.append(int(year))
+
+    if month:
+        clauses.append("extract(month from t.transaction_date)::int = %s")
+        params.append(int(month))
+
+    financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
     rows = _fetch_all(
         connection,
         f"""
+        with base as (
+            select
+                t.id as transaction_id,
+                t.transaction_date,
+                t.title,
+                {category_expr} as category,
+                t.amount,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where {" and ".join(clauses)}
+        ),
+        scored as (
+            select
+                transaction_id,
+                transaction_date,
+                title,
+                category,
+                amount,
+                financial_type,
+                avg(amount) over (partition by category) as avg_amount,
+                stddev_pop(amount) over (partition by category) as stddev_amount
+            from base
+            where financial_type in ('need', 'want', 'uncategorized')
+        )
         select
+            transaction_id,
             transaction_date,
             title,
-            {_category_label_expr()} as category,
-            coalesce(raw_payload->>'Nama', '') as name,
+            category,
             amount,
-            avg(amount) over (partition by {_category_label_expr()}) as avg_amount,
-            stddev_pop(amount) over (partition by {_category_label_expr()}) as stddev_amount
-        from transactions
-        where {where_clause}
+            avg_amount,
+            stddev_amount
+        from scored
         order by amount desc
         """,
-        (workspace_id, *params),
+        params,
     )
     anomalies = []
 
@@ -700,15 +904,35 @@ def get_anomalies(connection, *, workspace_id: str, year=None, month=None):
         stddev_amount = float(row["stddev_amount"] or 0)
         amount = float(row["amount"] or 0)
         threshold = avg_amount + (2 * stddev_amount)
+        ratio = amount / avg_amount if avg_amount > 0 else 0
+        is_statistical_anomaly = stddev_amount > 0 and amount > threshold
+        is_ratio_anomaly = (
+            stddev_amount <= 0
+            and avg_amount > 0
+            and ratio >= anomaly_warning_multiplier
+        )
 
-        if stddev_amount > 0 and amount > threshold:
+        if is_statistical_anomaly or is_ratio_anomaly:
+            severity = (
+                "danger"
+                if ratio >= anomaly_danger_multiplier
+                else "warning"
+            )
             anomalies.append({
+                "transaction_id": str(row["transaction_id"]),
+                "title": row["title"],
+                "category": row["category"],
+                "amount": amount,
+                "severity": severity,
+                "explanation": (
+                    f"This transaction is {ratio:.1f}x higher than your "
+                    f"average {row['category']} spending."
+                ),
                 "Waktu Transaksi": row["transaction_date"].isoformat()
                 if row["transaction_date"] else "",
                 "Kategori": row["category"],
-                "Harga": amount,
-                "Nama": row["name"] or "-",
                 "Nama Transaksi": row["title"],
+                "Harga": amount,
             })
 
     return anomalies[:20]

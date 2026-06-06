@@ -34,6 +34,10 @@ import {
   syncGoogleSheetSource,
   testGoogleSheetSource,
 } from "../api/googleSheetSourcesApi";
+import {
+  getInsightThresholds,
+  updateInsightThresholds,
+} from "../api/insightSettingsApi";
 
 import { PRIVACY_MODES } from "../utils/privacy";
 
@@ -42,6 +46,55 @@ const privacyOptions = [
   { label: "Hide", value: PRIVACY_MODES.hide },
   { label: "Guest", value: PRIVACY_MODES.guest },
 ];
+
+const defaultInsightThresholds = {
+  need_warning_ratio: 0.80,
+  need_danger_ratio: 0.90,
+  want_warning_ratio: 0.30,
+  want_danger_ratio: 0.45,
+  saving_warning_ratio: 0.10,
+  saving_good_ratio: 0.20,
+  uncategorized_warning_count: 1,
+  uncategorized_danger_count: 20,
+  anomaly_warning_multiplier: 2.0,
+  anomaly_danger_multiplier: 3.0,
+  source: "default",
+};
+
+const ratioToPercent = (value) => (
+  Number.isFinite(Number(value))
+    ? Number((Number(value) * 100).toFixed(1))
+    : ""
+);
+
+const percentToRatio = (value) => Number((Number(value) / 100).toFixed(4));
+
+const settingsToForm = (settings = defaultInsightThresholds) => ({
+  need_warning_ratio: ratioToPercent(settings.need_warning_ratio),
+  need_danger_ratio: ratioToPercent(settings.need_danger_ratio),
+  want_warning_ratio: ratioToPercent(settings.want_warning_ratio),
+  want_danger_ratio: ratioToPercent(settings.want_danger_ratio),
+  saving_warning_ratio: ratioToPercent(settings.saving_warning_ratio),
+  saving_good_ratio: ratioToPercent(settings.saving_good_ratio),
+  uncategorized_warning_count: settings.uncategorized_warning_count ?? 1,
+  uncategorized_danger_count: settings.uncategorized_danger_count ?? 20,
+  anomaly_warning_multiplier: settings.anomaly_warning_multiplier ?? 2.0,
+  anomaly_danger_multiplier: settings.anomaly_danger_multiplier ?? 3.0,
+  source: settings.source || "default",
+});
+
+const formToPayload = (form) => ({
+  need_warning_ratio: percentToRatio(form.need_warning_ratio),
+  need_danger_ratio: percentToRatio(form.need_danger_ratio),
+  want_warning_ratio: percentToRatio(form.want_warning_ratio),
+  want_danger_ratio: percentToRatio(form.want_danger_ratio),
+  saving_warning_ratio: percentToRatio(form.saving_warning_ratio),
+  saving_good_ratio: percentToRatio(form.saving_good_ratio),
+  uncategorized_warning_count: Number(form.uncategorized_warning_count),
+  uncategorized_danger_count: Number(form.uncategorized_danger_count),
+  anomaly_warning_multiplier: Number(form.anomaly_warning_multiplier),
+  anomaly_danger_multiplier: Number(form.anomaly_danger_multiplier),
+});
 
 const formatSyncTimestamp = (value) => {
   if (!value) {
@@ -67,6 +120,14 @@ const formatReasonLabel = (reason) => (
 );
 
 const hasReasonEntries = (reasons = {}) => Object.keys(reasons || {}).length > 0;
+
+const formatClassificationSummary = (classification) => {
+  if (!classification) {
+    return "";
+  }
+
+  return `Classification: ${classification.processed || 0} transactions processed, ${classification.low_confidence || 0} low confidence.`;
+};
 
 const SyncReasonBreakdown = ({ title, reasons, tone = "muted" }) => {
   if (!hasReasonEntries(reasons)) {
@@ -148,6 +209,56 @@ const ConfigurationCard = ({
   </section>
 );
 
+const ThresholdSlider = ({
+  label,
+  helperText,
+  valuePercent,
+  onChangePercent,
+  disabled = false,
+}) => {
+  const sliderValue = valuePercent === "" ? 0 : Number(valuePercent);
+
+  return (
+    <label className="block rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-bold text-main">{label}</span>
+            <span className="shrink-0 text-xs font-bold text-accent">
+              {valuePercent === "" ? "-" : `${valuePercent}%`}
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-muted">{helperText}</p>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="0.5"
+            value={sliderValue}
+            onChange={(event) => onChangePercent(event.target.value)}
+            disabled={disabled}
+            className="mt-3 h-2 w-full cursor-pointer accent-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 md:w-32">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={valuePercent}
+            onChange={(event) => onChangePercent(event.target.value)}
+            disabled={disabled}
+            className="form-control w-full rounded-xl px-3 py-2 text-sm"
+          />
+          <span className="text-sm font-semibold text-muted">%</span>
+        </div>
+      </div>
+    </label>
+  );
+};
+
 const Configuration = ({
   autoBudget,
   paydayStartDay,
@@ -187,7 +298,101 @@ const Configuration = ({
   const [syncResults, setSyncResults] = useState({});
   const [googleConnectionError, setGoogleConnectionError] = useState("");
   const [workspaceConfigurationError, setWorkspaceConfigurationError] = useState("");
+  const [insightThresholds, setInsightThresholds] = useState(
+    settingsToForm(defaultInsightThresholds)
+  );
+  const [isLoadingInsightThresholds, setIsLoadingInsightThresholds] = useState(false);
+  const [isSavingInsightThresholds, setIsSavingInsightThresholds] = useState(false);
+  const [insightThresholdError, setInsightThresholdError] = useState("");
+  const [insightThresholdSuccess, setInsightThresholdSuccess] = useState("");
   const canInviteMembers = userRole === "owner" || userRole === "super_admin";
+
+  const updateInsightField = (field, value) => {
+    setInsightThresholds((currentThresholds) => ({
+      ...currentThresholds,
+      [field]: value,
+    }));
+    setInsightThresholdError("");
+    setInsightThresholdSuccess("");
+  };
+
+  const validateInsightThresholds = useCallback((form) => {
+    if (Object.values(form).some((value) => value === "" || value === null)) {
+      return "All insight threshold fields must be filled.";
+    }
+
+    const payload = formToPayload(form);
+    const percentFields = [
+      "need_warning_ratio",
+      "need_danger_ratio",
+      "want_warning_ratio",
+      "want_danger_ratio",
+      "saving_warning_ratio",
+      "saving_good_ratio",
+    ];
+
+    if (Object.values(payload).some((value) => Number.isNaN(value))) {
+      return "All insight threshold fields must contain valid numbers.";
+    }
+
+    if (percentFields.some((field) => Number(form[field]) < 0 || Number(form[field]) > 100)) {
+      return "Percentage thresholds must be between 0 and 100.";
+    }
+
+    if (payload.need_warning_ratio > payload.need_danger_ratio) {
+      return "Need warning threshold must be less than or equal to Need danger threshold.";
+    }
+
+    if (payload.want_warning_ratio > payload.want_danger_ratio) {
+      return "Want warning threshold must be less than or equal to Want danger threshold.";
+    }
+
+    if (payload.saving_warning_ratio > payload.saving_good_ratio) {
+      return "Saving warning threshold must be less than or equal to Saving good threshold.";
+    }
+
+    if (payload.uncategorized_warning_count < 0 || payload.uncategorized_danger_count < 0) {
+      return "Uncategorized counts cannot be negative.";
+    }
+
+    if (payload.uncategorized_warning_count > payload.uncategorized_danger_count) {
+      return "Uncategorized warning count must be less than or equal to danger count.";
+    }
+
+    if (payload.anomaly_warning_multiplier < 1 || payload.anomaly_danger_multiplier < 1) {
+      return "Anomaly multipliers must be at least 1.0.";
+    }
+
+    if (payload.anomaly_warning_multiplier > payload.anomaly_danger_multiplier) {
+      return "Anomaly warning multiplier must be less than or equal to danger multiplier.";
+    }
+
+    return "";
+  }, []);
+
+  const insightValidationError = validateInsightThresholds(insightThresholds);
+
+  const loadInsightThresholds = useCallback(async () => {
+    try {
+      setIsLoadingInsightThresholds(true);
+      setInsightThresholdError("");
+
+      const response = await getInsightThresholds();
+
+      setInsightThresholds(settingsToForm(response || defaultInsightThresholds));
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      setInsightThresholdError("Insight severity settings are not available.");
+    } finally {
+      setIsLoadingInsightThresholds(false);
+    }
+  }, [onUnauthorized]);
 
   const loadGoogleSheetSources = useCallback(async () => {
     try {
@@ -300,6 +505,10 @@ const Configuration = ({
 
     loadGoogleSheetSources();
   }, [googleConnection.connected, loadGoogleSheetSources]);
+
+  useEffect(() => {
+    loadInsightThresholds();
+  }, [loadInsightThresholds]);
 
   useEffect(() => {
     let isMounted = true;
@@ -527,7 +736,10 @@ const Configuration = ({
       setNotification({
         type: "success",
         title: "Sync complete",
-        message: `${response?.inserted_rows || 0} inserted, ${response?.updated_rows || 0} updated.`,
+        message: [
+          `${response?.inserted_rows || 0} inserted, ${response?.updated_rows || 0} updated.`,
+          formatClassificationSummary(response?.classification),
+        ].filter(Boolean).join(" "),
       });
       await loadGoogleSheetSources();
     } catch (err) {
@@ -611,6 +823,59 @@ const Configuration = ({
     } finally {
       setDeletingSourceId("");
     }
+  };
+
+  const handleSaveInsightThresholds = async () => {
+    const validationMessage = validateInsightThresholds(insightThresholds);
+
+    if (validationMessage) {
+      setInsightThresholdError(validationMessage);
+      return;
+    }
+
+    try {
+      setIsSavingInsightThresholds(true);
+      setInsightThresholdError("");
+      setInsightThresholdSuccess("");
+
+      const response = await updateInsightThresholds(
+        formToPayload(insightThresholds)
+      );
+
+      setInsightThresholds(settingsToForm(response || {
+        ...defaultInsightThresholds,
+        source: "workspace",
+      }));
+      setInsightThresholdSuccess("Insight severity settings saved.");
+    } catch (err) {
+      console.error(err);
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      setInsightThresholdError(
+        err?.response?.data?.detail
+        || "Insight severity settings could not be saved."
+      );
+    } finally {
+      setIsSavingInsightThresholds(false);
+    }
+  };
+
+  const handleResetInsightThresholds = () => {
+    const shouldReset = window.confirm(
+      "Load default insight severity values? Click Save Settings afterward to apply them."
+    );
+
+    if (!shouldReset) {
+      return;
+    }
+
+    setInsightThresholds(settingsToForm(defaultInsightThresholds));
+    setInsightThresholdError("");
+    setInsightThresholdSuccess("Default values loaded. Click Save Settings to apply.");
   };
 
   const handleConnectGoogle = async () => {
@@ -1180,6 +1445,20 @@ const Configuration = ({
                                 </div>
 
                                 <div className="mt-3 space-y-1 text-xs leading-5 text-muted">
+                                  {syncResult.classification && (
+                                    <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 font-semibold text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                      {formatClassificationSummary(syncResult.classification)}
+                                      {" "}
+                                      Skipped manual: {syncResult.classification.skipped_manual || 0}.
+                                      {" "}
+                                      Errors: {syncResult.classification.errors || 0}.
+                                    </p>
+                                  )}
+                                  {(syncResult.warnings || []).includes("classification_failed") && (
+                                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
+                                      Classification did not finish. You can run classification manually later.
+                                    </p>
+                                  )}
                                   {(syncResult.failed_rows || 0) > 0 && (
                                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
                                       Some rows were not imported. Review reasons below.
@@ -1273,6 +1552,206 @@ const Configuration = ({
           This setting syncs with the dashboard privacy control after saving.
         </p>
 
+      </ConfigurationCard>
+
+      <ConfigurationCard
+        icon={SlidersHorizontal}
+        title="Insight Severity Settings"
+        description="Customize how the dashboard highlights Need, Want, Saving, Uncategorized, and anomaly severity for this workspace."
+      >
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+            <p>
+              Severity is calculated by the backend based on these workspace-level thresholds.
+            </p>
+            <p className="mt-1 font-semibold text-main">
+              {insightThresholds.source === "workspace"
+                ? "Using workspace custom thresholds."
+                : "Using default thresholds."}
+            </p>
+          </div>
+
+          {isLoadingInsightThresholds ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+              Loading insight severity settings...
+            </div>
+          ) : (
+            <>
+              <div>
+                <h3 className="text-sm font-bold text-main">
+                  Spending Ratio Thresholds
+                </h3>
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <ThresholdSlider
+                    label="Need warning threshold"
+                    helperText="Warning when Need spending reaches this percentage of total expense."
+                    valuePercent={insightThresholds.need_warning_ratio}
+                    onChangePercent={(value) => updateInsightField("need_warning_ratio", value)}
+                    disabled={isSavingInsightThresholds}
+                  />
+                  <ThresholdSlider
+                    label="Need danger threshold"
+                    helperText="Danger when Need spending reaches this percentage of total expense."
+                    valuePercent={insightThresholds.need_danger_ratio}
+                    onChangePercent={(value) => updateInsightField("need_danger_ratio", value)}
+                    disabled={isSavingInsightThresholds}
+                  />
+                  <ThresholdSlider
+                    label="Want warning threshold"
+                    helperText="Warning when Want spending reaches this percentage of total expense."
+                    valuePercent={insightThresholds.want_warning_ratio}
+                    onChangePercent={(value) => updateInsightField("want_warning_ratio", value)}
+                    disabled={isSavingInsightThresholds}
+                  />
+                  <ThresholdSlider
+                    label="Want danger threshold"
+                    helperText="Danger when Want spending reaches this percentage of total expense."
+                    valuePercent={insightThresholds.want_danger_ratio}
+                    onChangePercent={(value) => updateInsightField("want_danger_ratio", value)}
+                    disabled={isSavingInsightThresholds}
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200 pt-5 dark:border-[var(--color-border)]">
+                <h3 className="text-sm font-bold text-main">
+                  Saving Thresholds
+                </h3>
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <ThresholdSlider
+                    label="Saving warning threshold"
+                    helperText="Warning when Saving allocation is below this percentage of income."
+                    valuePercent={insightThresholds.saving_warning_ratio}
+                    onChangePercent={(value) => updateInsightField("saving_warning_ratio", value)}
+                    disabled={isSavingInsightThresholds}
+                  />
+                  <ThresholdSlider
+                    label="Saving good threshold"
+                    helperText="Positive when Saving allocation reaches this percentage of income."
+                    valuePercent={insightThresholds.saving_good_ratio}
+                    onChangePercent={(value) => updateInsightField("saving_good_ratio", value)}
+                    disabled={isSavingInsightThresholds}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 border-t border-gray-200 pt-5 dark:border-[var(--color-border)] md:grid-cols-2">
+                <div>
+                  <h3 className="text-sm font-bold text-main">
+                    Data Quality Thresholds
+                  </h3>
+                  <div className="mt-3 grid grid-cols-1 gap-3">
+                    {[
+                      [
+                        "uncategorized_warning_count",
+                        "Uncategorized warning count",
+                        "Warning when uncategorized transaction count reaches this number.",
+                      ],
+                      [
+                        "uncategorized_danger_count",
+                        "Uncategorized danger count",
+                        "Danger when uncategorized transaction count reaches this number.",
+                      ],
+                    ].map(([field, label, helperText]) => (
+                      <label
+                        key={field}
+                        className="block rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]"
+                      >
+                        <span className="text-sm font-bold text-main">{label}</span>
+                        <p className="mt-1 text-xs leading-5 text-muted">{helperText}</p>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={insightThresholds[field]}
+                          onChange={(event) => updateInsightField(field, event.target.value)}
+                          disabled={isSavingInsightThresholds}
+                          className="form-control mt-3 w-full rounded-xl px-3 py-2 text-sm"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-bold text-main">
+                    Anomaly Thresholds
+                  </h3>
+                  <div className="mt-3 grid grid-cols-1 gap-3">
+                    {[
+                      [
+                        "anomaly_warning_multiplier",
+                        "Anomaly warning multiplier",
+                        "Warning when a transaction is this many times above its category average.",
+                      ],
+                      [
+                        "anomaly_danger_multiplier",
+                        "Anomaly danger multiplier",
+                        "Danger when a transaction is this many times above its category average.",
+                      ],
+                    ].map(([field, label, helperText]) => (
+                      <label
+                        key={field}
+                        className="block rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]"
+                      >
+                        <span className="text-sm font-bold text-main">{label}</span>
+                        <p className="mt-1 text-xs leading-5 text-muted">{helperText}</p>
+                        <input
+                          type="number"
+                          min="1"
+                          step="0.1"
+                          value={insightThresholds[field]}
+                          onChange={(event) => updateInsightField(field, event.target.value)}
+                          disabled={isSavingInsightThresholds}
+                          className="form-control mt-3 w-full rounded-xl px-3 py-2 text-sm"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {(insightValidationError || insightThresholdError) && (
+                <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
+                  <XCircle size={17} className="mt-0.5 shrink-0" />
+                  <p>{insightThresholdError || insightValidationError}</p>
+                </div>
+              )}
+
+              {insightThresholdSuccess && (
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
+                  <p>{insightThresholdSuccess}</p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleResetInsightThresholds}
+                  disabled={isSavingInsightThresholds}
+                  className="secondary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Reset to Defaults
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveInsightThresholds}
+                  disabled={
+                    isSavingInsightThresholds
+                    || Boolean(insightValidationError)
+                  }
+                  className="primary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingInsightThresholds && (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  )}
+                  {isSavingInsightThresholds ? "Saving..." : "Save Settings"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </ConfigurationCard>
 
       {canInviteMembers && (

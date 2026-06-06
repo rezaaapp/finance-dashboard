@@ -9,7 +9,7 @@ asli di dokumentasi atau file `.env.example`.
 | File | Fungsi |
 | --- | --- |
 | `.env.example` | Template gabungan untuk backend, dashboard frontend, dan landing page. Praktis untuk melihat seluruh konfigurasi dalam satu tempat. |
-| `backend/.env.example` | Template khusus backend FastAPI, Google Sheets, auth, database, Gemini, service account, dan OAuth. |
+| `backend/.env.example` | Template khusus backend FastAPI, Google Sheets, auth, database, rule-based classification, service account, dan OAuth. |
 | `apps/web/.env.example` | Template khusus dashboard frontend React/Vite. |
 | `apps/landing/.env.example` | Template khusus landing page React/Vite. |
 
@@ -89,9 +89,15 @@ Variabel target OAuth:
 | `DASHBOARD_AUTH_TOKEN` | Ya untuk auth/API saat ini | Dev/current auth | Bearer token dashboard/API. Secret, rotate jika bocor. |
 | `CORS_ALLOWED_ORIGINS` | Ya | Semua mode | Daftar origin frontend yang boleh mengakses backend, dipisahkan koma. |
 | `USE_MOCK_DATA` | Opsional | Dev/test | `true` untuk memakai mock data, `false` untuk data aktual dari source yang dikonfigurasi. |
-| `GEMINI_API_KEY` | Ya jika menjalankan klasifikasi AI | Dev/current AI | API key Gemini untuk klasifikasi transaksi. Secret, jangan commit nilai asli. |
-| `GEMINI_CLASSIFICATION_MODEL` | Opsional | Dev/current AI | Nama model Gemini untuk klasifikasi, misalnya model flash/lite sesuai konfigurasi lokal. |
-| `GEMINI_CLASSIFICATION_BATCH_SIZE` | Opsional | Dev/current AI | Jumlah item per batch saat klasifikasi transaksi. |
+| `AI_CLASSIFICATION_ENABLED` | Opsional | Week 5 classification | Default `false`. Week 5 berjalan rule-based only dan tidak membutuhkan AI provider/API/local LLM. |
+| `AI_PROVIDER` | Opsional | Week 5 classification | Default `rule_based`. |
+| `AI_MODEL` | Opsional | Week 5 classification | Default `none`. |
+| `AI_ONLY_LOW_CONFIDENCE` | Opsional | Future AI adapter guard | Default `true`; disiapkan sebagai guard, bukan AI runtime aktif. |
+| `AI_CONFIDENCE_THRESHOLD` | Opsional | Classification confidence | Default `0.75` untuk low-confidence handling. |
+| `AI_MAX_TRANSACTIONS_PER_RUN` | Opsional | Batch classification | Default `500`, membatasi batch run agar ringan. |
+| `GEMINI_API_KEY` | Tidak untuk Week 5 | Legacy placeholder | Placeholder lama. Week 5 tidak membaca nilai ini dan tidak membutuhkan API key AI. |
+| `GEMINI_CLASSIFICATION_MODEL` | Tidak untuk Week 5 | Legacy placeholder | Placeholder lama untuk workflow sebelum Week 5. |
+| `GEMINI_CLASSIFICATION_BATCH_SIZE` | Tidak untuk Week 5 | Legacy placeholder | Placeholder lama untuk workflow sebelum Week 5. |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Pilih salah satu untuk service account | Dev service account | Isi JSON service account sebagai env var. Hanya untuk lokal/demo/testing terkontrol. |
 | `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | Pilih salah satu untuk service account | Dev service account | Service account JSON dalam base64. Hanya untuk lokal/demo/testing terkontrol. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Pilih salah satu untuk service account | Dev service account | Path lokal ke file credential service account. File target tidak boleh di-commit. |
@@ -144,7 +150,7 @@ bundle frontend. Jangan taruh secret di sini.
 | Token Google | Tidak menjadi alur utama untuk public user | Refresh token terenkripsi |
 | Sumber sheet | Env/local registry | PostgreSQL per workspace |
 | Transaksi | Dibaca dari Google Sheets saat runtime/sync lokal | Disinkronkan ke PostgreSQL |
-| AI classification | Generated local JSON di `backend/output/` | Hasil classification disimpan di PostgreSQL |
+| Rule-based classification | PostgreSQL current classifications | Hasil classification disimpan di PostgreSQL |
 | Analytics dashboard | Query dari data yang diproses backend saat ini | Query dari PostgreSQL |
 
 ## Catatan Keamanan

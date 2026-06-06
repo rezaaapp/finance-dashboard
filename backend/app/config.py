@@ -6,6 +6,11 @@ import os
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 
+
+def _env_bool(key, default="false"):
+    return os.getenv(key, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def safe_load_dotenv(path, override=False):
     for key, value in dotenv_values(path).items():
         if value is None:
@@ -76,6 +81,44 @@ class Settings:
         if email.strip()
     ]
     USE_MOCK_DATA = os.getenv("USE_MOCK_DATA", "false").lower() == "true"
+    AI_CLASSIFICATION_ENABLED = _env_bool("AI_CLASSIFICATION_ENABLED", "false")
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "rule_based")
+    AI_MODEL = os.getenv("AI_MODEL", "none")
+    AI_ONLY_LOW_CONFIDENCE = _env_bool("AI_ONLY_LOW_CONFIDENCE", "true")
+    AI_CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.75"))
+    AI_MAX_TRANSACTIONS_PER_RUN = int(
+        os.getenv("AI_MAX_TRANSACTIONS_PER_RUN", "500")
+    )
+    INSIGHT_NEED_WARNING_RATIO = float(
+        os.getenv("INSIGHT_NEED_WARNING_RATIO", "0.80")
+    )
+    INSIGHT_NEED_DANGER_RATIO = float(
+        os.getenv("INSIGHT_NEED_DANGER_RATIO", "0.90")
+    )
+    INSIGHT_WANT_WARNING_RATIO = float(
+        os.getenv("INSIGHT_WANT_WARNING_RATIO", "0.30")
+    )
+    INSIGHT_WANT_DANGER_RATIO = float(
+        os.getenv("INSIGHT_WANT_DANGER_RATIO", "0.45")
+    )
+    INSIGHT_SAVING_WARNING_RATIO = float(
+        os.getenv("INSIGHT_SAVING_WARNING_RATIO", "0.10")
+    )
+    INSIGHT_SAVING_GOOD_RATIO = float(
+        os.getenv("INSIGHT_SAVING_GOOD_RATIO", "0.20")
+    )
+    INSIGHT_UNCATEGORIZED_WARNING_COUNT = int(
+        os.getenv("INSIGHT_UNCATEGORIZED_WARNING_COUNT", "1")
+    )
+    INSIGHT_UNCATEGORIZED_DANGER_COUNT = int(
+        os.getenv("INSIGHT_UNCATEGORIZED_DANGER_COUNT", "20")
+    )
+    INSIGHT_ANOMALY_WARNING_MULTIPLIER = float(
+        os.getenv("INSIGHT_ANOMALY_WARNING_MULTIPLIER", "2.0")
+    )
+    INSIGHT_ANOMALY_DANGER_MULTIPLIER = float(
+        os.getenv("INSIGHT_ANOMALY_DANGER_MULTIPLIER", "3.0")
+    )
     CORS_ALLOWED_ORIGINS = [
         origin.strip()
         for origin in os.getenv(
@@ -196,6 +239,20 @@ class Settings:
         return {
             "year": selected_year,
             "name": self.get_sheet_name_for_year(selected_year),
+        }
+
+    def get_default_insight_settings(self):
+        return {
+            "need_warning_ratio": self.INSIGHT_NEED_WARNING_RATIO,
+            "need_danger_ratio": self.INSIGHT_NEED_DANGER_RATIO,
+            "want_warning_ratio": self.INSIGHT_WANT_WARNING_RATIO,
+            "want_danger_ratio": self.INSIGHT_WANT_DANGER_RATIO,
+            "saving_warning_ratio": self.INSIGHT_SAVING_WARNING_RATIO,
+            "saving_good_ratio": self.INSIGHT_SAVING_GOOD_RATIO,
+            "uncategorized_warning_count": self.INSIGHT_UNCATEGORIZED_WARNING_COUNT,
+            "uncategorized_danger_count": self.INSIGHT_UNCATEGORIZED_DANGER_COUNT,
+            "anomaly_warning_multiplier": self.INSIGHT_ANOMALY_WARNING_MULTIPLIER,
+            "anomaly_danger_multiplier": self.INSIGHT_ANOMALY_DANGER_MULTIPLIER,
         }
 
 settings = Settings()

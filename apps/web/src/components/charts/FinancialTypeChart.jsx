@@ -1,0 +1,126 @@
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import {
+  formatPrivateRupiah,
+  maskChartRows,
+  maskNumber,
+} from "../../utils/privacy";
+import { chartTheme } from "../../theme/chartTheme";
+
+const financialTypeColors = {
+  need: "#335C67",
+  want: "#D9895B",
+  saving: "#4A5D4E",
+  income: "#2F80A7",
+  uncategorized: "#A3ADB8",
+};
+
+const typeLabels = {
+  need: "Need",
+  want: "Want",
+  saving: "Saving",
+  income: "Income",
+  uncategorized: "Uncategorized",
+};
+
+const FinancialTypeChart = ({
+  data = [],
+  theme = "dark",
+  privacyMode,
+}) => {
+  const colors = chartTheme[theme] || chartTheme.dark;
+  const chartData = maskChartRows(
+    data.map((row) => ({
+      ...row,
+      label: typeLabels[row.type] || row.type,
+    })),
+    ["amount"],
+    privacyMode
+  );
+  const hasData = chartData.some((row) => Number(row.amount || 0) > 0);
+
+  return (
+    <div className="panel rounded-lg p-5 shadow-lg">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-bold text-main">
+          Financial Type Breakdown
+        </h2>
+
+        <div className="text-xs text-muted">
+          {data.length} types
+        </div>
+      </div>
+
+      {!hasData ? (
+        <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
+          No classified financial type data available for this period.
+        </div>
+      ) : (
+        <div className="h-[320px] min-w-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke={colors.grid}
+              />
+
+              <XAxis
+                dataKey="label"
+                stroke={colors.tick}
+                tick={{ fill: colors.tick, fontSize: 12 }}
+              />
+
+              <YAxis
+                stroke={colors.tick}
+                tick={{ fill: colors.tick, fontSize: 12 }}
+                tickFormatter={(value) =>
+                  `${(maskNumber(value, privacyMode) / 1000000).toFixed(0)}jt`
+                }
+              />
+
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: colors.tooltipBg,
+                  border: `1px solid ${colors.tooltipBorder}`,
+                  borderRadius: "12px",
+                  color: colors.tooltipText,
+                }}
+                formatter={(value, _name, item) => [
+                  formatPrivateRupiah(value, privacyMode),
+                  `${item?.payload?.count || 0} transactions`,
+                ]}
+                labelFormatter={(label) => label}
+              />
+
+              <Bar
+                dataKey="amount"
+                radius={[8, 8, 0, 0]}
+              >
+                {chartData.map((entry) => (
+                  <Cell
+                    key={entry.type}
+                    fill={financialTypeColors[entry.type] || colors.primary}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default FinancialTypeChart;

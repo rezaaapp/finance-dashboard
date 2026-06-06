@@ -82,6 +82,31 @@ def get_existing_transaction_hashes(
         }
 
 
+def get_transaction_ids_by_external_row_keys(
+    connection,
+    *,
+    workspace_id: str,
+    sheet_source_id: str,
+    external_row_keys: list[str],
+) -> list[str]:
+    if not external_row_keys:
+        return []
+
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select id
+            from transactions
+            where workspace_id = %s
+              and sheet_source_id = %s
+              and external_row_key = any(%s)
+            """,
+            (workspace_id, sheet_source_id, external_row_keys),
+        )
+
+        return [row["id"] for row in cursor.fetchall()]
+
+
 def bulk_insert_transactions(
     connection,
     rows: list[dict],
@@ -196,6 +221,8 @@ def batch_upsert_transactions(
             "updated": 0,
             "skipped": 0,
             "failed": 0,
+            "inserted_transaction_ids": [],
+            "updated_transaction_ids": [],
         }
 
     existing_hashes = get_existing_transaction_hashes(
@@ -231,12 +258,32 @@ def batch_upsert_transactions(
         rows_to_update,
         chunk_size=chunk_size,
     )
+    inserted_transaction_ids = get_transaction_ids_by_external_row_keys(
+        connection,
+        workspace_id=workspace_id,
+        sheet_source_id=sheet_source_id,
+        external_row_keys=[
+            row["external_row_key"]
+            for row in rows_to_insert
+        ],
+    )
+    updated_transaction_ids = get_transaction_ids_by_external_row_keys(
+        connection,
+        workspace_id=workspace_id,
+        sheet_source_id=sheet_source_id,
+        external_row_keys=[
+            row["external_row_key"]
+            for row in rows_to_update
+        ],
+    )
 
     return {
         "inserted": inserted_count,
         "updated": updated_count,
         "skipped": skipped_count + (len(rows_to_insert) - inserted_count),
         "failed": 0,
+        "inserted_transaction_ids": inserted_transaction_ids,
+        "updated_transaction_ids": updated_transaction_ids,
     }
 
 
