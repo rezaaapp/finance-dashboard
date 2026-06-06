@@ -19,7 +19,7 @@ const PieCategoryChart = ({ data = [], theme = "dark", privacyMode }) => {
   const hasData = chartData.some((row) => Number(row.Harga || 0) > 0);
 
   return (
-    <div className="panel rounded-lg p-5 shadow-lg">
+    <div className="panel rounded-lg p-4 shadow-lg sm:p-5">
 
       <h2 className="text-xl font-bold text-main mb-6">
         Spending by Category
@@ -30,7 +30,7 @@ const PieCategoryChart = ({ data = [], theme = "dark", privacyMode }) => {
           No expense categories available for this period.
         </div>
       ) : (
-        <div className="h-[320px] min-w-0">
+        <div className="h-[340px] min-w-0 sm:h-[360px]">
 
         <ResponsiveContainer width="100%" height="100%">
 
@@ -61,10 +61,18 @@ const PieCategoryChart = ({ data = [], theme = "dark", privacyMode }) => {
                 border: `1px solid ${colors.tooltipBorder}`,
                 borderRadius: "12px",
                 color: colors.tooltipText,
+                maxWidth: "min(260px, calc(100vw - 32px))",
               }}
+              wrapperStyle={{ zIndex: 20 }}
             />
 
-            <Legend wrapperStyle={{ color: colors.legendText }} />
+            <Legend
+              wrapperStyle={{
+                color: colors.legendText,
+                fontSize: 12,
+                lineHeight: "18px",
+              }}
+            />
 
           </PieChart>
 

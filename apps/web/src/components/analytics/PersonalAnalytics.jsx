@@ -265,7 +265,7 @@ const PersonalAnalytics = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
         <PerformanceKpiCard
           title="Total Income"
           value={formatPrivateRupiah(kpis.income, privacyMode)}

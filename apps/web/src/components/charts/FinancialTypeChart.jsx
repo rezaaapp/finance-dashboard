@@ -49,8 +49,8 @@ const FinancialTypeChart = ({
   const hasData = chartData.some((row) => Number(row.amount || 0) > 0);
 
   return (
-    <div className="panel rounded-lg p-5 shadow-lg">
-      <div className="mb-6 flex items-center justify-between gap-3">
+    <div className="panel rounded-lg p-4 shadow-lg sm:p-5">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <h2 className="text-xl font-bold text-main">
           Financial Type Breakdown
         </h2>
@@ -65,11 +65,11 @@ const FinancialTypeChart = ({
           No classified financial type data available for this period.
         </div>
       ) : (
-        <div className="h-[320px] min-w-0">
+        <div className="h-[340px] min-w-0 sm:h-[360px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
-              margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+              margin={{ top: 8, right: 14, bottom: 18, left: 0 }}
             >
               <CartesianGrid
                 strokeDasharray="3 3"
@@ -79,7 +79,8 @@ const FinancialTypeChart = ({
               <XAxis
                 dataKey="label"
                 stroke={colors.tick}
-                tick={{ fill: colors.tick, fontSize: 12 }}
+                interval={0}
+                tick={{ fill: colors.tick, fontSize: 11 }}
               />
 
               <YAxis
@@ -96,7 +97,9 @@ const FinancialTypeChart = ({
                   border: `1px solid ${colors.tooltipBorder}`,
                   borderRadius: "12px",
                   color: colors.tooltipText,
+                  maxWidth: "min(260px, calc(100vw - 32px))",
                 }}
+                wrapperStyle={{ zIndex: 20 }}
                 formatter={(value, _name, item) => [
                   formatPrivateRupiah(value, privacyMode),
                   `${item?.payload?.count || 0} transactions`,

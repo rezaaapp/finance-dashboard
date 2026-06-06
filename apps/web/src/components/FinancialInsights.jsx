@@ -27,15 +27,15 @@ const FinancialInsights = ({
     : [];
 
   return (
-    <section className="panel rounded-lg p-5 shadow-lg">
+    <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-xl font-bold text-main">
             Financial Insights
           </h2>
 
           {data?.summary && (
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 max-w-4xl text-sm leading-6 text-muted">
               {data.summary}
             </p>
           )}
@@ -61,7 +61,7 @@ const FinancialInsights = ({
           Not enough classified transaction data to show financial insights yet.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {highlights.map((highlight) => {
             const ratio = formatRatio(highlight.ratio);
             const severity = highlight.severity || "neutral";
@@ -69,11 +69,11 @@ const FinancialInsights = ({
             return (
               <article
                 key={`${highlight.type}-${highlight.label}`}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
+                className="flex h-full min-h-[220px] flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
               >
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-main">
+                    <p className="truncate text-sm font-bold text-main" title={highlight.label}>
                       {highlight.label}
                     </p>
 
@@ -83,7 +83,7 @@ const FinancialInsights = ({
                   </div>
 
                   <span
-                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase ${
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase leading-none ${
                       severityStyles[severity] || severityStyles.neutral
                     }`}
                   >
@@ -91,16 +91,16 @@ const FinancialInsights = ({
                   </span>
                 </div>
 
-                <p className="min-h-10 text-sm leading-6 text-muted">
+                <p className="text-sm leading-6 text-muted">
                   {highlight.message}
                 </p>
 
-                <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
-                  <div>
+                <div className="mt-auto flex flex-wrap items-end gap-x-4 gap-y-3 pt-4">
+                  <div className="min-w-0">
                     <p className="text-xs text-subtle">
                       Amount
                     </p>
-                    <p className="text-base font-bold text-main">
+                    <p className="break-words text-base font-bold text-main">
                       {formatPrivateRupiah(highlight.amount, privacyMode)}
                     </p>
                   </div>
