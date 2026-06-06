@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from app.auth import require_auth, require_current_user, require_premium_role
@@ -8,6 +8,7 @@ from app.repositories.insight_settings_repository import get_effective_insight_s
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
+    get_workspace_for_user,
     list_workspace_members,
     normalize_google_sheet_sources,
     upsert_workspace_member,
@@ -42,7 +43,10 @@ def validate_google_sheet_sources(sources):
             ) from exc
 
 
-def get_active_sheet_context(auth_payload=Depends(require_auth)):
+def get_active_sheet_context(
+    auth_payload=Depends(require_auth),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
     if auth_payload is True:
         return {
             "workspace_id": None,
@@ -52,10 +56,23 @@ def get_active_sheet_context(auth_payload=Depends(require_auth)):
         }
 
     with get_db_connection() as connection:
-        workspace = get_primary_workspace_for_user(
-            connection,
-            user_id=auth_payload["sub"],
-        )
+        if active_workspace_id:
+            workspace = get_workspace_for_user(
+                connection,
+                user_id=auth_payload["sub"],
+                workspace_id=active_workspace_id,
+            )
+
+            if not workspace:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Workspace access denied",
+                )
+        else:
+            workspace = get_primary_workspace_for_user(
+                connection,
+                user_id=auth_payload["sub"],
+            )
 
     sources = workspace["google_sheet_sources"] if workspace else []
     sheet_ids = [
@@ -74,15 +91,31 @@ def get_active_sheet_context(auth_payload=Depends(require_auth)):
     }
 
 
-def get_transaction_available_years(auth_payload=Depends(require_auth)):
+def get_transaction_available_years(
+    auth_payload=Depends(require_auth),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
     if auth_payload is True:
         return []
 
     with get_db_connection() as connection:
-        workspace = get_primary_workspace_for_user(
-            connection,
-            user_id=auth_payload["sub"],
-        )
+        if active_workspace_id:
+            workspace = get_workspace_for_user(
+                connection,
+                user_id=auth_payload["sub"],
+                workspace_id=active_workspace_id,
+            )
+
+            if not workspace:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Workspace access denied",
+                )
+        else:
+            workspace = get_primary_workspace_for_user(
+                connection,
+                user_id=auth_payload["sub"],
+            )
 
         if not workspace:
             return []
@@ -140,6 +173,44 @@ def serialize_workspace_member(member):
         "created_at": member["created_at"],
         "updated_at": member["updated_at"],
     }
+
+
+def resolve_workspace_for_request(
+    current_user,
+    active_workspace_id: str | None,
+    *,
+    create_default: bool = False,
+):
+    with get_db_connection() as connection:
+        with connection.transaction():
+            if active_workspace_id:
+                workspace = get_workspace_for_user(
+                    connection,
+                    user_id=current_user["sub"],
+                    workspace_id=active_workspace_id,
+                )
+
+                if not workspace:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Workspace access denied",
+                    )
+
+                return workspace
+
+            workspace = get_primary_workspace_for_user(
+                connection,
+                user_id=current_user["sub"],
+            )
+
+            if not workspace and create_default:
+                workspace = ensure_default_workspace_for_user(
+                    connection,
+                    user_id=current_user["sub"],
+                    user_name=current_user.get("name") or "User",
+                )
+
+            return workspace
 
 
 def ensure_can_invite_workspace_member(current_user, workspace):
@@ -567,13 +638,13 @@ def budget_forecast(
 def save_configuration(
     config: dict = Body(...),
     current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
     try:
-        with get_db_connection() as connection:
-            workspace = get_primary_workspace_for_user(
-                connection,
-                user_id=current_user["sub"],
-            )
+        workspace = resolve_workspace_for_request(
+            current_user,
+            active_workspace_id,
+        )
 
         return save_configuration_settings(
             config,
@@ -585,20 +656,15 @@ def save_configuration(
 
 
 @router.get("/workspace/configuration")
-def get_workspace_configuration(current_user=Depends(require_current_user)):
-    with get_db_connection() as connection:
-        with connection.transaction():
-            workspace = get_primary_workspace_for_user(
-                connection,
-                user_id=current_user["sub"],
-            )
-
-            if not workspace:
-                workspace = ensure_default_workspace_for_user(
-                    connection,
-                    user_id=current_user["sub"],
-                    user_name=current_user.get("name") or "User",
-                )
+def get_workspace_configuration(
+    current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    workspace = resolve_workspace_for_request(
+        current_user,
+        active_workspace_id,
+        create_default=True,
+    )
 
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -619,13 +685,16 @@ def get_workspace_configuration(current_user=Depends(require_current_user)):
 
 
 @router.get("/workspace/members")
-def get_workspace_members(current_user=Depends(require_current_user)):
-    with get_db_connection() as connection:
-        workspace = get_primary_workspace_for_user(
-            connection,
-            user_id=current_user["sub"],
-        )
+def get_workspace_members(
+    current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    workspace = resolve_workspace_for_request(
+        current_user,
+        active_workspace_id,
+    )
 
+    with get_db_connection() as connection:
         if not workspace:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
@@ -648,6 +717,7 @@ def get_workspace_members(current_user=Depends(require_current_user)):
 def invite_workspace_member(
     payload: WorkspaceMemberInvite,
     current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
     email = payload.email.strip().lower()
 
@@ -660,14 +730,14 @@ def invite_workspace_member(
         else email.split("@")[0]
     )
 
+    workspace = resolve_workspace_for_request(
+        current_user,
+        active_workspace_id,
+    )
+    ensure_can_invite_workspace_member(current_user, workspace)
+
     with get_db_connection() as connection:
         with connection.transaction():
-            workspace = get_primary_workspace_for_user(
-                connection,
-                user_id=current_user["sub"],
-            )
-            ensure_can_invite_workspace_member(current_user, workspace)
-
             invited_user = upsert_invited_member_user(
                 connection,
                 email=email,
@@ -701,12 +771,21 @@ def invite_workspace_member(
 def update_workspace_configuration(
     config: dict = Body(...),
     current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
     if current_user.get("role") == "member":
         raise HTTPException(
             status_code=403,
             detail="Members can view Google Sheets shortcuts but cannot change workspace configuration.",
         )
+
+    workspace = resolve_workspace_for_request(
+        current_user,
+        active_workspace_id,
+    )
+
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
 
     google_sheet_id = config.get("google_sheet_id")
     google_sheet_sources = config.get("google_sheet_sources")
@@ -731,6 +810,7 @@ def update_workspace_configuration(
                     user_id=current_user["sub"],
                     google_sheet_id=google_sheet_id,
                     google_sheet_sources=normalized_sources,
+                    workspace_id=str(workspace["id"]),
                 )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

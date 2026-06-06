@@ -28,6 +28,7 @@ import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashb
 import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
 import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTrend";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
+import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
@@ -59,6 +60,11 @@ import {
   getWorkspaceConfiguration,
 } from "../api/dashboardApi";
 import { getGoogleSheetSources } from "../api/googleSheetSourcesApi";
+import { getWorkspaces } from "../api/workspacesApi";
+import {
+  getActiveWorkspaceId,
+  setActiveWorkspaceId,
+} from "../api/workspaceContext";
 
 const premiumRoles = new Set(["super_admin", "owner", "member"]);
 
@@ -144,6 +150,11 @@ const Dashboard = ({
   const [anomalies, setAnomalies] = useState([]);
   const [currentSheetName, setCurrentSheetName] = useState("");
   const [hasActiveGoogleSheet, setHasActiveGoogleSheet] = useState(false);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState(() => (
+    getActiveWorkspaceId()
+  ));
+  const [workspaceReady, setWorkspaceReady] = useState(false);
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
@@ -208,10 +219,67 @@ const Dashboard = ({
     );
   }, [paydayStartDay]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadWorkspaceOptions = async () => {
+      try {
+        const response = await getWorkspaces();
+        const nextWorkspaces = response?.workspaces || [];
+        const storedWorkspaceId = getActiveWorkspaceId();
+        const storedWorkspace = nextWorkspaces.find((workspace) => (
+          workspace.id === storedWorkspaceId
+        ));
+        const nextActiveWorkspaceId = storedWorkspace?.id
+          || nextWorkspaces[0]?.id
+          || "";
+
+        if (!isMounted) {
+          return;
+        }
+
+        setWorkspaces(nextWorkspaces);
+        setActiveWorkspaceIdState(nextActiveWorkspaceId);
+
+        if (nextActiveWorkspaceId && nextActiveWorkspaceId !== storedWorkspaceId) {
+          setActiveWorkspaceId(nextActiveWorkspaceId);
+        }
+      } catch (err) {
+        console.error("Failed to load workspaces.");
+
+        if (err?.response?.status === 401) {
+          onLogout();
+          return;
+        }
+
+        if (isMounted) {
+          setWorkspaces([]);
+          setActiveWorkspaceIdState("");
+        }
+      } finally {
+        if (isMounted) {
+          setWorkspaceReady(true);
+        }
+      }
+    };
+
+    loadWorkspaceOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [onLogout]);
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (
       currentTheme === "dark" ? "light" : "dark"
     ));
+  };
+
+  const handleWorkspaceChange = (workspaceId) => {
+    setActiveWorkspaceId(workspaceId);
+    setActiveWorkspaceIdState(workspaceId);
+    clearDashboardData();
   };
 
   const clearDashboardData = () => {
@@ -451,8 +519,10 @@ const Dashboard = ({
   // LOAD AVAILABLE YEARS
   // =========================
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    if (workspaceReady) {
+      loadInitialData();
+    }
+  }, [activeWorkspaceId, loadInitialData, workspaceReady]);
 
   // =========================
   // FETCH DASHBOARD WHEN YEAR CHANGES
@@ -844,7 +914,13 @@ const Dashboard = ({
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto]">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto]">
+
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onChange={handleWorkspaceChange}
+          />
 
           {/* YEAR FILTER */}
           <select
@@ -908,7 +984,7 @@ const Dashboard = ({
               <RefreshCw size={18} />
             </button>
 
-            <div className="col-span-2 flex justify-end sm:col-span-4 xl:col-span-1">
+            <div className="col-span-2 flex justify-end sm:col-span-5 xl:col-span-1">
               <ProfileWidget auth={auth} onLogout={onLogout} />
             </div>
           </div>
@@ -1201,6 +1277,7 @@ const Dashboard = ({
           />
         ) : (
           <Configuration
+            key={activeWorkspaceId || "default-workspace"}
             autoBudget={autoBudget}
             paydayStartDay={paydayStartDay}
             selectedYear={selectedYear}

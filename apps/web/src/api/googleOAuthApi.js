@@ -1,13 +1,15 @@
 import axios from "axios";
 
 import { GOOGLE_API_URL } from "./config";
+import { buildWorkspaceHeaders } from "./workspaceContext";
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("finance-dashboard-token");
 
-  return token
-    ? { Authorization: `Bearer ${token}` }
-    : {};
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...buildWorkspaceHeaders(),
+  };
 };
 
 export const getGoogleOAuthConnectionStatus = async () => {

@@ -83,6 +83,65 @@ def get_primary_workspace_for_user(connection, *, user_id: str):
         return cursor.fetchone()
 
 
+def get_user_workspaces(connection, *, user_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                w.id,
+                w.name,
+                w.subscription_status,
+                wm.role,
+                wc.google_sheet_id,
+                wc.google_sheet_sources
+            from workspaces w
+            inner join workspace_members wm on wm.workspace_id = w.id
+            left join workspace_configurations wc on wc.workspace_id = w.id
+            where wm.user_id = %s
+            order by
+                case when wm.role = 'owner' then 0 else 1 end,
+                w.created_at asc
+            """,
+            (user_id,),
+        )
+
+        return cursor.fetchall()
+
+
+def get_workspace_for_user(connection, *, user_id: str, workspace_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                w.id,
+                w.name,
+                w.subscription_status,
+                wm.role,
+                wc.google_sheet_id,
+                wc.google_sheet_sources
+            from workspaces w
+            inner join workspace_members wm on wm.workspace_id = w.id
+            left join workspace_configurations wc on wc.workspace_id = w.id
+            where wm.user_id = %s
+              and w.id = %s
+            limit 1
+            """,
+            (user_id, workspace_id),
+        )
+
+        return cursor.fetchone()
+
+
+def user_has_workspace_access(connection, *, user_id: str, workspace_id: str) -> bool:
+    return bool(
+        get_workspace_for_user(
+            connection,
+            user_id=user_id,
+            workspace_id=workspace_id,
+        )
+    )
+
+
 def create_workspace(connection, *, name: str):
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
@@ -234,10 +293,19 @@ def update_google_sheet_id_for_user(
     user_id: str,
     google_sheet_id: str | None,
     google_sheet_sources=None,
+    workspace_id: str | None = None,
 ):
-    workspace = get_primary_workspace_for_user(
-        connection,
-        user_id=user_id,
+    workspace = (
+        get_workspace_for_user(
+            connection,
+            user_id=user_id,
+            workspace_id=workspace_id,
+        )
+        if workspace_id
+        else get_primary_workspace_for_user(
+            connection,
+            user_id=user_id,
+        )
     )
 
     if not workspace:
