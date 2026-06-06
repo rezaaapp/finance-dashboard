@@ -210,7 +210,14 @@ def _empty_summary_totals():
     }
 
 
-def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month: int):
+def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month=None):
+    month_clause = ""
+    params = [workspace_id, int(year)]
+
+    if month:
+        month_clause = "and extract(month from t.transaction_date)::int = %s"
+        params.append(int(month))
+
     financial_type_expr = _classification_financial_type_expr()
     rows = _fetch_all(
         connection,
@@ -240,10 +247,10 @@ def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month: in
               and t.transaction_date is not null
               and t.transaction_date <= current_date
               and extract(year from t.transaction_date)::int = %s
-              and extract(month from t.transaction_date)::int = %s
+              {month_clause}
         ) period_transactions
         """,
-        (workspace_id, int(year), int(month)),
+        params,
     )
 
     if not rows:
@@ -462,13 +469,20 @@ def get_available_years(connection, *, workspace_id: str):
 
 
 def get_summary(connection, *, workspace_id: str, year=None, month=None):
-    if year and month:
+    if year:
         current_year = int(year)
-        current_month = int(month)
-        previous_year, previous_month = get_previous_period(
-            current_year,
-            current_month,
-        )
+        current_month = int(month) if month else None
+        if current_month:
+            previous_year, previous_month = get_previous_period(
+                current_year,
+                current_month,
+            )
+            comparison_label = "vs last month"
+        else:
+            previous_year = current_year - 1
+            previous_month = None
+            comparison_label = "vs previous year"
+
         current_totals = _fetch_summary_totals(
             connection,
             workspace_id=workspace_id,
@@ -527,10 +541,22 @@ def get_summary(connection, *, workspace_id: str, year=None, month=None):
                 "current_month": current_month,
                 "previous_year": previous_year,
                 "previous_month": previous_month,
-                "label": "vs last month",
-                "total_expenses_label": expense_trend["comparison_label"],
-                "total_saving_label": saving_trend["comparison_label"],
-                "total_income_label": income_trend["comparison_label"],
+                "label": comparison_label,
+                "total_expenses_label": (
+                    expense_trend["comparison_label"]
+                    if expense_trend["trend_direction"] == "unavailable"
+                    else comparison_label
+                ),
+                "total_saving_label": (
+                    saving_trend["comparison_label"]
+                    if saving_trend["trend_direction"] == "unavailable"
+                    else comparison_label
+                ),
+                "total_income_label": (
+                    income_trend["comparison_label"]
+                    if income_trend["trend_direction"] == "unavailable"
+                    else comparison_label
+                ),
             },
             "data_source": {
                 "year": str(year or ""),
