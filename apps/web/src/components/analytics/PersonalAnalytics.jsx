@@ -25,6 +25,7 @@ import {
   maskNumber,
 } from "../../utils/privacy";
 import { categoricalChartColors } from "../../theme/chartTheme";
+import EmptyState from "../EmptyState";
 
 const fallbackKpi = {
   income: 0,
@@ -71,6 +72,12 @@ const getComparisonLabel = (metricLabel, periodLabel) => (
   metricLabel === "no previous data"
     ? metricLabel
     : periodLabel || metricLabel || "vs last period"
+);
+
+const hasKpiData = (kpis = {}) => (
+  Number(kpis.income || 0) > 0
+  || Number(kpis.spending || 0) > 0
+  || Number(kpis.saving || 0) > 0
 );
 
 const PerformanceKpiCard = ({
@@ -146,6 +153,7 @@ const PersonalAnalytics = ({
   }, [onSelectedUserChange, selectedUser, users]);
 
   const kpis = data?.kpis?.[selectedUser] ?? fallbackKpi;
+  const selectedUserHasData = hasKpiData(kpis);
   const periodLabel = data?.comparison_period?.label || "vs last period";
 
   const topCategories = useMemo(() => (
@@ -265,48 +273,65 @@ const PersonalAnalytics = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
-        <PerformanceKpiCard
-          title="Total Income"
-          value={formatPrivateRupiah(kpis.income, privacyMode)}
-          icon={DollarSign}
-          iconClassName="bg-[var(--color-accent-bg)] text-accent"
-          trendValue={kpis.income_change_pct}
-          trendDirection={kpis.income_trend}
-          trendLabel={getComparisonLabel(
-            kpis.income_comparison_label,
-            periodLabel
-          )}
+      {!selectedUserHasData ? (
+        <EmptyState
+          title={
+            selectedUser === "all"
+              ? "Analytics will appear after you sync transactions."
+              : "No transactions found for this person in the selected period."
+          }
+          description={
+            selectedUser === "all"
+              ? "Sync valid transactions from Configuration to populate performance cards."
+              : "Try All Data, choose another period, or sync more transaction rows."
+          }
+          icon={Users}
+          compact
         />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <PerformanceKpiCard
+            title="Total Income"
+            value={formatPrivateRupiah(kpis.income, privacyMode)}
+            icon={DollarSign}
+            iconClassName="bg-[var(--color-accent-bg)] text-accent"
+            trendValue={kpis.income_change_pct}
+            trendDirection={kpis.income_trend}
+            trendLabel={getComparisonLabel(
+              kpis.income_comparison_label,
+              periodLabel
+            )}
+          />
 
-        <PerformanceKpiCard
-          title="Total Spending"
-          value={formatPrivateRupiah(kpis.spending, privacyMode)}
-          icon={TrendingDown}
-          iconClassName="bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]"
-          trendValue={kpis.spending_change_pct}
-          trendDirection={kpis.spending_trend}
-          trendLabel={getComparisonLabel(
-            kpis.spending_comparison_label,
-            periodLabel
-          )}
-          isSpending
-        />
+          <PerformanceKpiCard
+            title="Total Spending"
+            value={formatPrivateRupiah(kpis.spending, privacyMode)}
+            icon={TrendingDown}
+            iconClassName="bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]"
+            trendValue={kpis.spending_change_pct}
+            trendDirection={kpis.spending_trend}
+            trendLabel={getComparisonLabel(
+              kpis.spending_comparison_label,
+              periodLabel
+            )}
+            isSpending
+          />
 
-        <PerformanceKpiCard
-          title="Total Saving"
-          value={formatPrivateRupiah(kpis.saving, privacyMode)}
-          icon={PiggyBank}
-          iconClassName="bg-[var(--color-accent-bg)] text-accent"
-          trendValue={kpis.saving_change_pct}
-          trendDirection={kpis.saving_trend}
-          trendLabel={getComparisonLabel(
-            kpis.saving_comparison_label,
-            periodLabel
-          )}
-        />
+          <PerformanceKpiCard
+            title="Total Saving"
+            value={formatPrivateRupiah(kpis.saving, privacyMode)}
+            icon={PiggyBank}
+            iconClassName="bg-[var(--color-accent-bg)] text-accent"
+            trendValue={kpis.saving_change_pct}
+            trendDirection={kpis.saving_trend}
+            trendLabel={getComparisonLabel(
+              kpis.saving_comparison_label,
+              periodLabel
+            )}
+          />
 
-      </div>
+        </div>
+      )}
 
       {variant === "full" && selectedUser === "all" && (
         <div className="panel rounded-lg p-5 shadow-lg">

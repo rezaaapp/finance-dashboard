@@ -1,5 +1,4 @@
 import {
-  Bot,
   CalendarDays,
   CheckCircle2,
   Cloud,
@@ -1096,8 +1095,8 @@ const Configuration = ({
                 : "text-muted hover:text-accent"
             }`}
           >
-            <Bot size={16} className="mr-2 inline" />
-            AI Auto
+            <RefreshCw size={16} className="mr-2 inline" />
+            Auto
           </button>
         </div>
 
@@ -1224,6 +1223,24 @@ const Configuration = ({
             </p>
           </div>
 
+          <div className="mt-5 grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)] md:grid-cols-3">
+            {[
+              ["1", "Connect Google", "Authorize this workspace to read your Google Sheets."],
+              ["2", "Add source", "Paste the spreadsheet URL, test access, and save it."],
+              ["3", "Sync Now", "Import valid transactions and classify them automatically."],
+            ].map(([step, title, description]) => (
+              <div key={step} className="flex gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-bg)] text-xs font-bold text-accent">
+                  {step}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-bold text-main">{title}</p>
+                  <p>{description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {!googleConnection.connected ? (
             <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
               Connect Google first to add spreadsheet sources.
@@ -1247,8 +1264,10 @@ const Configuration = ({
                 </label>
 
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+                  <p>Your spreadsheet should contain the required transaction columns.</p>
                   <p>This spreadsheet will sync all valid monthly tabs.</p>
                   <p>Transaction year will be detected from Waktu Transaksi.</p>
+                  <p>Transactions are classified automatically after sync.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1513,7 +1532,7 @@ const Configuration = ({
                     </ul>
                   ) : (
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-                      No Google Sheet sources saved yet.
+                      No Google Sheet sources saved yet. Add a source above, then run Sync Now to populate the dashboard.
                     </div>
                   )}
                 </div>
