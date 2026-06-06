@@ -985,7 +985,7 @@ const Dashboard = ({
         ) : activeView === "dashboard" ? (
           <>
             {/* SUMMARY */}
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-6">
+            <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-6">
               <SummaryCard
                 title="Total Expenses"
                 value={summary.total_pengeluaran}
@@ -1042,7 +1042,7 @@ const Dashboard = ({
             </div>
 
             {/* CHARTS */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+            <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
               <FinancialTypeChart
                 data={financialTypes}
                 theme={theme}
@@ -1087,7 +1087,7 @@ const Dashboard = ({
             </div>
 
             {/* TABLES */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+            <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
               <TopSpendingTable
                 data={topSpending}
                 privacyMode={privacyMode}

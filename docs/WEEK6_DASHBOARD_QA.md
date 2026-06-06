@@ -133,9 +133,51 @@ order by 1, 2, 3;
 - February 2025 -> January 2025
 - First available month -> safe `N/A` / `no previous data`
 
-Dashboard visual QA:
+## Visual QA Checklist
 
-- Summary card numbers and trend text are not clipped.
-- Financial Insights cards do not overlap.
-- Financial Type Breakdown and Monthly Financial Type Trend remain readable.
-- No horizontal overflow on mobile.
+Summary Cards:
+
+- Numbers and trend text are not clipped on desktop, tablet, or mobile.
+- `N/A` and `no previous data` states are readable.
+- Icon badges do not overlap long Rupiah values.
+- Card heights remain visually consistent in the summary grid.
+
+Financial Insights:
+
+- Need, Want, Saving, Income, Uncategorized, and Top Category cards are
+  readable when present.
+- Severity badges for `positive`, `neutral`, `info`, `warning`, and `danger`
+  are readable in light and dark mode.
+- Message, amount, ratio, and count wrap without horizontal overflow.
+- Loading, error, and empty states keep the section height stable.
+
+Financial Type Chart:
+
+- Need, Want, Saving, Income, and Uncategorized remain visible when data exists.
+- Tooltip fits within the viewport.
+- Axis labels are readable and do not overlap badly.
+- Empty state explains that no classified data is available.
+
+Monthly Financial Type Trend:
+
+- Month labels use short names such as Jan, Feb, and Mar.
+- Legend remains readable and does not cover the line chart.
+- Tooltip fits within the viewport.
+- The chart only renders months returned by the backend.
+
+Existing Charts And Tables:
+
+- Monthly spending/saving/income charts keep enough height for axes/tooltips.
+- Spending by Category legend and tooltip remain readable.
+- Top Spending and Anomaly tables can scroll horizontally on desktop when
+  needed, and mobile cards wrap long transaction text.
+- Empty states use dashed containers and safe copy.
+
+Responsive And Theme QA:
+
+- Desktop, 1366px laptop, tablet around 768px, and mobile around 390px do not
+  show unwanted horizontal overflow.
+- Sidebar expanded/collapsed states do not clip main content.
+- Header filters and action buttons stay accessible.
+- Light and dark mode maintain readable contrast for text, badges, charts, and
+  empty states.

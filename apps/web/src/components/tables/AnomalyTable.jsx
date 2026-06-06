@@ -25,13 +25,13 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
       </h2>
 
       {rows.length === 0 ? (
-        <div className="text-muted">
-          No anomalies detected
+        <div className="rounded-xl border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-muted">
+          No anomalies detected for this period.
         </div>
       ) : (
         <>
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="table-header table-border text-muted">
                   <th className="px-3 py-3 text-left">
@@ -61,8 +61,10 @@ const AnomalyTable = memo(({ data, privacyMode }) => {
                     <td className="px-3 py-3">
                       {item.date}
                     </td>
-                    <td className="px-3 py-3">
-                      {item.transaction}
+                    <td className="max-w-[260px] px-3 py-3">
+                      <div className="truncate" title={item.transaction}>
+                        {item.transaction}
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       {item.category}

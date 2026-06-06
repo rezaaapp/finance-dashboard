@@ -24,6 +24,22 @@ const series = [
   { key: "uncategorized", label: "Uncategorized", color: "#A3ADB8" },
 ];
 
+const monthLabels = [
+  "",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 const MonthlyFinancialTypeTrend = ({
   data = [],
   theme = "dark",
@@ -33,7 +49,7 @@ const MonthlyFinancialTypeTrend = ({
   const chartData = maskChartRows(
     data.map((row) => ({
       ...row,
-      monthLabel: `M${row.month}`,
+      monthLabel: monthLabels[Number(row.month)] || `M${row.month}`,
     })),
     series.map((item) => item.key),
     privacyMode
@@ -43,8 +59,8 @@ const MonthlyFinancialTypeTrend = ({
   ));
 
   return (
-    <div className="panel rounded-lg p-5 shadow-lg">
-      <div className="mb-6 flex items-center justify-between gap-3">
+    <div className="panel rounded-lg p-4 shadow-lg sm:p-5">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <h2 className="text-xl font-bold text-main">
           Monthly Financial Type Trend
         </h2>
@@ -59,11 +75,11 @@ const MonthlyFinancialTypeTrend = ({
           No monthly financial type trend available for this year.
         </div>
       ) : (
-        <div className="h-[320px] min-w-0">
+        <div className="h-[360px] min-w-0 sm:h-[380px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={chartData}
-              margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+              margin={{ top: 8, right: 14, bottom: 28, left: 0 }}
             >
               <CartesianGrid
                 strokeDasharray="3 3"
@@ -73,7 +89,9 @@ const MonthlyFinancialTypeTrend = ({
               <XAxis
                 dataKey="monthLabel"
                 stroke={colors.tick}
-                tick={{ fill: colors.tick, fontSize: 12 }}
+                interval="preserveStartEnd"
+                minTickGap={8}
+                tick={{ fill: colors.tick, fontSize: 11 }}
               />
 
               <YAxis
@@ -90,11 +108,21 @@ const MonthlyFinancialTypeTrend = ({
                   border: `1px solid ${colors.tooltipBorder}`,
                   borderRadius: "12px",
                   color: colors.tooltipText,
+                  maxWidth: "min(280px, calc(100vw - 32px))",
                 }}
+                wrapperStyle={{ zIndex: 20 }}
                 formatter={(value) => formatPrivateRupiah(value, privacyMode)}
               />
 
-              <Legend wrapperStyle={{ color: colors.legendText }} />
+              <Legend
+                verticalAlign="bottom"
+                height={30}
+                wrapperStyle={{
+                  color: colors.legendText,
+                  fontSize: 12,
+                  lineHeight: "18px",
+                }}
+              />
 
               {series.map((item) => (
                 <Line
