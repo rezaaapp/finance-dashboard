@@ -154,6 +154,110 @@ def _fetch_all(connection, query, params):
         return []
 
 
+def get_previous_period(year: int, month: int) -> tuple[int, int]:
+    if int(month) == 1:
+        return int(year) - 1, 12
+
+    return int(year), int(month) - 1
+
+
+def _trend_payload(current_value: float, previous_value: float) -> dict:
+    current_value = float(current_value or 0)
+    previous_value = float(previous_value or 0)
+    difference = current_value - previous_value
+
+    if previous_value > 0:
+        percentage_change = round((difference / previous_value) * 100, 2)
+        if percentage_change > 0:
+            trend_direction = "up"
+        elif percentage_change < 0:
+            trend_direction = "down"
+        else:
+            trend_direction = "flat"
+
+        return {
+            "previous_value": previous_value,
+            "difference": difference,
+            "percentage_change": percentage_change,
+            "trend_direction": trend_direction,
+            "comparison_label": "vs last month",
+        }
+
+    if current_value == 0:
+        return {
+            "previous_value": previous_value,
+            "difference": difference,
+            "percentage_change": 0,
+            "trend_direction": "flat",
+            "comparison_label": "vs last month",
+        }
+
+    return {
+        "previous_value": previous_value,
+        "difference": difference,
+        "percentage_change": None,
+        "trend_direction": "unavailable",
+        "comparison_label": "no previous data",
+    }
+
+
+def _empty_summary_totals():
+    return {
+        "income": 0.0,
+        "saving": 0.0,
+        "expense": 0.0,
+        "transaction_count": 0,
+    }
+
+
+def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month: int):
+    financial_type_expr = _classification_financial_type_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select
+            coalesce(sum(amount) filter (
+                where financial_type = 'income'
+            ), 0) as total_income,
+            coalesce(sum(amount) filter (
+                where financial_type = 'saving'
+            ), 0) as total_saving,
+            coalesce(sum(amount) filter (
+                where financial_type in ('need', 'want', 'uncategorized')
+            ), 0) as total_expense,
+            count(*) as transaction_count
+        from (
+            select
+                t.id,
+                t.amount,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where t.workspace_id = %s
+              and t.transaction_date is not null
+              and t.transaction_date <= current_date
+              and extract(year from t.transaction_date)::int = %s
+              and extract(month from t.transaction_date)::int = %s
+        ) period_transactions
+        """,
+        (workspace_id, int(year), int(month)),
+    )
+
+    if not rows:
+        return _empty_summary_totals()
+
+    row = rows[0]
+    return {
+        "income": float(row["total_income"] or 0),
+        "saving": float(row["total_saving"] or 0),
+        "expense": float(row["total_expense"] or 0),
+        "transaction_count": int(row["transaction_count"] or 0),
+    }
+
+
 def get_available_years(connection, *, workspace_id: str):
     rows = _fetch_all(
         connection,
@@ -172,6 +276,82 @@ def get_available_years(connection, *, workspace_id: str):
 
 
 def get_summary(connection, *, workspace_id: str, year=None, month=None):
+    if year and month:
+        current_year = int(year)
+        current_month = int(month)
+        previous_year, previous_month = get_previous_period(
+            current_year,
+            current_month,
+        )
+        current_totals = _fetch_summary_totals(
+            connection,
+            workspace_id=workspace_id,
+            year=current_year,
+            month=current_month,
+        )
+        previous_totals = _fetch_summary_totals(
+            connection,
+            workspace_id=workspace_id,
+            year=previous_year,
+            month=previous_month,
+        )
+        total_income = current_totals["income"]
+        total_expense = current_totals["expense"]
+        total_saving = current_totals["saving"]
+        expense_trend = _trend_payload(
+            total_expense,
+            previous_totals["expense"],
+        )
+        saving_trend = _trend_payload(
+            total_saving,
+            previous_totals["saving"],
+        )
+        income_trend = _trend_payload(
+            total_income,
+            previous_totals["income"],
+        )
+
+        return {
+            "total_pengeluaran": total_expense,
+            "total_saving": total_saving,
+            "total_income": total_income,
+            "trend_pengeluaran": expense_trend["percentage_change"],
+            "trend_saving": saving_trend["percentage_change"],
+            "trend_income": income_trend["percentage_change"],
+            "total_expenses": total_expense,
+            "total_expenses_previous": expense_trend["previous_value"],
+            "total_expenses_difference": expense_trend["difference"],
+            "total_expenses_change_pct": expense_trend["percentage_change"],
+            "total_expenses_trend": expense_trend["trend_direction"],
+            "total_saving_previous": saving_trend["previous_value"],
+            "total_saving_difference": saving_trend["difference"],
+            "total_saving_change_pct": saving_trend["percentage_change"],
+            "total_saving_trend": saving_trend["trend_direction"],
+            "total_income_previous": income_trend["previous_value"],
+            "total_income_difference": income_trend["difference"],
+            "total_income_change_pct": income_trend["percentage_change"],
+            "total_income_trend": income_trend["trend_direction"],
+            "saving_ratio": round(total_saving / total_expense * 100, 2)
+            if total_expense > 0 else 0,
+            "surplus": float(total_income - total_expense - total_saving),
+            "transaction_count": current_totals["transaction_count"],
+            "net_cashflow": float(total_income - total_expense - total_saving),
+            "comparison": {
+                "current_year": current_year,
+                "current_month": current_month,
+                "previous_year": previous_year,
+                "previous_month": previous_month,
+                "label": "vs last month",
+                "total_expenses_label": expense_trend["comparison_label"],
+                "total_saving_label": saving_trend["comparison_label"],
+                "total_income_label": income_trend["comparison_label"],
+            },
+            "data_source": {
+                "year": str(year or ""),
+                "name": "Supabase Transactions",
+            },
+        }
+
     where_clause, params = _filters(year, month)
     rows = _fetch_all(
         connection,
