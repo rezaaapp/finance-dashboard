@@ -1,5 +1,7 @@
 # Week 6 Dashboard QA
 
+See also: [Week 6 Analytics QA](WEEK6_ANALYTICS_QA.md).
+
 ## Summary Month-over-Month Trend
 
 Dashboard summary cards call:
