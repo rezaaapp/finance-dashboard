@@ -1,5 +1,7 @@
 # Week 6 Analytics QA
 
+See also: [Week 6 Data Accuracy Audit](WEEK6_DATA_ACCURACY_AUDIT.md).
+
 ## Personal Finance Performance Trend
 
 Analytics Personal Finance Performance uses:

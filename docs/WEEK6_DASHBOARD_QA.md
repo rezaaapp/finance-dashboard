@@ -1,6 +1,7 @@
 # Week 6 Dashboard QA
 
-See also: [Week 6 Analytics QA](WEEK6_ANALYTICS_QA.md).
+See also: [Week 6 Analytics QA](WEEK6_ANALYTICS_QA.md) and
+[Week 6 Data Accuracy Audit](WEEK6_DATA_ACCURACY_AUDIT.md).
 
 ## Summary Month-over-Month Trend
 
