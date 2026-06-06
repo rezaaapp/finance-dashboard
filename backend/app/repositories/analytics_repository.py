@@ -822,7 +822,20 @@ def get_personal_analytics(connection, *, workspace_id: str, year=None, month=No
     }
 
 
-def get_anomalies(connection, *, workspace_id: str, year=None, month=None):
+def get_anomalies(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    insight_settings: dict | None = None,
+):
+    anomaly_warning_multiplier = float(
+        (insight_settings or {}).get("anomaly_warning_multiplier", 2.0)
+    )
+    anomaly_danger_multiplier = float(
+        (insight_settings or {}).get("anomaly_danger_multiplier", 3.0)
+    )
     clauses = [
         "t.workspace_id = %s",
         "t.transaction_date is not null",
@@ -893,10 +906,18 @@ def get_anomalies(connection, *, workspace_id: str, year=None, month=None):
         threshold = avg_amount + (2 * stddev_amount)
         ratio = amount / avg_amount if avg_amount > 0 else 0
         is_statistical_anomaly = stddev_amount > 0 and amount > threshold
-        is_ratio_anomaly = stddev_amount <= 0 and ratio > 2
+        is_ratio_anomaly = (
+            stddev_amount <= 0
+            and avg_amount > 0
+            and ratio >= anomaly_warning_multiplier
+        )
 
         if is_statistical_anomaly or is_ratio_anomaly:
-            severity = "high" if ratio >= 3 else "medium"
+            severity = (
+                "danger"
+                if ratio >= anomaly_danger_multiplier
+                else "warning"
+            )
             anomalies.append({
                 "transaction_id": str(row["transaction_id"]),
                 "title": row["title"],

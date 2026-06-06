@@ -2,7 +2,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from app.auth import require_auth, require_current_user, require_premium_role
+from app.config import settings
 from app.database import get_db_connection
+from app.repositories.insight_settings_repository import get_effective_insight_settings
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
@@ -474,11 +476,17 @@ def anomalies(
 ):
     if sheet_context.get("workspace_id"):
         with get_db_connection() as connection:
+            insight_settings = get_effective_insight_settings(
+                connection,
+                workspace_id=sheet_context["workspace_id"],
+                default_settings=settings.get_default_insight_settings(),
+            )
             return analytics.get_anomalies(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                insight_settings=insight_settings,
             )
 
     return get_anomalies(year, month, **legacy_sheet_context(sheet_context))
@@ -525,6 +533,8 @@ def rule_based_insights(
             "need_ratio": 0,
             "want_ratio": 0,
             "saving_rate": 0,
+            "uncategorized_count": 0,
+            "settings_source": "default",
         },
     }
 

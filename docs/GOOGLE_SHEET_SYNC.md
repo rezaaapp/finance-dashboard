@@ -15,6 +15,13 @@ classification rules are applied before built-in rules, and manual overrides
 The standalone `POST /api/classifications/run` endpoint remains available for
 backfill and manual debug runs.
 
+Use this backfill endpoint for older data or if a sync warning reports
+`classification_failed`:
+
+```text
+POST /api/classifications/run?limit=500
+```
+
 ## Required Columns
 
 Each synced tab must include these columns. Header matching is case-insensitive and trims whitespace.

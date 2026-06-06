@@ -15,8 +15,11 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import SummaryCard from "../components/SummaryCard";
+import FinancialInsights from "../components/FinancialInsights";
 import MonthlyChart from "../components/charts/MonthlyChart";
 import PieCategoryChart from "../components/charts/PieCategoryChart";
+import FinancialTypeChart from "../components/charts/FinancialTypeChart";
+import MonthlyFinancialTypeTrend from "../components/charts/MonthlyFinancialTypeTrend";
 import GroceryVsFoodChart from "../components/charts/GroceryVsFoodChart";
 import CategoryHeatmap from "../components/charts/CategoryHeatmap";
 import CategoryTrendChart from "../components/charts/CategoryTrendChart";
@@ -43,6 +46,9 @@ import {
   getMonthlyIncome,
   getTopSpending,
   getSpendingByCategory,
+  getFinancialTypes,
+  getMonthlyFinancialTypes,
+  getRuleBasedInsights,
   getGroceryVsFood,
   getCategoryHeatmap,
   getTransactions,
@@ -126,6 +132,11 @@ const Dashboard = ({
   const [income, setIncome] = useState([]);
   const [topSpending, setTopSpending] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
+  const [financialTypes, setFinancialTypes] = useState([]);
+  const [monthlyFinancialTypes, setMonthlyFinancialTypes] = useState([]);
+  const [ruleBasedInsights, setRuleBasedInsights] = useState({});
+  const [financialInsightsLoading, setFinancialInsightsLoading] = useState(false);
+  const [financialInsightsError, setFinancialInsightsError] = useState("");
   const [groceryVsFood, setGroceryVsFood] = useState([]);
   const [categoryHeatmap, setCategoryHeatmap] = useState({});
   const [rawTransactions, setRawTransactions] = useState([]);
@@ -215,6 +226,11 @@ const Dashboard = ({
     setIncome([]);
     setTopSpending([]);
     setCategoryData([]);
+    setFinancialTypes([]);
+    setMonthlyFinancialTypes([]);
+    setRuleBasedInsights({});
+    setFinancialInsightsLoading(false);
+    setFinancialInsightsError("");
     setGroceryVsFood([]);
     setCategoryHeatmap({});
     setRawTransactions([]);
@@ -294,6 +310,39 @@ const Dashboard = ({
       const incomeData = await getMonthlyIncome(year, month);
       const topSpendingData = await getTopSpending(year, month);
       const categoryDataRes = await getSpendingByCategory(year, month);
+      setFinancialInsightsLoading(true);
+      setFinancialInsightsError("");
+      const [
+        financialTypesResult,
+        monthlyFinancialTypesResult,
+        ruleBasedInsightsResult,
+      ] = await Promise.allSettled([
+        getFinancialTypes({ year, month }),
+        getMonthlyFinancialTypes({ year }),
+        getRuleBasedInsights({ year, month }),
+      ]);
+
+      if (financialTypesResult.status === "fulfilled") {
+        setFinancialTypes(financialTypesResult.value);
+      } else {
+        setFinancialTypes([]);
+      }
+
+      if (monthlyFinancialTypesResult.status === "fulfilled") {
+        setMonthlyFinancialTypes(monthlyFinancialTypesResult.value);
+      } else {
+        setMonthlyFinancialTypes([]);
+      }
+
+      if (ruleBasedInsightsResult.status === "fulfilled") {
+        setRuleBasedInsights(ruleBasedInsightsResult.value);
+        setFinancialInsightsError("");
+      } else {
+        setRuleBasedInsights({});
+        setFinancialInsightsError("Failed to load rule-based insights.");
+      }
+
+      setFinancialInsightsLoading(false);
       const groceryVsFoodData = hasPremiumAccess
         ? await getGroceryVsFood(year, month, analyticsUserName)
         : [];
@@ -358,6 +407,7 @@ const Dashboard = ({
 
       setError("Failed to fetch dashboard data.");
     } finally {
+      setFinancialInsightsLoading(false);
       setLoading(false);
     }
   }, [hasPremiumAccess, onLogout, privacyMode, selectedAnalyticsUser]);
@@ -427,13 +477,13 @@ const Dashboard = ({
   // FETCH DASHBOARD WHEN YEAR CHANGES
   // =========================
   useEffect(() => {
-    if (selectedYear !== "") {
+    if (activeView === "dashboard" && selectedYear !== "") {
       fetchDashboardData(
         selectedYear,
         selectedMonth
       );
     }
-  }, [fetchDashboardData, selectedYear, selectedMonth]);
+  }, [activeView, fetchDashboardData, selectedYear, selectedMonth]);
 
   // =========================
   // LAZY FETCH ANALYTICS DATA
@@ -958,8 +1008,29 @@ const Dashboard = ({
               />
             </div>
 
+            <div className="mb-8">
+              <FinancialInsights
+                data={ruleBasedInsights}
+                loading={financialInsightsLoading}
+                error={financialInsightsError}
+                privacyMode={privacyMode}
+              />
+            </div>
+
             {/* CHARTS */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+              <FinancialTypeChart
+                data={financialTypes}
+                theme={theme}
+                privacyMode={privacyMode}
+              />
+
+              <MonthlyFinancialTypeTrend
+                data={monthlyFinancialTypes}
+                theme={theme}
+                privacyMode={privacyMode}
+              />
+
               <MonthlyChart
                 title="Monthly Spending"
                 data={spending}

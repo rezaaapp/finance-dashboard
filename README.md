@@ -18,7 +18,9 @@ token, dan operasional production benar-benar matang.
 - Tren bulanan untuk spending, income, dan saving
 - Analitik kategori pengeluaran
 - Analitik source fund atau sumber dana
-- Klasifikasi AI Needs, Wants, Savings untuk transaksi
+- Klasifikasi transaksi Week 5 berbasis rule untuk Need, Want, Saving,
+  Income, dan Uncategorized
+- Rule-based financial insights dengan severity per workspace
 - Guest/privacy mode untuk menyamarkan nilai saat demo
 - Landing page terpisah untuk halaman publik aplikasi
 
@@ -26,7 +28,7 @@ token, dan operasional production benar-benar matang.
 
 - Frontend: React, Vite, Tailwind CSS, Recharts
 - Backend API: FastAPI, Python, Pandas
-- Data sync dan AI classification: Node.js, TypeScript, Gemini API
+- Data sync dan rule-based classification: Node.js, TypeScript, PostgreSQL
 - Data source: Google Sheets
 - Deployment target: Vercel untuk frontend dan Render untuk backend
 
@@ -37,7 +39,7 @@ apps/web/        Dashboard frontend berbasis React + Vite
 apps/landing/    Landing page berbasis React + Vite
 backend/app/     Backend FastAPI, API routes, auth, service, repository
 backend/scripts/ Script Python untuk load, proses, dan generate data finansial
-backend/node/    Script Node.js/TypeScript untuk sync, seed, DB, dan klasifikasi AI
+backend/node/    Script Node.js/TypeScript untuk sync, seed, dan DB utilities
 backend/output/  Output JSON hasil generate lokal; jangan commit data asli
 docs/            Dokumentasi project, termasuk checklist keamanan
 ```
@@ -57,7 +59,7 @@ File env utama:
 
 - `.env.example`: contoh gabungan untuk backend, dashboard, dan landing
 - `backend/.env.example`: konfigurasi backend, Google Sheets, auth, OAuth,
-  Gemini, dan database
+  database, rule-based classification, dan placeholder Gemini legacy
 - `apps/web/.env.example`: konfigurasi dashboard frontend seperti
   `VITE_API_URL`, `VITE_API_BASE_URL`, dan `VITE_GUEST_MODE_MULTIPLIER`
 - `apps/landing/.env.example`: konfigurasi landing page seperti
@@ -68,6 +70,11 @@ asli hanya di file `.env` lokal atau environment variable provider deployment.
 
 Panduan database Supabase/PostgreSQL tersedia di
 [docs/DATABASE.md](docs/DATABASE.md).
+
+Dokumentasi Week 5 rule-based classification tersedia di
+[docs/RULE_BASED_CLASSIFICATION.md](docs/RULE_BASED_CLASSIFICATION.md), dengan
+checklist final di
+[docs/WEEK5_RULE_BASED_VERIFICATION.md](docs/WEEK5_RULE_BASED_VERIFICATION.md).
 
 ## Local Development
 
@@ -135,23 +142,36 @@ sendiri, dan token harus disimpan secara aman serta dienkripsi.
 Panduan setup Google Cloud OAuth tersedia di
 [docs/GOOGLE_OAUTH.md](docs/GOOGLE_OAUTH.md).
 
-## AI Classification
+## Rule-Based Classification
 
-Script Node.js/TypeScript memakai Gemini API untuk mengklasifikasikan transaksi
-ke kategori Needs, Wants, dan Savings. Konfigurasi utama:
+Week 5 menggunakan deterministic rule-based classification only. Tidak ada AI
+provider, external AI API call, atau local LLM yang diperlukan untuk
+classification dan insight dashboard.
 
-- `GEMINI_API_KEY`
-- `GEMINI_CLASSIFICATION_MODEL`
-- `GEMINI_CLASSIFICATION_BATCH_SIZE`
+Konfigurasi default aman:
 
-Output generate dari proses backend atau AI classification tidak boleh
-di-commit, terutama file JSON hasil proses di `backend/output/` yang bisa
-berisi data finansial.
+```env
+AI_CLASSIFICATION_ENABLED=false
+AI_PROVIDER=rule_based
+AI_MODEL=none
+AI_ONLY_LOW_CONFIDENCE=true
+AI_CONFIDENCE_THRESHOLD=0.75
+AI_MAX_TRANSACTIONS_PER_RUN=500
+```
 
-Command terkait:
+Endpoint classification mendukung batch run, summary, low-confidence review,
+manual correction, user-defined rules, grouped uncategorized transactions,
+suggestions, dan apply suggestion untuk bulk reclassification non-manual.
+Manual override tidak dioverwrite.
+
+Sync Now otomatis menjalankan rule-based classification untuk transaksi yang
+inserted/updated. Financial Type analytics, rule-based insights, dan Dashboard
+Financial Insights memakai classification saat ini.
+
+Backfill data lama bisa dilakukan dengan:
 
 ```powershell
-npm run classify:financial-data
+POST /api/classifications/run?limit=500
 ```
 
 ## Build dan Validasi

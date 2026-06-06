@@ -10,7 +10,7 @@ valid untuk menjalankan project saat ini, termasuk penggunaan:
 - service account credentials untuk local development, personal testing, demo
   internal, atau controlled testing
 - `GOOGLE_SHEET_REGISTRY_JSON` sebagai registry spreadsheet lokal/tahunan
-- generated AI classification JSON lokal di `backend/output/`
+- generated legacy classification JSON lokal di `backend/output/`
 
 Arah production yang lebih aman bukan memakai shared service account sebagai
 default onboarding user publik. Target arsitektur production adalah:
@@ -19,7 +19,7 @@ default onboarding user publik. Target arsitektur production adalah:
 - refresh token disimpan terenkripsi
 - sumber Google Sheet disimpan di PostgreSQL
 - transaksi disinkronkan ke PostgreSQL
-- hasil AI classification disimpan di PostgreSQL
+- hasil rule-based classification disimpan di PostgreSQL
 - dashboard analytics membaca data dari PostgreSQL
 
 Panduan database Supabase/PostgreSQL tersedia di
@@ -41,7 +41,8 @@ Project ini terdiri dari:
 
 - Frontend: React + Vite + Tailwind CSS + Recharts
 - Backend: FastAPI + Python + Pandas + Google Sheets
-- AI classification pipeline: Node.js + TypeScript + Gemini API
+- Week 5 classification pipeline: deterministic rule-based engine, no AI
+  provider/API/local LLM by default
 - Data source utama: Google Spreadsheet laporan keuangan tahunan
 - Deployment umum:
   - Frontend: Vercel
@@ -52,7 +53,7 @@ Folder penting:
 ```text
 backend/app                 FastAPI backend
 backend/scripts             Python data processing
-backend/output              Output hasil AI classification
+backend/output              Output generated lokal lama; jangan commit data asli
 backend/node                Node/TypeScript data classification utilities
 apps/web/src                React dashboard application
 apps/landing/src            React landing page application
@@ -136,9 +137,12 @@ DASHBOARD_PASSWORD=your_password
 DASHBOARD_AUTH_TOKEN=change_this_to_a_long_random_token
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://your-vercel-url.vercel.app
 USE_MOCK_DATA=false
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_CLASSIFICATION_MODEL=gemini-2.0-flash
-GEMINI_CLASSIFICATION_BATCH_SIZE=25
+AI_CLASSIFICATION_ENABLED=false
+AI_PROVIDER=rule_based
+AI_MODEL=none
+AI_ONLY_LOW_CONFIDENCE=true
+AI_CONFIDENCE_THRESHOLD=0.75
+AI_MAX_TRANSACTIONS_PER_RUN=500
 ```
 
 Google service account untuk lokal/testing, pilih salah satu:
@@ -222,7 +226,8 @@ Source Dana
 
 Catatan:
 
-- `Kategori` wajib diisi untuk klasifikasi AI.
+- `Kategori` membantu rule-based classification, tetapi row transaksi valid
+  masih bisa masuk sebagai expense dan dipetakan ke Uncategorized jika kosong.
 - `Nama Transaksi` dipakai sebagai basis matching classification.
 - `Source Dana` boleh berisi bank, e-wallet, payroll source, atau saving location.
 - Input spreadsheet boleh tetap Bahasa Indonesia natural. Backend tidak menerjemahkan data transaksi.
@@ -241,82 +246,70 @@ curl -X POST "http://127.0.0.1:8000/api/dashboard/refresh?year=2026" -H "Authori
 
 Biasanya klik refresh dari UI sudah cukup.
 
-## 7. AI Classification: Needs, Wants, Savings
+## 7. Week 5 Rule-Based Classification
 
-File hasil klasifikasi lokal:
+Week 5 classification berjalan deterministic rule-based only. Tidak ada AI
+provider, external AI API call, atau local LLM yang diperlukan. Classification
+ditulis ke PostgreSQL dengan `direction`, `financial_type`, `category`,
+`confidence_score`, `method`, dan status current/manual override.
 
-```text
-backend/output/financial-classification-reference.json
-```
+Financial type yang digunakan dashboard:
 
-File ini adalah generated local output. Isinya dapat mengandung data turunan
-dari transaksi pribadi, seperti nama transaksi, kategori, label Needs/Wants/
-Savings, dan metadata klasifikasi. File ini tidak boleh di-commit.
+- `income`
+- `need`
+- `want`
+- `saving`
+- `uncategorized`
 
-Untuk menjalankan klasifikasi ulang setelah ada data baru di spreadsheet:
+Sync Now otomatis menjalankan rule-based classification untuk transaksi yang
+inserted/updated. User-defined rules dipakai sebelum built-in system rules, dan
+manual override tidak dioverwrite.
+
+Backfill data lama:
 
 ```powershell
-Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
-npm.cmd run classify:financial-data
+curl -X POST "http://127.0.0.1:8000/api/classifications/run?limit=500" -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-Script ini akan:
+Dokumentasi lengkap:
 
-- scan semua spreadsheet dari `GOOGLE_SHEET_REGISTRY_JSON`
-- skip row yang `Kategori` kosong
-- dedupe global berdasarkan `Nama Transaksi + Kategori`
-- resume dari output lama jika sudah ada
-- hanya melabeli pasangan transaksi baru
-- menyimpan hasil ke `backend/output/financial-classification-reference.json`
-
-Untuk arah production, hasil AI classification sebaiknya disimpan di PostgreSQL,
-bukan file JSON lokal. Metadata yang perlu disiapkan untuk desain production:
-
-- label classification
-- confidence score
-- model name
-- prompt version
-- status manual override
-
-Jika terkena quota Gemini:
-
-- Tunggu quota reset atau beberapa menit lalu ulangi command.
-- Script sudah punya checkpoint/resume, jadi hasil sebelumnya tidak hilang.
-
-Jika model Gemini bermasalah, ubah env:
-
-```env
-GEMINI_CLASSIFICATION_MODEL=gemini-2.0-flash-lite
-GEMINI_CLASSIFICATION_BATCH_SIZE=25
+```text
+docs/RULE_BASED_CLASSIFICATION.md
+docs/WEEK5_RULE_BASED_VERIFICATION.md
 ```
 
-## 8. Monthly Budget Allocation Trend
+## 8. Financial Type Analytics
 
-Chart `Monthly Budget Allocation Trend` membaca:
+Dashboard Week 5 membaca current classifications dari PostgreSQL untuk:
 
-1. Transaksi aktual dari Google Sheets
-2. Mapping AI dari `backend/output/financial-classification-reference.json`
-3. Join fleksibel case-insensitive berdasarkan `Nama Transaksi` / `input_title`
-4. Agregasi per bulan:
+- Financial Type Breakdown
+- Monthly Financial Type Trend
+- Rule-Based Financial Insights
+- Anomaly explanation with workspace severity
+
+Endpoint utama:
+
+```text
+GET /api/dashboard/financial-types
+GET /api/dashboard/monthly-financial-types
+GET /api/dashboard/rule-based-insights
+GET /api/dashboard/anomalies
+```
+
+Contoh monthly financial type shape:
 
 ```json
 [
-  { "month": "2026-01", "Needs": 5200000, "Wants": 3100000, "Savings": 2000000 }
+  { "month": 1, "need": 5200000, "want": 3100000, "saving": 2000000, "income": 12000000, "uncategorized": 0 }
 ]
-```
-
-Endpoint backend aktif:
-
-```text
-GET /api/dashboard/monthly-allocation
 ```
 
 Jika chart kosong:
 
-- Pastikan file classification JSON ada.
-- Jalankan `npm.cmd run classify:financial-data`.
+- Pastikan migration Week 5 sudah jalan.
+- Jalankan `POST /api/classifications/run?limit=500` untuk backfill jika perlu.
 - Restart backend atau klik refresh.
-- Pastikan `Nama Transaksi` di spreadsheet bisa match dengan `input_title` di JSON.
+- Cek `docs/WEEK5_RULE_BASED_VERIFICATION.md`.
 
 ## 9. Source Dana Analytics
 
@@ -585,24 +578,16 @@ token_uri
 Untuk public user di production, jangan arahkan user ke shared service account.
 Arah production adalah OAuth per user/workspace.
 
-### Gemini quota exceeded
+### Rule-based classification backlog
 
-Solusi:
-
-- Tunggu quota reset
-- Turunkan batch size
-- Gunakan model lite
-
-```env
-GEMINI_CLASSIFICATION_MODEL=gemini-2.0-flash-lite
-GEMINI_CLASSIFICATION_BATCH_SIZE=25
-```
-
-Lalu ulangi:
+Jika masih ada transaksi lama yang belum punya current classification:
 
 ```powershell
-npm.cmd run classify:financial-data
+curl -X POST "http://127.0.0.1:8000/api/classifications/run?limit=500" -H "Authorization: Bearer YOUR_TOKEN"
 ```
+
+Ulangi sampai `GET /api/classifications/summary` menunjukkan unclassified
+backlog habis. Manual override tetap tidak dioverwrite.
 
 ### PowerShell profile warning
 
@@ -619,52 +604,37 @@ Biasanya tidak mengganggu command. Jika ingin memperbaiki permanen, ubah executi
 Gunakan urutan ini:
 
 1. Update data transaksi di Google Sheets.
-2. Jalankan classification jika ada nama transaksi/kategori baru:
+2. Klik Sync Now agar transaksi inserted/updated ikut diklasifikasi otomatis.
+3. Jika perlu backfill data lama:
 
 ```powershell
-Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
-npm.cmd run classify:financial-data
+curl -X POST "http://127.0.0.1:8000/api/classifications/run?limit=500" -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-3. Jalankan backend dan frontend local.
-4. Klik refresh data di dashboard.
-5. Cek Analytics:
+4. Jalankan backend dan frontend local.
+5. Klik refresh data di dashboard.
+6. Cek Dashboard dan Analytics:
+   - Financial Insights
+   - Financial Type Breakdown
+   - Monthly Financial Type Trend
    - Fund Source Analytics
-   - Monthly Budget Allocation Trend
    - Category Trend Analysis
    - Category Transaction Heat Map
 
 ## 19. File Output Penting
 
-Classification reference lokal:
+Legacy/generated local output:
 
 ```text
 backend/output/financial-classification-reference.json
 ```
 
-File ini adalah generated local output dari proses AI classification. Isinya
-dapat mengandung data turunan transaksi pribadi, sehingga tidak boleh
-di-commit.
+File ini adalah generated local output lama. Isinya dapat mengandung data
+turunan transaksi pribadi, sehingga tidak boleh di-commit.
 
-Untuk workflow development/internal demo di Render, file `backend/output` tidak
-ikut deploy karena berisi data sensitif dan di-ignore Git. Jika benar-benar
-perlu menjalankan `Monthly Budget Allocation Trend` di deployment internal tanpa
-commit file JSON, encode file ini ke base64:
-
-```powershell
-Set-Location -LiteralPath 'D:\[03] Work\Code\finance-dashboard'
-[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content -Raw backend\output\financial-classification-reference.json)))
-```
-
-Lalu simpan hasilnya sebagai environment variable Render:
-
-```env
-FINANCIAL_CLASSIFICATION_JSON_BASE64=hasil_base64_financial_classification_reference
-```
-
-Jangan gunakan pola file JSON/base64 ini sebagai desain final untuk public user.
-Arah production adalah menyimpan hasil AI classification di PostgreSQL, termasuk
-label, confidence, model name, prompt version, dan status manual override.
+Week 5 tidak membutuhkan file JSON/base64 untuk classification dashboard. Arah
+production adalah menyimpan classification di PostgreSQL, termasuk
+financial_type, confidence, method, dan status manual override.
 
 ## 20. Catatan Prinsip Bahasa
 

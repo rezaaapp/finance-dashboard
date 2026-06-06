@@ -3,6 +3,17 @@
 Week 5 MVP uses deterministic rule-based classification only. AI providers,
 external APIs, and local LLMs are disabled by default.
 
+Default AI-related environment settings:
+
+```env
+AI_CLASSIFICATION_ENABLED=false
+AI_PROVIDER=rule_based
+AI_MODEL=none
+```
+
+End-to-end SQL, endpoint, and UI verification steps are documented in
+`docs/WEEK5_RULE_BASED_VERIFICATION.md`.
+
 ## Output Fields
 
 - `direction`: `income`, `expense`, or `saving_transfer`
@@ -14,13 +25,15 @@ external APIs, and local LLMs are disabled by default.
 
 ## Rule Priority
 
-1. Explicit expense rules
-2. Income rules
-3. Saving rules
-4. Need rules
-5. Want rules
-6. Existing direction fallback
-7. Uncategorized fallback
+1. Manual override (`method = 'manual'` or `status = 'manual_override'`)
+2. User-defined workspace rules
+3. Built-in explicit expense rules
+4. Built-in income rules
+5. Built-in saving rules
+6. Built-in need rules
+7. Built-in want rules
+8. Existing direction fallback
+9. Uncategorized fallback
 
 Fields are checked case-insensitively in this order: `raw_category`, `title`,
 `source_fund`, `note`, then `raw_payload._sheet_name`.
@@ -101,15 +114,64 @@ If a transaction has not been classified yet, analytics safely falls back from
 Saving, and `expense` maps to Uncategorized. Queries are workspace scoped and
 only count actual transactions with `transaction_date <= current_date`.
 
+Uncategorized is an official bucket, not an error state. It should stay visible
+in Need/Want/Saving/Income/Uncategorized charts so users can see classification
+coverage.
+
+## Insight Threshold Settings
+
+Workspace severity thresholds are available through:
+
+- `GET /api/settings/insight-thresholds`
+- `PUT /api/settings/insight-thresholds`
+
+The API stores workspace-specific thresholds in `workspace_insight_settings`.
+If a workspace has no saved settings yet, the API returns config defaults with
+`source = "default"`. Once saved, it returns `source = "workspace"`.
+
+Environment variables such as `INSIGHT_NEED_WARNING_RATIO`,
+`INSIGHT_WANT_DANGER_RATIO`, and `INSIGHT_ANOMALY_WARNING_MULTIPLIER` are only
+fallback defaults. They are not required for the app to start, and database
+workspace settings take priority.
+
 ## Rule-Based Insights
 
 `GET /api/dashboard/rule-based-insights?year=2026&month=5` returns lightweight
 template insights using aggregated data only. Metrics include need ratio, want
-ratio, saving rate, total expense, income, saving, and top financial type.
+ratio, saving rate, uncategorized count, total expense, income, saving, and top
+financial type.
 
 The insight engine is rule-based only. It does not use an AI provider, external
 API, local LLM, or extra dependency. Empty periods return
 `Not enough data to generate insights yet.` without inventing trends.
+
+Highlights are structured JSON objects, not HTML or markdown. Each highlight
+includes `type`, `label`, `severity`, `message`, `amount`, and either `ratio` or
+`count` when relevant. Severity values are `positive`, `neutral`, `info`,
+`warning`, and `danger`.
+
+The backend determines severity from effective workspace thresholds. Frontend
+surfaces should render the returned severity and should not recalculate it.
+Need and Want severity use expense ratios, Saving severity uses saving rate
+against income, and Uncategorized severity uses uncategorized transaction count.
+
+## Dashboard And Configuration UI
+
+The Dashboard renders backend-driven rule-based insights in the Financial
+Insights section. Cards show the backend-provided `severity` badge for Need,
+Want, Saving, Income, Uncategorized, and Top Category when available. The
+frontend renders severity but does not calculate severity thresholds.
+
+The Dashboard also includes Financial Type Breakdown and Monthly Financial Type
+Trend charts for Need, Want, Saving, Income, and Uncategorized.
+
+Configuration includes Insight Severity Settings:
+
+- Need, Want, and Saving thresholds use sliders plus numeric percentage inputs.
+- Uncategorized severity uses count inputs.
+- Anomaly severity uses multiplier inputs.
+- Reset to Defaults fills the form defaults; users still click Save Settings to
+  persist them because there is no dedicated backend reset endpoint.
 
 ## Anomaly Explanation
 
@@ -118,11 +180,17 @@ then checks expense-like transactions (`need`, `want`, and `uncategorized`) by
 category. A transaction is flagged when it is above category average plus two
 standard deviations, or when low-variance data is more than 2x the category
 average. Each anomaly includes a short explanation and does not expose raw
-payloads.
+payloads. Anomaly severity uses workspace thresholds:
+`anomaly_warning_multiplier` and `anomaly_danger_multiplier`.
 
 ## Known Limitations
 
 Classification run default mode processes unclassified transactions only.
-Manual overrides are never overwritten. If a new user-defined rule is added,
-existing `method = 'rule'` rows are not automatically reclassified yet.
-Reclassification mode can be added in a later prompt.
+Manual overrides are never overwritten. When a suggested rule is applied with
+`apply_to_existing = true`, existing matching classifications can be refreshed
+for non-manual rows, prioritizing Uncategorized and low-confidence
+classifications.
+
+AI adapters/providers are not implemented in Week 5. Full historical
+reclassification is performed through bounded batch backfill or suggestion apply
+flows, not through an always-on heavy process.
