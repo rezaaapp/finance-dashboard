@@ -20,7 +20,7 @@ const Login = ({ onLogin }) => {
 
       onLogin(authData);
     } catch (err) {
-      console.error(err);
+      console.error("Google login failed.");
 
       if (err?.response?.status === 401) {
         setError("Username atau password salah.");

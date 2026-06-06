@@ -170,6 +170,21 @@ def _get_sheet_range(sheet_name: str | None) -> str:
     return f"'{escaped_sheet_name}'!A:Z"
 
 
+def _validate_optional_year(year: int | None) -> int | None:
+    if year is None:
+        return None
+
+    normalized_year = int(year)
+
+    if normalized_year < 2000 or normalized_year > 2100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="year must be between 2000 and 2100",
+        )
+
+    return normalized_year
+
+
 def _get_access_context(connection, *, workspace_id: str, user_id: str):
     oauth_connection = get_active_google_oauth_connection(
         connection,
@@ -352,6 +367,7 @@ def create_google_sheet_data_source(
         ) from exc
 
     sheet_name = (payload.sheet_name or "").strip() or None
+    year = _validate_optional_year(payload.year)
 
     with get_db_connection() as connection:
         oauth_connection, access_token = _get_access_context(
@@ -376,7 +392,7 @@ def create_google_sheet_data_source(
                 sheet_url=payload.spreadsheet_url,
                 spreadsheet_title=spreadsheet_title,
                 sheet_name=sheet_name,
-                year=payload.year,
+                year=year,
                 status="active",
             )
 
@@ -667,6 +683,7 @@ def sync_google_sheet_source(
                 ):
                     mark_google_sheet_source_error(
                         connection,
+                        workspace_id=workspace_id,
                         source_id=source_id,
                     )
                     job = mark_sync_job_failed(
@@ -682,6 +699,7 @@ def sync_google_sheet_source(
                 else:
                     update_google_sheet_last_synced(
                         connection,
+                        workspace_id=workspace_id,
                         source_id=source_id,
                     )
                     job = mark_sync_job_success(
@@ -698,6 +716,7 @@ def sync_google_sheet_source(
             with connection.transaction():
                 mark_google_sheet_source_error(
                     connection,
+                    workspace_id=workspace_id,
                     source_id=source_id,
                 )
                 job = mark_sync_job_failed(

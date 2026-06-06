@@ -154,7 +154,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
 
       setUsers(data.users || []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load admin users.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -224,14 +224,12 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
       setNotice("");
 
       if (formMode === "create") {
-        console.log("Creating user with payload:", payload);
         const data = await createAdminUser(payload);
 
         setUsers((currentUsers) => [data.user, ...currentUsers]);
         setNotice(`User ${data.user.email} berhasil dibuat.`);
         window.alert(`User ${data.user.email} berhasil dibuat.`);
       } else {
-        console.log("Updating user with payload:", payload);
         const data = await updateAdminUser(editingUserId, payload);
 
         setUsers((currentUsers) => (
@@ -245,7 +243,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
 
       closeForm();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to save admin user.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -290,7 +288,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
       ));
       setNotice(`Role ${updatedUser.email} diubah menjadi ${ROLE_LABELS[role]}.`);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to update admin user role.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -328,7 +326,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
       ));
       setNotice(`User ${user.email} berhasil dihapus.`);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to delete admin user.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -363,7 +361,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
         provider: "impersonation",
       });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to impersonate admin user.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();

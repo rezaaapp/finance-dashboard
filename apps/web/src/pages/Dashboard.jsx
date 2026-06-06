@@ -269,7 +269,7 @@ const Dashboard = ({
       await refreshDashboardData(selectedYear);
       await fetchDashboardData(selectedYear, selectedMonth);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to refresh dashboard data.");
 
       if (err?.response?.status === 401) {
         onLogout();
@@ -379,7 +379,7 @@ const Dashboard = ({
 
       setError("");
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch dashboard data.");
 
       if (err?.response?.status === 401) {
         onLogout();
@@ -434,7 +434,7 @@ const Dashboard = ({
         setSelectedMonth("");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load initial dashboard data.");
 
       if (err?.response?.status === 401) {
         onLogout();
@@ -501,7 +501,7 @@ const Dashboard = ({
           setMonthlyAllocation(monthlyAllocationData);
         }
       } catch (err) {
-        console.error(err);
+        console.error("Failed to fetch analytics data.");
 
         if (err?.response?.status === 401) {
           onLogout();

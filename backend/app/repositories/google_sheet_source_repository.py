@@ -27,6 +27,7 @@ def create_google_sheet_source(
 
             return reactivate_google_sheet_source(
                 cursor,
+                workspace_id=workspace_id,
                 source_id=str(existing_source["id"]),
                 oauth_connection_id=oauth_connection_id,
                 sheet_url=sheet_url,
@@ -113,6 +114,7 @@ def _get_existing_source_for_key(cursor, *, workspace_id: str, sheet_id: str, ye
 def reactivate_google_sheet_source(
     cursor,
     *,
+    workspace_id: str,
     source_id: str,
     oauth_connection_id: str,
     sheet_url: str,
@@ -130,7 +132,8 @@ def reactivate_google_sheet_source(
             sheet_name = %s,
             status = %s,
             updated_at = now()
-        where id = %s
+        where workspace_id = %s
+          and id = %s
         returning
             id,
             workspace_id,
@@ -151,6 +154,7 @@ def reactivate_google_sheet_source(
             spreadsheet_title,
             sheet_name,
             status,
+            workspace_id,
             source_id,
         ),
     )
@@ -218,7 +222,7 @@ def get_google_sheet_source(
         return cursor.fetchone()
 
 
-def update_google_sheet_last_synced(connection, *, source_id: str):
+def update_google_sheet_last_synced(connection, *, workspace_id: str, source_id: str):
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
@@ -227,7 +231,8 @@ def update_google_sheet_last_synced(connection, *, source_id: str):
                 last_synced_at = now(),
                 status = 'active',
                 updated_at = now()
-            where id = %s
+            where workspace_id = %s
+              and id = %s
             returning
                 id,
                 workspace_id,
@@ -242,13 +247,13 @@ def update_google_sheet_last_synced(connection, *, source_id: str):
                 created_at,
                 updated_at
             """,
-            (source_id,),
+            (workspace_id, source_id),
         )
 
         return cursor.fetchone()
 
 
-def mark_google_sheet_source_error(connection, *, source_id: str):
+def mark_google_sheet_source_error(connection, *, workspace_id: str, source_id: str):
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
@@ -256,7 +261,8 @@ def mark_google_sheet_source_error(connection, *, source_id: str):
             set
                 status = 'error',
                 updated_at = now()
-            where id = %s
+            where workspace_id = %s
+              and id = %s
             returning
                 id,
                 workspace_id,
@@ -271,7 +277,7 @@ def mark_google_sheet_source_error(connection, *, source_id: str):
                 created_at,
                 updated_at
             """,
-            (source_id,),
+            (workspace_id, source_id),
         )
 
         return cursor.fetchone()
