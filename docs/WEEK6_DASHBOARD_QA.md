@@ -1,7 +1,6 @@
 # Week 6 Dashboard QA
 
-Analytics performance trend QA is documented separately in
-`docs/WEEK6_ANALYTICS_QA.md`.
+See also: [Week 6 Analytics QA](WEEK6_ANALYTICS_QA.md).
 
 ## Summary Month-over-Month Trend
 

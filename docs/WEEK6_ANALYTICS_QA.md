@@ -53,7 +53,9 @@ Each `kpis[userKey]` entry includes:
 }
 ```
 
-Saving rate trend is a percentage-point delta, rendered as `pp` in the UI.
+Saving rate fields are retained in the API response for downstream analytics,
+but the main Personal Finance Performance card row renders only Income,
+Spending, and Saving to keep the Analytics UI easier to scan.
 
 ## Metric Definition
 
@@ -84,7 +86,9 @@ Validate:
 
 - `comparison_period.current_year/current_month` match the selected period.
 - `comparison_period.previous_year/previous_month` match the previous period.
-- `kpis.all` has trend fields for income, spending, saving, and saving rate.
+- `kpis.all` has trend fields for income, spending, and saving.
+- Saving rate fields may still be present in the API response, but are not
+  rendered as a main Analytics KPI card.
 - Every person key in `users` has matching `kpis[user.value]`.
 
 ## SQL Comparator
@@ -156,5 +160,5 @@ Expected:
 - Total Income trend changes by selected month/year/person.
 - Total Spending trend changes by selected month/year/person.
 - Total Saving trend changes by selected month/year/person.
-- Saving Rate trend changes by selected month/year/person.
+- Saving Rate does not render as a main KPI card.
 - No `NaN`, `Infinity`, raw `null`, or misleading `0%`.

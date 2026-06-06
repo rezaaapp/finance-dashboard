@@ -306,19 +306,6 @@ const PersonalAnalytics = ({
           )}
         />
 
-        <PerformanceKpiCard
-          title="Saving Rate"
-          value={`${Number(kpis.saving_rate || 0).toFixed(1)}%`}
-          icon={TrendingUp}
-          iconClassName="bg-[var(--color-accent-bg)] text-accent"
-          trendValue={kpis.saving_rate_change_pct}
-          trendDirection={kpis.saving_rate_trend}
-          trendLabel={getComparisonLabel(
-            kpis.saving_rate_comparison_label,
-            periodLabel
-          )}
-          trendSuffix=" pp"
-        />
       </div>
 
       {variant === "full" && selectedUser === "all" && (
