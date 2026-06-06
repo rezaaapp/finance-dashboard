@@ -33,10 +33,7 @@ import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
-import {
-  formatPrivateRupiah,
-  PRIVACY_MODES,
-} from "../utils/privacy";
+import { PRIVACY_MODES } from "../utils/privacy";
 
 import {
   getSummary,
@@ -57,7 +54,6 @@ import {
   getMonthlyAllocation,
   getPersonalAnalytics,
   getAnomalies,
-  getLatestInsight,
   getAvailableYears,
   getBudgetForecast,
   getWorkspaceConfiguration,
@@ -146,7 +142,6 @@ const Dashboard = ({
   const [personalAnalytics, setPersonalAnalytics] = useState({});
   const [budgetForecast, setBudgetForecast] = useState({});
   const [anomalies, setAnomalies] = useState([]);
-  const [insight, setInsight] = useState("");
   const [currentSheetName, setCurrentSheetName] = useState("");
   const [hasActiveGoogleSheet, setHasActiveGoogleSheet] = useState(false);
 
@@ -240,7 +235,6 @@ const Dashboard = ({
     setPersonalAnalytics({});
     setBudgetForecast({});
     setAnomalies([]);
-    setInsight("");
     setCurrentSheetName("");
     setHasActiveGoogleSheet(false);
     setYears([]);
@@ -364,9 +358,6 @@ const Dashboard = ({
       const anomaliesData = hasPremiumAccess
         ? await getAnomalies(year, month)
         : [];
-      const insightData = hasPremiumAccess
-        ? await getLatestInsight(year, month)
-        : null;
 
       setSummary(summaryData);
       setCurrentSheetName(
@@ -386,16 +377,6 @@ const Dashboard = ({
       setBudgetForecast(budgetForecastData);
       setAnomalies(anomaliesData);
 
-      setInsight(
-        insightData
-          ? `Month ${insightData.bulan} has spending of ${
-              formatPrivateRupiah(insightData.spending, privacyMode)
-            } with a saving ratio of ${
-              insightData.saving_ratio
-            }%. Financial status: ${insightData.status}`
-          : ""
-      );
-
       setError("");
     } catch (err) {
       console.error(err);
@@ -410,7 +391,7 @@ const Dashboard = ({
       setFinancialInsightsLoading(false);
       setLoading(false);
     }
-  }, [hasPremiumAccess, onLogout, privacyMode, selectedAnalyticsUser]);
+  }, [hasPremiumAccess, onLogout, selectedAnalyticsUser]);
 
   // =========================
   // INITIAL DATA
@@ -1106,18 +1087,6 @@ const Dashboard = ({
               )}
             </div>
 
-            {/* AI INSIGHT */}
-            {hasPremiumAccess && (
-              <div className="panel p-6 rounded-2xl">
-                <h2 className="text-2xl font-bold mb-4 text-accent">
-                  AI Financial Insight
-                </h2>
-
-                <p className="text-soft leading-8">
-                  {insight}
-                </p>
-              </div>
-            )}
           </>
         ) : activeView === "analytics" && !hasPremiumAccess ? (
           <LockedFeature

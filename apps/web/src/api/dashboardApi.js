@@ -184,14 +184,6 @@ export const getAnomalies = async (year, month) => {
   return response.data;
 };
 
-export const getLatestInsight = async (year, month) => {
-  const response = await axios.get(
-    `${DASHBOARD_API_URL}/latest-insight`,
-    buildConfig(year, month)
-  );
-  return response.data;
-};
-
 export const getAvailableYears = async () => {
   const response = await axios.get(
     `${DASHBOARD_API_URL}/available-years`,
