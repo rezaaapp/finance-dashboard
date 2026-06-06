@@ -381,7 +381,7 @@ const Configuration = ({
 
       setInsightThresholds(settingsToForm(response || defaultInsightThresholds));
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load insight thresholds.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -403,7 +403,7 @@ const Configuration = ({
 
       setGoogleSheetSources(response?.sources || []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to load workspace configuration.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -471,7 +471,7 @@ const Configuration = ({
         setWorkspaceName(response?.workspace?.name || "");
         setWorkspaceMembers(membersResponse?.members || []);
       } catch (err) {
-        console.error(err);
+        console.error("Failed to load Google Sheet sources.");
 
         if (err?.response?.status === 401) {
           onUnauthorized();
@@ -524,7 +524,7 @@ const Configuration = ({
           setGoogleConnection(response || { connected: false });
         }
       } catch (err) {
-        console.error(err);
+        console.error("Failed to load Google connection status.");
 
         if (err?.response?.status === 401) {
           onUnauthorized();
@@ -569,8 +569,8 @@ const Configuration = ({
             loadGoogleSheetSources();
           }
         })
-        .catch((err) => {
-          console.error(err);
+        .catch(() => {
+          console.error("Failed to refresh Google connection status.");
           setGoogleConnectionError("Google connection status is not available.");
         });
     } else if (googleConnected === "failed") {
@@ -616,7 +616,7 @@ const Configuration = ({
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to save configuration.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -665,7 +665,7 @@ const Configuration = ({
         message: `${response.spreadsheet_title || "Spreadsheet"} is accessible.`,
       });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to save workspace configuration.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -700,7 +700,7 @@ const Configuration = ({
       });
       await loadGoogleSheetSources();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to test Google Sheet connection.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -743,7 +743,7 @@ const Configuration = ({
       });
       await loadGoogleSheetSources();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to connect Google Sheet source.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -804,7 +804,7 @@ const Configuration = ({
       });
       await loadGoogleSheetSources();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to save insight thresholds.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -848,7 +848,7 @@ const Configuration = ({
       }));
       setInsightThresholdSuccess("Insight severity settings saved.");
     } catch (err) {
-      console.error(err);
+      console.error("Failed to disconnect Google account.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -892,7 +892,7 @@ const Configuration = ({
 
       window.location.href = response.auth_url;
     } catch (err) {
-      console.error(err);
+      console.error("Failed to start Google OAuth.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -928,7 +928,7 @@ const Configuration = ({
         message: "Google account access has been disconnected.",
       });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to sync Google Sheet source.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -971,7 +971,7 @@ const Configuration = ({
         message: `${response?.member?.email || "Member"} sekarang terhubung ke workspace sebagai member.`,
       });
     } catch (err) {
-      console.error(err);
+      console.error("Failed to delete Google Sheet source.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
