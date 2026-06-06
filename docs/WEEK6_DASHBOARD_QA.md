@@ -1,5 +1,8 @@
 # Week 6 Dashboard QA
 
+Analytics performance trend QA is documented separately in
+`docs/WEEK6_ANALYTICS_QA.md`.
+
 ## Summary Month-over-Month Trend
 
 Dashboard summary cards call:

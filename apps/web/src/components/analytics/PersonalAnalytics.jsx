@@ -1,7 +1,9 @@
 import {
   DollarSign,
+  Minus,
   PiggyBank,
   TrendingDown,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -37,6 +39,91 @@ const getUserDisplayLabel = (user) => (
   user?.value === "all" ? "All Data" : user?.label
 );
 
+const formatTrendValue = (value, suffix = "%") => {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return "N/A";
+  }
+
+  const prefix = numericValue > 0 ? "+" : "";
+
+  return `${prefix}${numericValue.toFixed(1)}${suffix}`;
+};
+
+const getTrendTone = (direction, isSpending = false) => {
+  if (direction === "unavailable") {
+    return "text-muted";
+  }
+
+  if (direction === "flat") {
+    return "text-subtle";
+  }
+
+  const isHealthy = isSpending
+    ? direction === "down"
+    : direction === "up";
+
+  return isHealthy ? "metric-positive" : "metric-negative";
+};
+
+const getComparisonLabel = (metricLabel, periodLabel) => (
+  metricLabel === "no previous data"
+    ? metricLabel
+    : periodLabel || metricLabel || "vs last period"
+);
+
+const PerformanceKpiCard = ({
+  title,
+  value,
+  icon: Icon,
+  iconClassName,
+  trendValue,
+  trendDirection,
+  trendLabel,
+  trendSuffix = "%",
+  isSpending = false,
+}) => {
+  const direction = trendDirection || "unavailable";
+  const hasTrend = Number.isFinite(Number(trendValue));
+
+  return (
+    <div className="panel flex min-h-[178px] flex-col rounded-lg p-4 shadow-lg sm:p-5">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <p className="min-w-0 text-sm font-semibold text-muted">
+          {title}
+        </p>
+        <div className={`shrink-0 rounded-lg p-3 ${iconClassName}`}>
+          <Icon size={22} />
+        </div>
+      </div>
+
+      <p className="max-w-full break-words text-[clamp(1.35rem,4vw,1.875rem)] font-bold leading-tight text-main tabular-nums">
+        {value}
+      </p>
+
+      <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-4">
+        <span
+          className={`inline-flex items-center gap-1 text-sm font-bold ${getTrendTone(
+            direction,
+            isSpending
+          )}`}
+        >
+          {direction === "up" && <TrendingUp size={15} strokeWidth={2.5} />}
+          {direction === "down" && <TrendingDown size={15} strokeWidth={2.5} />}
+          {direction !== "up" && direction !== "down" && (
+            <Minus size={15} strokeWidth={2.5} />
+          )}
+          {hasTrend ? formatTrendValue(trendValue, trendSuffix) : "N/A"}
+        </span>
+        <span className="text-sm text-subtle">
+          {trendLabel}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const PersonalAnalytics = ({
   data,
   selectedUser,
@@ -59,6 +146,7 @@ const PersonalAnalytics = ({
   }, [onSelectedUserChange, selectedUser, users]);
 
   const kpis = data?.kpis?.[selectedUser] ?? fallbackKpi;
+  const periodLabel = data?.comparison_period?.label || "vs last period";
 
   const topCategories = useMemo(() => (
     topCategoryMap[selectedUser] ?? []
@@ -177,51 +265,60 @@ const PersonalAnalytics = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="panel rounded-lg p-5 shadow-lg">
-          <div className="mb-6 flex items-center justify-between">
-            <p className="text-sm font-semibold text-muted">
-              Total Income
-            </p>
-            <div className="rounded-lg bg-[var(--color-accent-bg)] p-3 text-accent">
-              <DollarSign size={22} />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-main">
-            {formatPrivateRupiah(kpis.income, privacyMode)}
-          </p>
-        </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        <PerformanceKpiCard
+          title="Total Income"
+          value={formatPrivateRupiah(kpis.income, privacyMode)}
+          icon={DollarSign}
+          iconClassName="bg-[var(--color-accent-bg)] text-accent"
+          trendValue={kpis.income_change_pct}
+          trendDirection={kpis.income_trend}
+          trendLabel={getComparisonLabel(
+            kpis.income_comparison_label,
+            periodLabel
+          )}
+        />
 
-        <div className="panel rounded-lg p-5 shadow-lg">
-          <div className="mb-6 flex items-center justify-between">
-            <p className="text-sm font-semibold text-muted">
-              Total Spending
-            </p>
-            <div className="rounded-lg bg-[var(--color-alert-bg)] p-3 text-[var(--color-alert-text)]">
-              <TrendingDown size={22} />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-main">
-            {formatPrivateRupiah(kpis.spending, privacyMode)}
-          </p>
-        </div>
+        <PerformanceKpiCard
+          title="Total Spending"
+          value={formatPrivateRupiah(kpis.spending, privacyMode)}
+          icon={TrendingDown}
+          iconClassName="bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]"
+          trendValue={kpis.spending_change_pct}
+          trendDirection={kpis.spending_trend}
+          trendLabel={getComparisonLabel(
+            kpis.spending_comparison_label,
+            periodLabel
+          )}
+          isSpending
+        />
 
-        <div className="panel rounded-lg p-5 shadow-lg">
-          <div className="mb-6 flex items-center justify-between">
-            <p className="text-sm font-semibold text-muted">
-              Total Saving
-            </p>
-            <div className="rounded-lg bg-[var(--color-accent-bg)] p-3 text-accent">
-              <PiggyBank size={22} />
-            </div>
-          </div>
-          <p className="text-3xl font-bold text-main">
-            {formatPrivateRupiah(kpis.saving, privacyMode)}
-          </p>
-          <p className="mt-2 text-sm font-semibold metric-positive">
-            {Number(kpis.saving_rate || 0).toFixed(1)}% Saving Rate
-          </p>
-        </div>
+        <PerformanceKpiCard
+          title="Total Saving"
+          value={formatPrivateRupiah(kpis.saving, privacyMode)}
+          icon={PiggyBank}
+          iconClassName="bg-[var(--color-accent-bg)] text-accent"
+          trendValue={kpis.saving_change_pct}
+          trendDirection={kpis.saving_trend}
+          trendLabel={getComparisonLabel(
+            kpis.saving_comparison_label,
+            periodLabel
+          )}
+        />
+
+        <PerformanceKpiCard
+          title="Saving Rate"
+          value={`${Number(kpis.saving_rate || 0).toFixed(1)}%`}
+          icon={TrendingUp}
+          iconClassName="bg-[var(--color-accent-bg)] text-accent"
+          trendValue={kpis.saving_rate_change_pct}
+          trendDirection={kpis.saving_rate_trend}
+          trendLabel={getComparisonLabel(
+            kpis.saving_rate_comparison_label,
+            periodLabel
+          )}
+          trendSuffix=" pp"
+        />
       </div>
 
       {variant === "full" && selectedUser === "all" && (

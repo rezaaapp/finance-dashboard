@@ -258,6 +258,192 @@ def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month: in
     }
 
 
+def _saving_rate_trend_payload(current_rate: float, previous_rate: float) -> dict:
+    current_rate = float(current_rate or 0)
+    previous_rate = float(previous_rate or 0)
+    difference = round(current_rate - previous_rate, 2)
+
+    if previous_rate > 0:
+        if difference > 0:
+            trend_direction = "up"
+        elif difference < 0:
+            trend_direction = "down"
+        else:
+            trend_direction = "flat"
+
+        return {
+            "previous_value": previous_rate,
+            "difference": difference,
+            "percentage_change": difference,
+            "trend_direction": trend_direction,
+            "comparison_label": "vs last period",
+        }
+
+    if current_rate == 0:
+        return {
+            "previous_value": previous_rate,
+            "difference": difference,
+            "percentage_change": 0,
+            "trend_direction": "flat",
+            "comparison_label": "vs last period",
+        }
+
+    return {
+        "previous_value": previous_rate,
+        "difference": difference,
+        "percentage_change": None,
+        "trend_direction": "unavailable",
+        "comparison_label": "no previous data",
+    }
+
+
+def _personal_period_totals(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+) -> dict:
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+
+    if year:
+        clauses.append("extract(year from t.transaction_date)::int = %s")
+        params.append(int(year))
+
+    if month:
+        clauses.append("extract(month from t.transaction_date)::int = %s")
+        params.append(int(month))
+
+    financial_type_expr = _classification_financial_type_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select
+            name,
+            coalesce(sum(amount) filter (
+                where financial_type = 'income'
+            ), 0) as income,
+            coalesce(sum(amount) filter (
+                where financial_type = 'saving'
+            ), 0) as saving,
+            coalesce(sum(amount) filter (
+                where financial_type in ('need', 'want', 'uncategorized')
+            ), 0) as spending
+        from (
+            select
+                coalesce(nullif(t.raw_payload->>'Nama', ''), 'Unknown') as name,
+                t.amount,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where {" and ".join(clauses)}
+        ) period_transactions
+        group by name
+        """,
+        params,
+    )
+    totals = defaultdict(lambda: {"income": 0.0, "spending": 0.0, "saving": 0.0})
+
+    for row in rows:
+        user = row["name"] or "Unknown"
+        income = float(row["income"] or 0)
+        saving = float(row["saving"] or 0)
+        spending = float(row["spending"] or 0)
+
+        totals[user]["income"] += income
+        totals[user]["saving"] += saving
+        totals[user]["spending"] += spending
+        totals["all"]["income"] += income
+        totals["all"]["saving"] += saving
+        totals["all"]["spending"] += spending
+
+    return dict(totals)
+
+
+def _personal_comparison_period(year=None, month=None) -> dict:
+    if year and month:
+        previous_year, previous_month = get_previous_period(int(year), int(month))
+
+        return {
+            "current_year": int(year),
+            "current_month": int(month),
+            "previous_year": previous_year,
+            "previous_month": previous_month,
+            "label": "vs last month",
+        }
+
+    if year:
+        return {
+            "current_year": int(year),
+            "current_month": None,
+            "previous_year": int(year) - 1,
+            "previous_month": None,
+            "label": "vs previous year",
+        }
+
+    return {
+        "current_year": None,
+        "current_month": None,
+        "previous_year": None,
+        "previous_month": None,
+        "label": "no previous data",
+    }
+
+
+def _build_personal_kpi(current_values: dict, previous_values: dict) -> dict:
+    current_values = current_values or {}
+    previous_values = previous_values or {}
+    income = float(current_values.get("income") or 0)
+    spending = float(current_values.get("spending") or 0)
+    saving = float(current_values.get("saving") or 0)
+    previous_income = float(previous_values.get("income") or 0)
+    previous_spending = float(previous_values.get("spending") or 0)
+    previous_saving = float(previous_values.get("saving") or 0)
+    saving_rate = round(saving / income * 100, 2) if income > 0 else 0
+    previous_saving_rate = (
+        round(previous_saving / previous_income * 100, 2)
+        if previous_income > 0 else 0
+    )
+    income_trend = _trend_payload(income, previous_income)
+    spending_trend = _trend_payload(spending, previous_spending)
+    saving_trend = _trend_payload(saving, previous_saving)
+    saving_rate_trend = _saving_rate_trend_payload(
+        saving_rate,
+        previous_saving_rate,
+    )
+
+    return {
+        "income": income,
+        "spending": spending,
+        "saving": saving,
+        "saving_rate": saving_rate,
+        "income_previous": income_trend["previous_value"],
+        "income_change_pct": income_trend["percentage_change"],
+        "income_trend": income_trend["trend_direction"],
+        "income_comparison_label": income_trend["comparison_label"],
+        "spending_previous": spending_trend["previous_value"],
+        "spending_change_pct": spending_trend["percentage_change"],
+        "spending_trend": spending_trend["trend_direction"],
+        "spending_comparison_label": spending_trend["comparison_label"],
+        "saving_previous": saving_trend["previous_value"],
+        "saving_change_pct": saving_trend["percentage_change"],
+        "saving_trend": saving_trend["trend_direction"],
+        "saving_comparison_label": saving_trend["comparison_label"],
+        "saving_rate_previous": saving_rate_trend["previous_value"],
+        "saving_rate_change_pct": saving_rate_trend["percentage_change"],
+        "saving_rate_trend": saving_rate_trend["trend_direction"],
+        "saving_rate_comparison_label": saving_rate_trend["comparison_label"],
+    }
+
+
 def get_available_years(connection, *, workspace_id: str):
     rows = _fetch_all(
         connection,
@@ -909,70 +1095,52 @@ def get_personal_analytics(connection, *, workspace_id: str, year=None, month=No
         year=year,
         month=month,
     )
-    where_clause, params = _filters(year, month)
-    rows = _fetch_all(
+    comparison_period = _personal_comparison_period(year, month)
+    current_totals = _personal_period_totals(
         connection,
-        f"""
-        select
-            coalesce(nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
-            coalesce(
-                sum(amount) filter (where {_income_condition()}),
-                0
-            ) as income,
-            coalesce(
-                sum(amount) filter (where {_saving_condition()}),
-                0
-            ) as saving,
-            coalesce(
-                sum(amount) filter (where {_expense_condition()}),
-                0
-            ) as spending
-        from transactions
-        where {where_clause}
-        group by 1
-        """,
-        (workspace_id, *params),
+        workspace_id=workspace_id,
+        year=year,
+        month=month,
     )
-
-    users = sorted({row["user"] for row in transactions if row["user"] and row["user"] != "-"})
+    previous_totals = (
+        _personal_period_totals(
+            connection,
+            workspace_id=workspace_id,
+            year=comparison_period["previous_year"],
+            month=comparison_period["previous_month"],
+        )
+        if comparison_period["previous_year"]
+        else {}
+    )
+    users = sorted({
+        *[
+            row["user"]
+            for row in transactions
+            if row["user"] and row["user"] != "-"
+        ],
+        *[
+            user
+            for user in current_totals.keys()
+            if user != "all"
+        ],
+    })
     users_payload = [{"label": "All Data", "value": "all"}] + [
         {"label": user, "value": user}
         for user in users
     ]
-    totals_by_user = defaultdict(lambda: {"income": 0, "spending": 0, "saving": 0})
-
-    for row in rows:
-        user = row["name"] or "Unknown"
-        income = float(row["income"] or 0)
-        saving = float(row["saving"] or 0)
-        spending = float(row["spending"] or 0)
-
-        totals_by_user[user]["income"] += income
-        totals_by_user[user]["saving"] += saving
-        totals_by_user[user]["spending"] += spending
-        totals_by_user["all"]["income"] += income
-        totals_by_user["all"]["saving"] += saving
-        totals_by_user["all"]["spending"] += spending
-
-    kpis = {}
-    for user_key, values in totals_by_user.items():
-        income = values["income"]
-        saving = values["saving"]
-        kpis[user_key] = {
-            **values,
-            "saving_rate": round(saving / income * 100, 2) if income > 0 else 0,
-        }
+    kpi_keys = {"all", *users}
+    kpis = {
+        user_key: _build_personal_kpi(
+            current_totals.get(user_key, {}),
+            previous_totals.get(user_key, {}),
+        )
+        for user_key in kpi_keys
+    }
 
     return {
         "users": users_payload,
-        "kpis": kpis or {
-            "all": {
-                "income": 0,
-                "spending": 0,
-                "saving": 0,
-                "saving_rate": 0,
-            },
-        },
+        "kpis": kpis,
+        "comparison_period": comparison_period,
         "comparison": _get_personal_monthly_comparison(
             connection,
             workspace_id=workspace_id,

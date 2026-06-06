@@ -599,7 +599,7 @@ const Dashboard = ({
         }`}>
           {!isSidebarCollapsed && (
             <h1 className="text-2xl font-bold text-white leading-tight">
-              Operasional Rumah Tangga Dashboard
+              Menu
             </h1>
           )}
 
@@ -855,11 +855,11 @@ const Dashboard = ({
         <div className="mb-8 flex flex-col gap-4 xl:mb-10 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold sm:text-4xl">
-              Financial Dashboard
+              [Belum ada namanya]
             </h1>
 
             <p className="text-muted mt-1 text-sm sm:text-base">
-              Monitoring household financial analytics
+              Apa atuh ya namanya? 🥲
             </p>
           </div>
 
