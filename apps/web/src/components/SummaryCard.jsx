@@ -2,6 +2,7 @@ import {
   Wallet,
   PiggyBank,
   Landmark,
+  Minus,
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
@@ -9,15 +10,25 @@ import {
 import { formatPrivateRupiah } from "../utils/privacy";
 
 const formatTrend = (value) => {
+  if (!Number.isFinite(Number(value))) {
+    return "N/A";
+  }
+
+  const numericValue = Number(value);
+  const prefix = numericValue > 0 ? "+" : "";
+
   return new Intl.NumberFormat("id-ID", {
-    maximumFractionDigits: 2,
-  }).format(Math.abs(value || 0));
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(numericValue).replace(/^/, prefix);
 };
 
 const SummaryCard = ({
   title,
   value,
-  trend = 0,
+  trend,
+  trendDirection,
+  comparisonLabel = "vs last month",
   privacyMode,
 }) => {
 
@@ -34,10 +45,32 @@ const SummaryCard = ({
     return <Landmark size={28} />;
   };
 
-  const isTrendUp = trend >= 0;
+  const numericTrend = Number(trend);
+  const hasTrend = Number.isFinite(numericTrend);
+  const direction = trendDirection || (
+    hasTrend
+      ? (numericTrend > 0 ? "up" : numericTrend < 0 ? "down" : "flat")
+      : "unavailable"
+  );
+  const isTrendUp = direction === "up";
+  const isTrendDown = direction === "down";
   const isExpenseCard = title.includes("Expenses");
-  const isTrendHealthy = isExpenseCard ? trend <= 0 : isTrendUp;
-  const TrendIcon = isTrendUp ? TrendingUp : TrendingDown;
+  const isTrendHealthy = isExpenseCard
+    ? direction === "down" || direction === "flat"
+    : direction === "up" || direction === "flat";
+  const TrendIcon = isTrendUp
+    ? TrendingUp
+    : isTrendDown
+      ? TrendingDown
+      : Minus;
+  const trendClassName = direction === "unavailable"
+    ? "text-muted"
+    : isTrendHealthy
+      ? "metric-positive"
+      : "metric-negative";
+  const trendLabel = direction === "unavailable"
+    ? comparisonLabel || "no previous data"
+    : comparisonLabel;
 
   return (
     <div
@@ -100,20 +133,18 @@ const SummaryCard = ({
           <div
             className={`
               flex items-center gap-1 text-sm font-bold sm:text-base
-              ${isTrendHealthy
-                ? "metric-positive"
-                : "metric-negative"}
+              ${trendClassName}
             `}
           >
 
             <TrendIcon size={16} strokeWidth={2.5} />
 
-            {formatTrend(trend)}%
+            {hasTrend ? `${formatTrend(numericTrend)}%` : "N/A"}
 
           </div>
 
           <span className="text-subtle text-sm">
-            vs last month
+            {trendLabel}
           </span>
 
         </div>

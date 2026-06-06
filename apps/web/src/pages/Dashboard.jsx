@@ -989,21 +989,45 @@ const Dashboard = ({
               <SummaryCard
                 title="Total Expenses"
                 value={summary.total_pengeluaran}
-                trend={summary.trend_pengeluaran}
+                trend={
+                  summary.total_expenses_change_pct
+                  ?? summary.trend_pengeluaran
+                }
+                trendDirection={summary.total_expenses_trend}
+                comparisonLabel={
+                  summary.comparison?.total_expenses_label
+                  || summary.comparison?.label
+                }
                 privacyMode={privacyMode}
               />
 
               <SummaryCard
                 title="Total Saving"
                 value={summary.total_saving}
-                trend={summary.trend_saving}
+                trend={
+                  summary.total_saving_change_pct
+                  ?? summary.trend_saving
+                }
+                trendDirection={summary.total_saving_trend}
+                comparisonLabel={
+                  summary.comparison?.total_saving_label
+                  || summary.comparison?.label
+                }
                 privacyMode={privacyMode}
               />
 
               <SummaryCard
                 title="Total Income"
                 value={summary.total_income}
-                trend={summary.trend_income}
+                trend={
+                  summary.total_income_change_pct
+                  ?? summary.trend_income
+                }
+                trendDirection={summary.total_income_trend}
+                comparisonLabel={
+                  summary.comparison?.total_income_label
+                  || summary.comparison?.label
+                }
                 privacyMode={privacyMode}
               />
             </div>

@@ -276,6 +276,7 @@ Dokumentasi lengkap:
 ```text
 docs/RULE_BASED_CLASSIFICATION.md
 docs/WEEK5_RULE_BASED_VERIFICATION.md
+docs/WEEK6_DASHBOARD_QA.md
 ```
 
 ## 8. Financial Type Analytics
