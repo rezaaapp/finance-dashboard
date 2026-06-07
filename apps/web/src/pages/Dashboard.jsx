@@ -3,6 +3,8 @@ import {
   BellRing,
   ChevronLeft,
   ChevronRight,
+  Cloud,
+  Database,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import EmptyState from "../components/EmptyState";
 import SummaryCard from "../components/SummaryCard";
 import FinancialInsights from "../components/FinancialInsights";
 import MonthlyChart from "../components/charts/MonthlyChart";
@@ -74,6 +77,29 @@ import {
 } from "../api/workspaceContext";
 
 const premiumRoles = new Set(["super_admin", "owner", "member"]);
+
+const hasPositiveTotal = (rows = [], keys = ["total"]) => (
+  rows.some((row) => keys.some((key) => Number(row?.[key] || 0) > 0))
+);
+
+const hasFinancialTypeData = (rows = []) => (
+  rows.some((row) => Number(row?.amount || 0) > 0)
+);
+
+const hasMonthlyFinancialTypeData = (rows = []) => (
+  rows.some((row) => (
+    ["need", "want", "saving", "income", "uncategorized"].some((key) => (
+      Number(row?.[key] || 0) > 0
+    ))
+  ))
+);
+
+const hasSummaryData = (summary = {}) => (
+  Number(summary.total_pengeluaran || summary.total_expenses || 0) > 0
+  || Number(summary.total_saving || 0) > 0
+  || Number(summary.total_income || 0) > 0
+  || Number(summary.transaction_count || 0) > 0
+);
 
 const LockedFeature = ({ title, message }) => (
   <div className="panel rounded-lg p-6 shadow-lg">
@@ -342,6 +368,8 @@ const Dashboard = ({
     setAnomalies([]);
     setCurrentSheetName("");
     setHasActiveGoogleSheet(false);
+    setGoogleConnection({ connected: false });
+    setGoogleSheetSources([]);
     setYears([]);
     setSelectedYear("");
     setSelectedMonth("");
@@ -566,25 +594,28 @@ const Dashboard = ({
     try {
       setLoading(true);
 
-      const [workspaceConfiguration, dataSourcesResponse] = await Promise.all([
+      const [
+        workspaceConfiguration,
+        dataSourcesResponse,
+        googleConnectionResponse,
+      ] = await Promise.all([
         getWorkspaceConfiguration(),
         getGoogleSheetSources(),
+        getGoogleOAuthConnectionStatus(),
       ]);
       const googleSheetSources = workspaceConfiguration?.configuration?.google_sheet_sources || [];
       const googleSheetId = workspaceConfiguration?.configuration?.google_sheet_id;
       const syncedSources = dataSourcesResponse?.sources || [];
+      const isGoogleConnected = Boolean(googleConnectionResponse?.connected);
       const hasGoogleSheet = (
         googleSheetSources.length > 0
         || syncedSources.length > 0
         || Boolean(googleSheetId)
       );
 
+      setGoogleConnection(googleConnectionResponse || { connected: false });
+      setGoogleSheetSources(syncedSources);
       setHasActiveGoogleSheet(hasGoogleSheet);
-
-      if (!hasGoogleSheet) {
-        clearDashboardData();
-        return;
-      }
 
       const availableYearsPayload = await getAvailableYears();
       const availableYears = Array.isArray(availableYearsPayload)
@@ -598,6 +629,28 @@ const Dashboard = ({
       } else {
         setSelectedYear("");
         setSelectedMonth("");
+      }
+
+      if (!isGoogleConnected && !hasGoogleSheet) {
+        setSummary({});
+        setSpending([]);
+        setSaving([]);
+        setIncome([]);
+        setTopSpending([]);
+        setCategoryData([]);
+        setFinancialTypes([]);
+        setMonthlyFinancialTypes([]);
+        setRuleBasedInsights({});
+        setGroceryVsFood([]);
+        setCategoryHeatmap({});
+        setRawTransactions([]);
+        setCategoryTrends({});
+        setSourceDanaAnalytics({});
+        setMonthlyAllocation([]);
+        setPersonalAnalytics({});
+        setBudgetForecast({});
+        setAnomalies([]);
+        setCurrentSheetName("");
       }
     } catch (err) {
       console.error("Failed to load initial dashboard data.");
@@ -748,7 +801,70 @@ const Dashboard = ({
     );
   }
 
-  const shouldShowEmptyDashboard = activeView === "dashboard" && !hasActiveGoogleSheet;
+  const hasSavedSource = hasActiveGoogleSheet || googleSheetSources.length > 0;
+  const hasSyncedSource = googleSheetSources.some((source) => source.last_synced_at)
+    || years.length > 0;
+  const onboardingState = !googleConnection.connected
+    ? "google_not_connected"
+    : !hasSavedSource
+      ? "no_data_source"
+      : !hasSyncedSource
+        ? "data_source_not_synced"
+        : "ready";
+  const hasDashboardPeriodData = (
+    hasSummaryData(summary)
+    || hasPositiveTotal(spending)
+    || hasPositiveTotal(saving)
+    || hasPositiveTotal(income)
+    || topSpending.length > 0
+    || categoryData.length > 0
+    || hasFinancialTypeData(financialTypes)
+    || hasMonthlyFinancialTypeData(monthlyFinancialTypes)
+  );
+  const hasAnalyticsData = (
+    hasDashboardPeriodData
+    || rawTransactions.length > 0
+    || Object.keys(personalAnalytics?.kpis || {}).length > 0
+    || (personalAnalytics?.comparison || []).length > 0
+  );
+
+  const onboardingCopy = {
+    google_not_connected: {
+      title: "Connect Google Sheets to start syncing your financial data.",
+      description: "Connect your Google account, then add a spreadsheet source from Configuration.",
+      actionLabel: "Go to Configuration",
+      icon: Cloud,
+    },
+    no_data_source: {
+      title: "Add your spreadsheet source to import transactions.",
+      description: "Paste your Google Sheet URL, test access, save the source, then run Sync Now.",
+      actionLabel: "Add Google Sheet Source",
+      icon: Database,
+    },
+    data_source_not_synced: {
+      title: "Sync your Google Sheet to populate this dashboard.",
+      description: "Your source is saved. Run Sync Now from Configuration to import valid transactions.",
+      actionLabel: "Go to Configuration",
+      secondaryLabel: "Refresh Dashboard",
+      icon: RefreshCw,
+    },
+  };
+
+  const renderOnboardingState = (state = onboardingState) => {
+    const copy = onboardingCopy[state] || onboardingCopy.google_not_connected;
+
+    return (
+      <EmptyState
+        title={copy.title}
+        description={copy.description}
+        actionLabel={copy.actionLabel}
+        onAction={() => setActiveView("configuration")}
+        secondaryLabel={copy.secondaryLabel}
+        onSecondaryAction={handleRefreshData}
+        icon={copy.icon}
+      />
+    );
+  };
 
   // =========================
   // UI
@@ -1147,82 +1263,72 @@ const Dashboard = ({
           </div>
         )}
 
-        {shouldShowEmptyDashboard ? (
-          <div className="panel rounded-lg p-6 shadow-lg">
-            <div className="mx-auto flex max-w-2xl flex-col items-center py-12 text-center">
-              <div className="icon-badge rounded-xl p-4">
-                <Settings size={28} />
-              </div>
-
-              <h2 className="mt-5 text-2xl font-bold text-main">
-                Dashboard masih kosong
-              </h2>
-
-              <p className="mt-3 text-sm leading-7 text-muted sm:text-base">
-                Tambahkan Google Spreadsheet ID di Configuration, lalu klik Add
-                Connection. Setelah source terhubung, dashboard akan menganalisa
-                data dari spreadsheet dan menampilkan chart finansial di sini.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => setActiveView("configuration")}
-                className="primary-button mt-6 inline-flex rounded-lg px-5 py-2.5 font-semibold"
-              >
-                <Settings size={18} />
-                Buka Configuration
-              </button>
-            </div>
-          </div>
+        {activeView === "dashboard" && onboardingState !== "ready" ? (
+          renderOnboardingState()
         ) : activeView === "dashboard" ? (
           <>
+            {!hasDashboardPeriodData && (
+              <div className="mb-8">
+                <EmptyState
+                  title="No data available for this period."
+                  description="Try another month or sync your Google Sheet after checking the required transaction columns."
+                  actionLabel="Go to Configuration"
+                  onAction={() => setActiveView("configuration")}
+                  icon={Database}
+                  compact
+                />
+              </div>
+            )}
+
             {/* SUMMARY */}
-            <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-6">
-              <SummaryCard
-                title="Total Expenses"
-                value={summary.total_pengeluaran}
-                trend={
-                  summary.total_expenses_change_pct
-                  ?? summary.trend_pengeluaran
-                }
-                trendDirection={summary.total_expenses_trend}
-                comparisonLabel={
-                  summary.comparison?.total_expenses_label
-                  || summary.comparison?.label
-                }
-                privacyMode={privacyMode}
-              />
+            {hasDashboardPeriodData && (
+              <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-6">
+                <SummaryCard
+                  title="Total Expenses"
+                  value={summary.total_pengeluaran}
+                  trend={
+                    summary.total_expenses_change_pct
+                    ?? summary.trend_pengeluaran
+                  }
+                  trendDirection={summary.total_expenses_trend}
+                  comparisonLabel={
+                    summary.comparison?.total_expenses_label
+                    || summary.comparison?.label
+                  }
+                  privacyMode={privacyMode}
+                />
 
-              <SummaryCard
-                title="Total Saving"
-                value={summary.total_saving}
-                trend={
-                  summary.total_saving_change_pct
-                  ?? summary.trend_saving
-                }
-                trendDirection={summary.total_saving_trend}
-                comparisonLabel={
-                  summary.comparison?.total_saving_label
-                  || summary.comparison?.label
-                }
-                privacyMode={privacyMode}
-              />
+                <SummaryCard
+                  title="Total Saving"
+                  value={summary.total_saving}
+                  trend={
+                    summary.total_saving_change_pct
+                    ?? summary.trend_saving
+                  }
+                  trendDirection={summary.total_saving_trend}
+                  comparisonLabel={
+                    summary.comparison?.total_saving_label
+                    || summary.comparison?.label
+                  }
+                  privacyMode={privacyMode}
+                />
 
-              <SummaryCard
-                title="Total Income"
-                value={summary.total_income}
-                trend={
-                  summary.total_income_change_pct
-                  ?? summary.trend_income
-                }
-                trendDirection={summary.total_income_trend}
-                comparisonLabel={
-                  summary.comparison?.total_income_label
-                  || summary.comparison?.label
-                }
-                privacyMode={privacyMode}
-              />
-            </div>
+                <SummaryCard
+                  title="Total Income"
+                  value={summary.total_income}
+                  trend={
+                    summary.total_income_change_pct
+                    ?? summary.trend_income
+                  }
+                  trendDirection={summary.total_income_trend}
+                  comparisonLabel={
+                    summary.comparison?.total_income_label
+                    || summary.comparison?.label
+                  }
+                  privacyMode={privacyMode}
+                />
+              </div>
+            )}
 
             <div className="mb-8">
               <FinancialInsights
@@ -1299,6 +1405,8 @@ const Dashboard = ({
             </div>
 
           </>
+        ) : activeView === "analytics" && onboardingState !== "ready" ? (
+          renderOnboardingState()
         ) : activeView === "analytics" && !hasPremiumAccess ? (
           <LockedFeature
             title="Advanced Analytics Terkunci"
@@ -1306,92 +1414,107 @@ const Dashboard = ({
           />
         ) : activeView === "analytics" ? (
           <div className="grid grid-cols-1 gap-6">
-            <div className="panel rounded-2xl p-3 shadow-lg">
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setActiveAnalyticsSubTab("overview")}
-                  className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-                    activeAnalyticsSubTab === "overview"
-                      ? "bg-[var(--color-accent-strong)] text-white"
-                      : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
-                  }`}
-                >
-                  Overview
-                </button>
+            {!hasAnalyticsData && (
+              <EmptyState
+                title="Analytics will appear after you sync transactions."
+                description="Sync a Google Sheet with valid transactions, then choose a year or month to review personal finance trends."
+                actionLabel="Go to Configuration"
+                onAction={() => setActiveView("configuration")}
+                icon={BarChart3}
+                compact
+              />
+            )}
 
-                <button
-                  type="button"
-                  onClick={() => setActiveAnalyticsSubTab("velocity")}
-                  className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-                    activeAnalyticsSubTab === "velocity"
-                      ? "bg-[var(--color-accent-strong)] text-white"
-                      : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
-                  }`}
-                >
-                  Income Velocity
-                </button>
-              </div>
-            </div>
+            {hasAnalyticsData && (
+              <>
+                <div className="panel rounded-2xl p-3 shadow-lg">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setActiveAnalyticsSubTab("overview")}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                        activeAnalyticsSubTab === "overview"
+                          ? "bg-[var(--color-accent-strong)] text-white"
+                          : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                      }`}
+                    >
+                      Overview
+                    </button>
 
-            <PersonalAnalytics
-              data={personalAnalytics}
-              selectedUser={selectedAnalyticsUser}
-              onSelectedUserChange={setSelectedAnalyticsUser}
-              privacyMode={privacyMode}
-              variant="summary"
-            />
+                    <button
+                      type="button"
+                      onClick={() => setActiveAnalyticsSubTab("velocity")}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                        activeAnalyticsSubTab === "velocity"
+                          ? "bg-[var(--color-accent-strong)] text-white"
+                          : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                      }`}
+                    >
+                      Income Velocity
+                    </button>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 gap-6">
-              {activeAnalyticsSubTab === "overview" && (
-                <>
-                  <PersonalAnalytics
-                    data={personalAnalytics}
-                    selectedUser={selectedAnalyticsUser}
-                    onSelectedUserChange={setSelectedAnalyticsUser}
-                    privacyMode={privacyMode}
-                    variant="breakdown"
-                  />
-
-                  <SourceDanaAnalytics
-                    data={sourceDanaAnalytics}
-                    theme={theme}
-                    privacyMode={privacyMode}
-                  />
-
-                  <MonthlyAllocationTrend
-                    data={monthlyAllocation}
-                    privacyMode={privacyMode}
-                  />
-
-                  <GroceryVsFoodChart
-                    data={groceryVsFood}
-                    theme={theme}
-                    privacyMode={privacyMode}
-                  />
-
-                  <CategoryTrendChart
-                    data={categoryTrends}
-                    theme={theme}
-                    privacyMode={privacyMode}
-                  />
-
-                  <CategoryHeatmap
-                    data={categoryHeatmap}
-                    rawTransactions={rawTransactions}
-                    theme={theme}
-                    privacyMode={privacyMode}
-                  />
-                </>
-              )}
-
-              {activeAnalyticsSubTab === "velocity" && (
-                <IncomeVelocityDashboard
-                  rawTransactions={rawTransactions}
+                <PersonalAnalytics
+                  data={personalAnalytics}
+                  selectedUser={selectedAnalyticsUser}
+                  onSelectedUserChange={setSelectedAnalyticsUser}
                   privacyMode={privacyMode}
+                  variant="summary"
                 />
-              )}
-            </div>
+
+                <div className="grid grid-cols-1 gap-6">
+                  {activeAnalyticsSubTab === "overview" && (
+                    <>
+                      <PersonalAnalytics
+                        data={personalAnalytics}
+                        selectedUser={selectedAnalyticsUser}
+                        onSelectedUserChange={setSelectedAnalyticsUser}
+                        privacyMode={privacyMode}
+                        variant="breakdown"
+                      />
+
+                      <SourceDanaAnalytics
+                        data={sourceDanaAnalytics}
+                        theme={theme}
+                        privacyMode={privacyMode}
+                      />
+
+                      <MonthlyAllocationTrend
+                        data={monthlyAllocation}
+                        privacyMode={privacyMode}
+                      />
+
+                      <GroceryVsFoodChart
+                        data={groceryVsFood}
+                        theme={theme}
+                        privacyMode={privacyMode}
+                      />
+
+                      <CategoryTrendChart
+                        data={categoryTrends}
+                        theme={theme}
+                        privacyMode={privacyMode}
+                      />
+
+                      <CategoryHeatmap
+                        data={categoryHeatmap}
+                        rawTransactions={rawTransactions}
+                        theme={theme}
+                        privacyMode={privacyMode}
+                      />
+                    </>
+                  )}
+
+                  {activeAnalyticsSubTab === "velocity" && (
+                    <IncomeVelocityDashboard
+                      rawTransactions={rawTransactions}
+                      privacyMode={privacyMode}
+                    />
+                  )}
+                </div>
+              </>
+            )}
           </div>
         ) : activeView === "budgeting" && !hasPremiumAccess ? (
           <LockedFeature

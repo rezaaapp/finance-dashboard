@@ -2,6 +2,8 @@
 
 See also: [Week 6 Analytics QA](WEEK6_ANALYTICS_QA.md) and
 [Week 6 Data Accuracy Audit](WEEK6_DATA_ACCURACY_AUDIT.md).
+For first-time setup and empty data flows, see
+[Week 6 Onboarding Empty State](WEEK6_ONBOARDING_EMPTY_STATE.md).
 
 ## Summary Month-over-Month Trend
 
