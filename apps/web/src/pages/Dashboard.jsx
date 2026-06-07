@@ -68,6 +68,7 @@ import {
   getPendingWorkspaceInvitations,
 } from "../api/workspaceInvitationsApi";
 import {
+  clearActiveWorkspaceId,
   getActiveWorkspaceId,
   setActiveWorkspaceId,
 } from "../api/workspaceContext";
@@ -249,6 +250,8 @@ const Dashboard = ({
 
       if (nextActiveWorkspaceId && nextActiveWorkspaceId !== storedWorkspaceId) {
         setActiveWorkspaceId(nextActiveWorkspaceId);
+      } else if (!nextActiveWorkspaceId && storedWorkspaceId) {
+        clearActiveWorkspaceId();
       }
 
       return nextActiveWorkspaceId;
@@ -648,22 +651,45 @@ const Dashboard = ({
       ? ""
       : selectedAnalyticsUser;
 
-    const fetchSourceDanaAnalytics = async () => {
+    const fetchAnalyticsData = async () => {
       try {
-        const data = await getSourceDanaAnalytics(
-          selectedYear,
-          selectedMonth,
-          analyticsUserName
-        );
-        const monthlyAllocationData = await getMonthlyAllocation(
-          selectedYear,
-          selectedMonth,
-          analyticsUserName
-        );
+        const [
+          personalAnalyticsData,
+          sourceDanaAnalyticsData,
+          monthlyAllocationData,
+          groceryVsFoodData,
+          categoryHeatmapData,
+          transactionsData,
+          categoryTrendsData,
+          anomaliesData,
+        ] = await Promise.all([
+          getPersonalAnalytics(selectedYear, selectedMonth),
+          getSourceDanaAnalytics(
+            selectedYear,
+            selectedMonth,
+            analyticsUserName
+          ),
+          getMonthlyAllocation(
+            selectedYear,
+            selectedMonth,
+            analyticsUserName
+          ),
+          getGroceryVsFood(selectedYear, selectedMonth, analyticsUserName),
+          getCategoryHeatmap(selectedYear, selectedMonth, analyticsUserName),
+          getTransactions(selectedYear, selectedMonth, analyticsUserName),
+          getCategoryTrends(selectedYear, selectedMonth, analyticsUserName),
+          getAnomalies(selectedYear, selectedMonth),
+        ]);
 
         if (isMounted) {
-          setSourceDanaAnalytics(data);
+          setPersonalAnalytics(personalAnalyticsData);
+          setSourceDanaAnalytics(sourceDanaAnalyticsData);
           setMonthlyAllocation(monthlyAllocationData);
+          setGroceryVsFood(groceryVsFoodData);
+          setCategoryHeatmap(categoryHeatmapData);
+          setRawTransactions(transactionsData);
+          setCategoryTrends(categoryTrendsData);
+          setAnomalies(anomaliesData);
         }
       } catch (err) {
         console.error("Failed to fetch analytics data.");
@@ -674,13 +700,19 @@ const Dashboard = ({
         }
 
         if (isMounted) {
+          setPersonalAnalytics({});
           setSourceDanaAnalytics({});
           setMonthlyAllocation([]);
+          setGroceryVsFood([]);
+          setCategoryHeatmap({});
+          setRawTransactions([]);
+          setCategoryTrends({});
+          setAnomalies([]);
         }
       }
     };
 
-    fetchSourceDanaAnalytics();
+    fetchAnalyticsData();
 
     return () => {
       isMounted = false;

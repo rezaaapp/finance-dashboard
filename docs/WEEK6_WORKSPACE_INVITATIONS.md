@@ -170,6 +170,30 @@ Security negative:
 3. Attempt to cancel as a non-owner/non-admin.
 4. Confirm a safe `403` response.
 
+Final end-to-end scenarios:
+
+1. Existing member compatibility:
+   Login as `divyakoemala@gmail.com`, confirm Divya and Reza workspaces appear,
+   switch between them, and confirm no invitation acceptance is required for the
+   existing membership.
+2. Owner invite new member:
+   Login as `rezaaapp@gmail.com`, select Reza workspace, invite a new email from
+   Configuration > Workspace Members, and confirm the invite appears only under
+   Pending Invitations.
+3. Invited user accepts:
+   Login as the invited email, accept from the pending invitation notification,
+   confirm the workspace appears in the switcher, and confirm it can be opened.
+4. Invited user declines:
+   Create another invite, decline it as the invited user, and confirm the
+   workspace does not appear in the switcher.
+5. Owner cancels invite:
+   Create a pending invite, cancel it as owner/admin, and confirm the invited
+   user no longer sees it as pending.
+6. Security negative:
+   Try invalid `X-Workspace-Id`, accepting another email's invitation, and
+   creating/cancelling invitations as a non-owner. Confirm safe `403`, `404`, or
+   `409` responses.
+
 ## Known Limitations
 
 - Email delivery is not implemented yet.

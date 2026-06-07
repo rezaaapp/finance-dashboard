@@ -113,6 +113,37 @@ Expected Divya scenario:
 9. Manually call an endpoint with a random `X-Workspace-Id`.
 10. Confirm the backend returns `403 Workspace access denied`.
 
+## Integration QA Notes
+
+- Dashboard and Analytics endpoints resolve the workspace from
+  `X-Workspace-Id` through backend membership validation.
+- Data Sources, Google connection, Sync Jobs, Classifications, and Insight
+  Settings use the same active workspace dependency.
+- Missing `X-Workspace-Id` falls back to a workspace the user already belongs
+  to; invalid `X-Workspace-Id` returns `403`.
+- Switching workspace clears visible dashboard state, reloads available years,
+  and refetches dashboard or analytics data without a browser refresh.
+- Configuration is remounted per active workspace so Data Sources, Google
+  connection status, insight settings, active members, and pending invitations
+  are reloaded.
+
+## Final Manual QA Checklist
+
+Existing member compatibility:
+
+1. Login as `divyakoemala@gmail.com`.
+2. Confirm the switcher shows Divya and Reza workspaces.
+3. Select Reza workspace and confirm Dashboard shows Reza data.
+4. Select Divya workspace and confirm Dashboard shows Divya data or empty
+   state.
+
+Workspace isolation:
+
+1. Send a request with a random `X-Workspace-Id`.
+2. Confirm the backend returns `403 Workspace access denied`.
+3. Confirm Data Sources, Settings, Classifications, Dashboard, and Analytics do
+   not return data for inaccessible workspaces.
+
 ## Known Limitations
 
 - Invitation acceptance flow now exists for new invitations. Existing active

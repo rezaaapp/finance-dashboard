@@ -492,6 +492,10 @@ const Configuration = ({
             : { invitations: [] }
         );
 
+        if (!isMounted) {
+          return;
+        }
+
         setWorkspaceId(currentWorkspaceId);
         setWorkspaceName(response?.workspace?.name || "");
         setWorkspaceRole(currentWorkspaceRole);
