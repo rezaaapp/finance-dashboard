@@ -4,6 +4,10 @@ Dokumen ini menjelaskan file environment yang dipakai Finance Dashboard untuk
 local setup, development, dan arah deployment production. Jangan menaruh secret
 asli di dokumentasi atau file `.env.example`.
 
+Panduan staging Week 7 untuk Render, Vercel, Supabase, Google OAuth, CORS, dan
+secret management ada di
+[`docs/WEEK7_ENVIRONMENT_SETUP.md`](WEEK7_ENVIRONMENT_SETUP.md).
+
 ## Lokasi File Environment
 
 | File | Fungsi |
