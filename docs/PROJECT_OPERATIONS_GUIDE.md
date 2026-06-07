@@ -285,6 +285,7 @@ docs/WEEK6_ONBOARDING_EMPTY_STATE.md
 docs/WEEK6_WORKSPACE_SWITCHER.md
 docs/WEEK6_WORKSPACE_INVITATIONS.md
 docs/WEEK7_STAGING_ARCHITECTURE.md
+docs/WEEK7_ENVIRONMENT_SETUP.md
 ```
 
 Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment

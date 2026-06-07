@@ -194,6 +194,10 @@ https://finance-dashboard-api.example.com/api/google/oauth/callback
 Jika backend berada di Render atau provider lain, gunakan URL public backend
 yang menerima callback Google.
 
+Untuk staging Week 7 di Render/Vercel, gunakan checklist environment dan
+redirect URI di
+[`docs/WEEK7_ENVIRONMENT_SETUP.md`](WEEK7_ENVIRONMENT_SETUP.md).
+
 ## Troubleshooting `redirect_uri_mismatch`
 
 Error `redirect_uri_mismatch` berarti redirect URI yang dikirim backend tidak

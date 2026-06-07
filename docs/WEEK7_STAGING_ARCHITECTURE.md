@@ -253,6 +253,12 @@ Google Cloud Console checklist:
 
 ## Environment Variable Matrix
 
+Detailed Week 7 staging env and secret management guidance lives in:
+
+```text
+docs/WEEK7_ENVIRONMENT_SETUP.md
+```
+
 | Variable | Used by | Local value example | Staging value example | Required? | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `DATABASE_URL` | Backend, Node DB scripts | `postgresql://postgres:...@localhost:5432/finance_dashboard` | Supabase pooled/runtime connection | Yes | Runtime app connection. |
