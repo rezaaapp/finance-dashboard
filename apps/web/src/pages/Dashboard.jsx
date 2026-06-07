@@ -28,6 +28,7 @@ import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashb
 import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
 import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTrend";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
+import WorkspaceInvitationNotification from "../components/WorkspaceInvitationNotification";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
@@ -61,6 +62,11 @@ import {
 } from "../api/dashboardApi";
 import { getGoogleSheetSources } from "../api/googleSheetSourcesApi";
 import { getWorkspaces } from "../api/workspacesApi";
+import {
+  acceptWorkspaceInvitation,
+  declineWorkspaceInvitation,
+  getPendingWorkspaceInvitations,
+} from "../api/workspaceInvitationsApi";
 import {
   getActiveWorkspaceId,
   setActiveWorkspaceId,
@@ -155,6 +161,9 @@ const Dashboard = ({
     getActiveWorkspaceId()
   ));
   const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [invitationActionId, setInvitationActionId] = useState("");
+  const [invitationError, setInvitationError] = useState("");
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
@@ -219,56 +228,81 @@ const Dashboard = ({
     );
   }, [paydayStartDay]);
 
+  const loadWorkspaceOptions = useCallback(async (preferredWorkspaceId = "") => {
+    try {
+      const response = await getWorkspaces();
+      const nextWorkspaces = response?.workspaces || [];
+      const storedWorkspaceId = getActiveWorkspaceId();
+      const preferredWorkspace = nextWorkspaces.find((workspace) => (
+        workspace.id === preferredWorkspaceId
+      ));
+      const storedWorkspace = nextWorkspaces.find((workspace) => (
+        workspace.id === storedWorkspaceId
+      ));
+      const nextActiveWorkspaceId = preferredWorkspace?.id
+        || storedWorkspace?.id
+        || nextWorkspaces[0]?.id
+        || "";
+
+      setWorkspaces(nextWorkspaces);
+      setActiveWorkspaceIdState(nextActiveWorkspaceId);
+
+      if (nextActiveWorkspaceId && nextActiveWorkspaceId !== storedWorkspaceId) {
+        setActiveWorkspaceId(nextActiveWorkspaceId);
+      }
+
+      return nextActiveWorkspaceId;
+    } catch (err) {
+      console.error("Failed to load workspaces.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return "";
+      }
+
+      setWorkspaces([]);
+      setActiveWorkspaceIdState("");
+      return "";
+    } finally {
+      setWorkspaceReady(true);
+    }
+  }, [onLogout]);
+
+  const loadPendingInvitations = useCallback(async () => {
+    try {
+      setInvitationError("");
+      const response = await getPendingWorkspaceInvitations();
+
+      setPendingInvitations(response?.invitations || []);
+    } catch (err) {
+      console.error("Failed to load workspace invitations.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setInvitationError("Workspace invitations are not available.");
+    }
+  }, [onLogout]);
+
   useEffect(() => {
     let isMounted = true;
 
-    const loadWorkspaceOptions = async () => {
-      try {
-        const response = await getWorkspaces();
-        const nextWorkspaces = response?.workspaces || [];
-        const storedWorkspaceId = getActiveWorkspaceId();
-        const storedWorkspace = nextWorkspaces.find((workspace) => (
-          workspace.id === storedWorkspaceId
-        ));
-        const nextActiveWorkspaceId = storedWorkspace?.id
-          || nextWorkspaces[0]?.id
-          || "";
+    const loadWorkspaceState = async () => {
+      await loadWorkspaceOptions();
 
-        if (!isMounted) {
-          return;
-        }
-
-        setWorkspaces(nextWorkspaces);
-        setActiveWorkspaceIdState(nextActiveWorkspaceId);
-
-        if (nextActiveWorkspaceId && nextActiveWorkspaceId !== storedWorkspaceId) {
-          setActiveWorkspaceId(nextActiveWorkspaceId);
-        }
-      } catch (err) {
-        console.error("Failed to load workspaces.");
-
-        if (err?.response?.status === 401) {
-          onLogout();
-          return;
-        }
-
-        if (isMounted) {
-          setWorkspaces([]);
-          setActiveWorkspaceIdState("");
-        }
-      } finally {
-        if (isMounted) {
-          setWorkspaceReady(true);
-        }
+      if (isMounted) {
+        await loadPendingInvitations();
       }
     };
 
-    loadWorkspaceOptions();
+    loadWorkspaceState();
 
     return () => {
       isMounted = false;
     };
-  }, [onLogout]);
+  }, [loadPendingInvitations, loadWorkspaceOptions]);
 
   const toggleTheme = () => {
     setTheme((currentTheme) => (
@@ -308,6 +342,67 @@ const Dashboard = ({
     setYears([]);
     setSelectedYear("");
     setSelectedMonth("");
+  };
+
+  const handleAcceptInvitation = async (invitationId) => {
+    try {
+      setInvitationActionId(invitationId);
+      setInvitationError("");
+
+      const response = await acceptWorkspaceInvitation(invitationId);
+      const acceptedWorkspaceId = response?.workspace?.id || "";
+
+      setPendingInvitations((currentInvitations) => (
+        currentInvitations.filter((invitation) => invitation.id !== invitationId)
+      ));
+
+      await loadWorkspaceOptions(acceptedWorkspaceId);
+
+      if (acceptedWorkspaceId) {
+        setActiveWorkspaceId(acceptedWorkspaceId);
+        setActiveWorkspaceIdState(acceptedWorkspaceId);
+        clearDashboardData();
+      }
+    } catch (err) {
+      console.error("Failed to accept workspace invitation.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setInvitationError(
+        err?.response?.data?.detail || "Invitation could not be accepted."
+      );
+    } finally {
+      setInvitationActionId("");
+    }
+  };
+
+  const handleDeclineInvitation = async (invitationId) => {
+    try {
+      setInvitationActionId(invitationId);
+      setInvitationError("");
+
+      await declineWorkspaceInvitation(invitationId);
+
+      setPendingInvitations((currentInvitations) => (
+        currentInvitations.filter((invitation) => invitation.id !== invitationId)
+      ));
+    } catch (err) {
+      console.error("Failed to decline workspace invitation.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setInvitationError(
+        err?.response?.data?.detail || "Invitation could not be declined."
+      );
+    } finally {
+      setInvitationActionId("");
+    }
   };
 
   const handleSaveConfiguration = ({
@@ -914,12 +1009,20 @@ const Dashboard = ({
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto]">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto_auto]">
 
           <WorkspaceSwitcher
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
             onChange={handleWorkspaceChange}
+          />
+
+          <WorkspaceInvitationNotification
+            invitations={pendingInvitations}
+            actionInvitationId={invitationActionId}
+            error={invitationError}
+            onAccept={handleAcceptInvitation}
+            onDecline={handleDeclineInvitation}
           />
 
           {/* YEAR FILTER */}
@@ -984,7 +1087,7 @@ const Dashboard = ({
               <RefreshCw size={18} />
             </button>
 
-            <div className="col-span-2 flex justify-end sm:col-span-5 xl:col-span-1">
+            <div className="col-span-2 flex justify-end sm:col-span-6 xl:col-span-1">
               <ProfileWidget auth={auth} onLogout={onLogout} />
             </div>
           </div>

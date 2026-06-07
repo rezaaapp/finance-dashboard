@@ -74,6 +74,12 @@ Relevant API clients include `X-Workspace-Id` automatically:
 - `insightSettingsApi.js`
 - `workspacesApi.js`
 
+Workspace invitation APIs are documented in:
+
+```text
+docs/WEEK6_WORKSPACE_INVITATIONS.md
+```
+
 Switching workspace updates local storage and refetches Dashboard data.
 Configuration is remounted for the active workspace so Google Sheet sources and
 settings follow the selection.
@@ -109,7 +115,8 @@ Expected Divya scenario:
 
 ## Known Limitations
 
-- Invitation acceptance flow is intentionally not implemented in this prompt.
+- Invitation acceptance flow now exists for new invitations. Existing active
+  members still rely directly on `workspace_members`.
 - Syncing a source still uses the current user's Google OAuth connection for
   the active workspace; members may need their own Google connection if they
   want to run sync actions.

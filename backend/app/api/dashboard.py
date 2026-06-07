@@ -11,10 +11,14 @@ from app.repositories.workspaces import (
     get_workspace_for_user,
     list_workspace_members,
     normalize_google_sheet_sources,
-    upsert_workspace_member,
     update_google_sheet_id_for_user,
 )
-from app.repositories.users import upsert_invited_member_user
+from app.repositories.workspace_invitation_repository import (
+    create_workspace_invitation,
+    has_pending_invitation,
+    is_active_workspace_member_by_email,
+    normalize_invitation_email,
+)
 from app.repositories import analytics_repository as analytics
 from app.services.financial_insight_service import generate_rule_based_insights
 from scripts.data_processing import load_and_process_data_from_spreadsheet
@@ -158,6 +162,7 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 class WorkspaceMemberInvite(BaseModel):
     email: str
     name: str | None = None
+    role: str = "member"
 
 
 def serialize_workspace_member(member):
@@ -172,6 +177,18 @@ def serialize_workspace_member(member):
         "role": member["global_role"],
         "created_at": member["created_at"],
         "updated_at": member["updated_at"],
+    }
+
+
+def serialize_workspace_invitation(invitation):
+    return {
+        "id": str(invitation["id"]),
+        "workspace_id": str(invitation["workspace_id"]),
+        "email": invitation["email"],
+        "role": invitation["role"],
+        "status": invitation["status"],
+        "created_at": invitation["created_at"],
+        "expires_at": invitation.get("expires_at"),
     }
 
 
@@ -719,16 +736,17 @@ def invite_workspace_member(
     current_user=Depends(require_current_user),
     active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
-    email = payload.email.strip().lower()
+    email = normalize_invitation_email(payload.email)
+    role = str(payload.role or "member").strip().lower()
 
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email is required")
 
-    invited_name = (
-        payload.name.strip()
-        if payload.name and payload.name.strip()
-        else email.split("@")[0]
-    )
+    if role != "member":
+        raise HTTPException(
+            status_code=400,
+            detail="Only member invitations are supported.",
+        )
 
     workspace = resolve_workspace_for_request(
         current_user,
@@ -738,16 +756,32 @@ def invite_workspace_member(
 
     with get_db_connection() as connection:
         with connection.transaction():
-            invited_user = upsert_invited_member_user(
-                connection,
-                email=email,
-                name=invited_name,
-            )
-            membership = upsert_workspace_member(
+            if is_active_workspace_member_by_email(
                 connection,
                 workspace_id=str(workspace["id"]),
-                user_id=str(invited_user["id"]),
-                role="member",
+                email=email,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Already a member",
+                )
+
+            if has_pending_invitation(
+                connection,
+                workspace_id=str(workspace["id"]),
+                email=email,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Invitation already pending",
+                )
+
+            invitation = create_workspace_invitation(
+                connection,
+                workspace_id=str(workspace["id"]),
+                email=email,
+                role=role,
+                invited_by_user_id=current_user["sub"],
             )
             members = list_workspace_members(
                 connection,
@@ -755,14 +789,8 @@ def invite_workspace_member(
             )
 
     return {
-        "status": "ok",
-        "member": {
-            "id": str(invited_user["id"]),
-            "email": invited_user["email"],
-            "name": invited_user["name"],
-            "role": invited_user["role"],
-            "workspace_role": membership["role"],
-        },
+        "status": "invitation_sent",
+        "invitation": serialize_workspace_invitation(invitation),
         "members": [serialize_workspace_member(member) for member in members],
     }
 
