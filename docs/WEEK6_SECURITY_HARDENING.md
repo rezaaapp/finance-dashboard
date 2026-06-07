@@ -8,6 +8,7 @@ input validation, and operational security for the Week 6 backend/frontend.
 - Google OAuth and Google connection endpoints
 - Google Sheet data sources and sync jobs
 - Dashboard and Analytics endpoints
+- Workspace switcher and invitation endpoints
 - Classification endpoints and user-defined rules
 - Insight threshold settings
 - Backend repositories, services, env defaults, and frontend API clients
@@ -82,6 +83,17 @@ Settings:
 - Ratios, counts, multipliers, and ordered thresholds are validated.
 - Settings are upserted by `workspace_id`.
 
+Workspace Invitations:
+
+- Create/cancel endpoints require owner/admin access to the target workspace.
+- Pending invitation reads are filtered by the authenticated user's email.
+- Accept/decline require the authenticated user's email to match the invitation
+  email.
+- Invitation accept adds `workspace_members` only after a pending invite is
+  accepted.
+- Duplicate pending invitations are blocked by a partial unique index.
+- MVP responses do not expose invitation token fields.
+
 ## Repository Checklist
 
 - `google_oauth_repository.py`: queries and disconnect filter by workspace and
@@ -146,8 +158,8 @@ OAuth callback logs only step/reason codes such as `invalid_state`,
   `localStorage.getItem("finance-dashboard-token")`.
 - Frontend does not store Google access tokens, refresh tokens, encrypted
   tokens, service account JSON, or backend secrets.
-- Frontend API clients do not send arbitrary `workspace_id`; backend derives it
-  from auth context.
+- Frontend API clients send the active workspace as `X-Workspace-Id`; backend
+  validates membership before using it.
 - No token logging was found in `apps/web/src/api`.
 
 ## Env And Gitignore Checklist

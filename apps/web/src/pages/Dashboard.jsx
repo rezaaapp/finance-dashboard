@@ -31,6 +31,8 @@ import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashb
 import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
 import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTrend";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
+import WorkspaceInvitationNotification from "../components/WorkspaceInvitationNotification";
+import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
@@ -62,7 +64,17 @@ import {
   getWorkspaceConfiguration,
 } from "../api/dashboardApi";
 import { getGoogleSheetSources } from "../api/googleSheetSourcesApi";
-import { getGoogleOAuthConnectionStatus } from "../api/googleOAuthApi";
+import { getWorkspaces } from "../api/workspacesApi";
+import {
+  acceptWorkspaceInvitation,
+  declineWorkspaceInvitation,
+  getPendingWorkspaceInvitations,
+} from "../api/workspaceInvitationsApi";
+import {
+  clearActiveWorkspaceId,
+  getActiveWorkspaceId,
+  setActiveWorkspaceId,
+} from "../api/workspaceContext";
 
 const premiumRoles = new Set(["super_admin", "owner", "member"]);
 
@@ -171,8 +183,14 @@ const Dashboard = ({
   const [anomalies, setAnomalies] = useState([]);
   const [currentSheetName, setCurrentSheetName] = useState("");
   const [hasActiveGoogleSheet, setHasActiveGoogleSheet] = useState(false);
-  const [googleConnection, setGoogleConnection] = useState({ connected: false });
-  const [googleSheetSources, setGoogleSheetSources] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState(() => (
+    getActiveWorkspaceId()
+  ));
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [invitationActionId, setInvitationActionId] = useState("");
+  const [invitationError, setInvitationError] = useState("");
 
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
@@ -237,10 +255,94 @@ const Dashboard = ({
     );
   }, [paydayStartDay]);
 
+  const loadWorkspaceOptions = useCallback(async (preferredWorkspaceId = "") => {
+    try {
+      const response = await getWorkspaces();
+      const nextWorkspaces = response?.workspaces || [];
+      const storedWorkspaceId = getActiveWorkspaceId();
+      const preferredWorkspace = nextWorkspaces.find((workspace) => (
+        workspace.id === preferredWorkspaceId
+      ));
+      const storedWorkspace = nextWorkspaces.find((workspace) => (
+        workspace.id === storedWorkspaceId
+      ));
+      const nextActiveWorkspaceId = preferredWorkspace?.id
+        || storedWorkspace?.id
+        || nextWorkspaces[0]?.id
+        || "";
+
+      setWorkspaces(nextWorkspaces);
+      setActiveWorkspaceIdState(nextActiveWorkspaceId);
+
+      if (nextActiveWorkspaceId && nextActiveWorkspaceId !== storedWorkspaceId) {
+        setActiveWorkspaceId(nextActiveWorkspaceId);
+      } else if (!nextActiveWorkspaceId && storedWorkspaceId) {
+        clearActiveWorkspaceId();
+      }
+
+      return nextActiveWorkspaceId;
+    } catch (err) {
+      console.error("Failed to load workspaces.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return "";
+      }
+
+      setWorkspaces([]);
+      setActiveWorkspaceIdState("");
+      return "";
+    } finally {
+      setWorkspaceReady(true);
+    }
+  }, [onLogout]);
+
+  const loadPendingInvitations = useCallback(async () => {
+    try {
+      setInvitationError("");
+      const response = await getPendingWorkspaceInvitations();
+
+      setPendingInvitations(response?.invitations || []);
+    } catch (err) {
+      console.error("Failed to load workspace invitations.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setInvitationError("Workspace invitations are not available.");
+    }
+  }, [onLogout]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadWorkspaceState = async () => {
+      await loadWorkspaceOptions();
+
+      if (isMounted) {
+        await loadPendingInvitations();
+      }
+    };
+
+    loadWorkspaceState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadPendingInvitations, loadWorkspaceOptions]);
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (
       currentTheme === "dark" ? "light" : "dark"
     ));
+  };
+
+  const handleWorkspaceChange = (workspaceId) => {
+    setActiveWorkspaceId(workspaceId);
+    setActiveWorkspaceIdState(workspaceId);
+    clearDashboardData();
   };
 
   const clearDashboardData = () => {
@@ -271,6 +373,67 @@ const Dashboard = ({
     setYears([]);
     setSelectedYear("");
     setSelectedMonth("");
+  };
+
+  const handleAcceptInvitation = async (invitationId) => {
+    try {
+      setInvitationActionId(invitationId);
+      setInvitationError("");
+
+      const response = await acceptWorkspaceInvitation(invitationId);
+      const acceptedWorkspaceId = response?.workspace?.id || "";
+
+      setPendingInvitations((currentInvitations) => (
+        currentInvitations.filter((invitation) => invitation.id !== invitationId)
+      ));
+
+      await loadWorkspaceOptions(acceptedWorkspaceId);
+
+      if (acceptedWorkspaceId) {
+        setActiveWorkspaceId(acceptedWorkspaceId);
+        setActiveWorkspaceIdState(acceptedWorkspaceId);
+        clearDashboardData();
+      }
+    } catch (err) {
+      console.error("Failed to accept workspace invitation.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setInvitationError(
+        err?.response?.data?.detail || "Invitation could not be accepted."
+      );
+    } finally {
+      setInvitationActionId("");
+    }
+  };
+
+  const handleDeclineInvitation = async (invitationId) => {
+    try {
+      setInvitationActionId(invitationId);
+      setInvitationError("");
+
+      await declineWorkspaceInvitation(invitationId);
+
+      setPendingInvitations((currentInvitations) => (
+        currentInvitations.filter((invitation) => invitation.id !== invitationId)
+      ));
+    } catch (err) {
+      console.error("Failed to decline workspace invitation.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setInvitationError(
+        err?.response?.data?.detail || "Invitation could not be declined."
+      );
+    } finally {
+      setInvitationActionId("");
+    }
   };
 
   const handleSaveConfiguration = ({
@@ -507,8 +670,10 @@ const Dashboard = ({
   // LOAD AVAILABLE YEARS
   // =========================
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    if (workspaceReady) {
+      loadInitialData();
+    }
+  }, [activeWorkspaceId, loadInitialData, workspaceReady]);
 
   // =========================
   // FETCH DASHBOARD WHEN YEAR CHANGES
@@ -539,22 +704,45 @@ const Dashboard = ({
       ? ""
       : selectedAnalyticsUser;
 
-    const fetchSourceDanaAnalytics = async () => {
+    const fetchAnalyticsData = async () => {
       try {
-        const data = await getSourceDanaAnalytics(
-          selectedYear,
-          selectedMonth,
-          analyticsUserName
-        );
-        const monthlyAllocationData = await getMonthlyAllocation(
-          selectedYear,
-          selectedMonth,
-          analyticsUserName
-        );
+        const [
+          personalAnalyticsData,
+          sourceDanaAnalyticsData,
+          monthlyAllocationData,
+          groceryVsFoodData,
+          categoryHeatmapData,
+          transactionsData,
+          categoryTrendsData,
+          anomaliesData,
+        ] = await Promise.all([
+          getPersonalAnalytics(selectedYear, selectedMonth),
+          getSourceDanaAnalytics(
+            selectedYear,
+            selectedMonth,
+            analyticsUserName
+          ),
+          getMonthlyAllocation(
+            selectedYear,
+            selectedMonth,
+            analyticsUserName
+          ),
+          getGroceryVsFood(selectedYear, selectedMonth, analyticsUserName),
+          getCategoryHeatmap(selectedYear, selectedMonth, analyticsUserName),
+          getTransactions(selectedYear, selectedMonth, analyticsUserName),
+          getCategoryTrends(selectedYear, selectedMonth, analyticsUserName),
+          getAnomalies(selectedYear, selectedMonth),
+        ]);
 
         if (isMounted) {
-          setSourceDanaAnalytics(data);
+          setPersonalAnalytics(personalAnalyticsData);
+          setSourceDanaAnalytics(sourceDanaAnalyticsData);
           setMonthlyAllocation(monthlyAllocationData);
+          setGroceryVsFood(groceryVsFoodData);
+          setCategoryHeatmap(categoryHeatmapData);
+          setRawTransactions(transactionsData);
+          setCategoryTrends(categoryTrendsData);
+          setAnomalies(anomaliesData);
         }
       } catch (err) {
         console.error("Failed to fetch analytics data.");
@@ -565,13 +753,19 @@ const Dashboard = ({
         }
 
         if (isMounted) {
+          setPersonalAnalytics({});
           setSourceDanaAnalytics({});
           setMonthlyAllocation([]);
+          setGroceryVsFood([]);
+          setCategoryHeatmap({});
+          setRawTransactions([]);
+          setCategoryTrends({});
+          setAnomalies([]);
         }
       }
     };
 
-    fetchSourceDanaAnalytics();
+    fetchAnalyticsData();
 
     return () => {
       isMounted = false;
@@ -963,7 +1157,21 @@ const Dashboard = ({
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto]">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto_auto]">
+
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onChange={handleWorkspaceChange}
+          />
+
+          <WorkspaceInvitationNotification
+            invitations={pendingInvitations}
+            actionInvitationId={invitationActionId}
+            error={invitationError}
+            onAccept={handleAcceptInvitation}
+            onDecline={handleDeclineInvitation}
+          />
 
           {/* YEAR FILTER */}
           <select
@@ -1027,7 +1235,7 @@ const Dashboard = ({
               <RefreshCw size={18} />
             </button>
 
-            <div className="col-span-2 flex justify-end sm:col-span-4 xl:col-span-1">
+            <div className="col-span-2 flex justify-end sm:col-span-6 xl:col-span-1">
               <ProfileWidget auth={auth} onLogout={onLogout} />
             </div>
           </div>
@@ -1327,6 +1535,7 @@ const Dashboard = ({
           />
         ) : (
           <Configuration
+            key={activeWorkspaceId || "default-workspace"}
             autoBudget={autoBudget}
             paydayStartDay={paydayStartDay}
             selectedYear={selectedYear}

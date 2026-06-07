@@ -64,4 +64,14 @@ export const SETTINGS_API_URL = DASHBOARD_API_URL.replace(
   "/api/settings"
 );
 
+export const WORKSPACES_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/workspaces"
+);
+
+export const WORKSPACE_INVITATIONS_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/workspace-invitations"
+);
+
 export const AUTH_BASE_URL = AUTH_API_URL.replace(/\/api\/auth$/, "/auth");

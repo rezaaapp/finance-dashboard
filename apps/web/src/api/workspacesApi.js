@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { SETTINGS_API_URL } from "./config";
+import { WORKSPACES_API_URL } from "./config";
 import { buildWorkspaceHeaders } from "./workspaceContext";
 
 const getAuthHeaders = () => {
@@ -12,21 +12,9 @@ const getAuthHeaders = () => {
   };
 };
 
-export const getInsightThresholds = async () => {
+export const getWorkspaces = async () => {
   const response = await axios.get(
-    `${SETTINGS_API_URL}/insight-thresholds`,
-    {
-      headers: getAuthHeaders(),
-    }
-  );
-
-  return response.data;
-};
-
-export const updateInsightThresholds = async (payload) => {
-  const response = await axios.put(
-    `${SETTINGS_API_URL}/insight-thresholds`,
-    payload,
+    WORKSPACES_API_URL,
     {
       headers: getAuthHeaders(),
     }

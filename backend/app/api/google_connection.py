@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.auth import require_current_user
 from app.database import get_db_connection
@@ -9,6 +9,7 @@ from app.repositories.google_oauth_repository import (
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
+    get_workspace_for_user,
 )
 
 
@@ -18,17 +19,35 @@ router = APIRouter(
 )
 
 
-def get_current_workspace(current_user=Depends(require_current_user)):
+def get_current_workspace(
+    current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
     with get_db_connection() as connection:
         with connection.transaction():
-            workspace = get_primary_workspace_for_user(
-                connection,
-                user_id=current_user["sub"],
-            )
+            workspace = None
+
+            if active_workspace_id:
+                workspace = get_workspace_for_user(
+                    connection,
+                    user_id=current_user["sub"],
+                    workspace_id=active_workspace_id,
+                )
+
+                if not workspace:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Workspace access denied",
+                    )
+            else:
+                workspace = get_primary_workspace_for_user(
+                    connection,
+                    user_id=current_user["sub"],
+                )
 
             # TODO: Replace this default workspace fallback when OAuth onboarding
             # has a final workspace selection flow.
-            if not workspace:
+            if not workspace and not active_workspace_id:
                 workspace = ensure_default_workspace_for_user(
                     connection,
                     user_id=current_user["sub"],

@@ -4,13 +4,15 @@ import {
   DATA_SOURCES_API_URL,
   SYNC_JOBS_API_URL,
 } from "./config";
+import { buildWorkspaceHeaders } from "./workspaceContext";
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("finance-dashboard-token");
 
-  return token
-    ? { Authorization: `Bearer ${token}` }
-    : {};
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...buildWorkspaceHeaders(),
+  };
 };
 
 export const testGoogleSheetSource = async (payload) => {

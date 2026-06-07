@@ -18,9 +18,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getWorkspaceConfiguration,
   getWorkspaceMembers,
-  inviteWorkspaceMember,
   saveConfiguration,
 } from "../api/dashboardApi";
+import {
+  cancelWorkspaceInvitation,
+  createWorkspaceInvitation,
+  getWorkspacePendingInvitations,
+} from "../api/workspaceInvitationsApi";
 import {
   disconnectGoogleOAuth,
   getGoogleOAuthConnectionStatus,
@@ -39,6 +43,7 @@ import {
 } from "../api/insightSettingsApi";
 
 import { PRIVACY_MODES } from "../utils/privacy";
+import { getActiveWorkspaceId } from "../api/workspaceContext";
 
 const privacyOptions = [
   { label: "Normal", value: PRIVACY_MODES.normal },
@@ -271,7 +276,10 @@ const Configuration = ({
   const [draftPaydayStartDay, setDraftPaydayStartDay] = useState(paydayStartDay);
   const [draftPrivacyMode, setDraftPrivacyMode] = useState(privacyMode);
   const [workspaceName, setWorkspaceName] = useState("");
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaceRole, setWorkspaceRole] = useState("");
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
+  const [workspacePendingInvitations, setWorkspacePendingInvitations] = useState([]);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
@@ -282,9 +290,9 @@ const Configuration = ({
   const [syncingSourceId, setSyncingSourceId] = useState("");
   const [deletingSourceId, setDeletingSourceId] = useState("");
   const [isInvitingMember, setIsInvitingMember] = useState(false);
+  const [cancelingInvitationId, setCancelingInvitationId] = useState("");
   const [, setIsLoadingWorkspaceConfiguration] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
   const [spreadsheetUrl, setSpreadsheetUrl] = useState("");
   const [showSaved, setShowSaved] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -304,7 +312,11 @@ const Configuration = ({
   const [isSavingInsightThresholds, setIsSavingInsightThresholds] = useState(false);
   const [insightThresholdError, setInsightThresholdError] = useState("");
   const [insightThresholdSuccess, setInsightThresholdSuccess] = useState("");
-  const canInviteMembers = userRole === "owner" || userRole === "super_admin";
+  const canInviteMembers = (
+    userRole === "super_admin"
+    || workspaceRole === "owner"
+    || workspaceRole === "admin"
+  );
 
   const updateInsightField = (field, value) => {
     setInsightThresholds((currentThresholds) => ({
@@ -466,9 +478,30 @@ const Configuration = ({
         }
 
         const membersResponse = await getWorkspaceMembers();
+        const currentWorkspaceId = response?.workspace?.id || getActiveWorkspaceId();
+        const currentWorkspaceRole = response?.workspace?.role || "";
+        const canLoadPendingInvitations = (
+          userRole === "super_admin"
+          || currentWorkspaceRole === "owner"
+          || currentWorkspaceRole === "admin"
+        );
+        const pendingInvitationsResponse = (
+          canLoadPendingInvitations && currentWorkspaceId
+            ? await getWorkspacePendingInvitations(currentWorkspaceId)
+            : { invitations: [] }
+        );
 
+        if (!isMounted) {
+          return;
+        }
+
+        setWorkspaceId(currentWorkspaceId);
         setWorkspaceName(response?.workspace?.name || "");
+        setWorkspaceRole(currentWorkspaceRole);
         setWorkspaceMembers(membersResponse?.members || []);
+        setWorkspacePendingInvitations(
+          pendingInvitationsResponse?.invitations || []
+        );
       } catch (err) {
         console.error("Failed to load Google Sheet sources.");
 
@@ -494,7 +527,7 @@ const Configuration = ({
     return () => {
       isMounted = false;
     };
-  }, [onUnauthorized]);
+  }, [onUnauthorized, userRole]);
 
   useEffect(() => {
     if (!googleConnection.connected) {
@@ -956,21 +989,29 @@ const Configuration = ({
       setNotification(null);
       setWorkspaceConfigurationError("");
 
-      const response = await inviteWorkspaceMember({
+      const currentWorkspaceId = workspaceId || getActiveWorkspaceId();
+
+      if (!currentWorkspaceId) {
+        throw new Error("Workspace is not available.");
+      }
+
+      const response = await createWorkspaceInvitation(currentWorkspaceId, {
         email: inviteEmail.trim(),
-        name: inviteName.trim(),
+        role: "member",
       });
 
-      setWorkspaceMembers(response?.members || []);
+      setWorkspacePendingInvitations((currentInvitations) => [
+        response,
+        ...currentInvitations.filter((invitation) => invitation.id !== response?.id),
+      ]);
       setInviteEmail("");
-      setInviteName("");
       setNotification({
         type: "success",
-        title: "Member invited",
-        message: `${response?.member?.email || "Member"} sekarang terhubung ke workspace sebagai member.`,
+        title: "Invitation sent",
+        message: `${response?.email || "Member"} is waiting for acceptance.`,
       });
     } catch (err) {
-      console.error("Failed to delete Google Sheet source.");
+      console.error("Failed to invite workspace member.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -983,11 +1024,50 @@ const Configuration = ({
       setWorkspaceConfigurationError(message);
       setNotification({
         type: "error",
-        title: "Invite gagal",
+        title: "Invite failed",
         message,
       });
     } finally {
       setIsInvitingMember(false);
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId) => {
+    try {
+      setCancelingInvitationId(invitationId);
+      setWorkspaceConfigurationError("");
+
+      const currentWorkspaceId = workspaceId || getActiveWorkspaceId();
+
+      await cancelWorkspaceInvitation(currentWorkspaceId, invitationId);
+
+      setWorkspacePendingInvitations((currentInvitations) => (
+        currentInvitations.filter((invitation) => invitation.id !== invitationId)
+      ));
+      setNotification({
+        type: "success",
+        title: "Invite cancelled",
+        message: "Pending invitation was cancelled.",
+      });
+    } catch (err) {
+      console.error("Failed to cancel workspace invitation.");
+
+      if (err?.response?.status === 401) {
+        onUnauthorized();
+        return;
+      }
+
+      const message = err?.response?.data?.detail
+        || "Invitation could not be cancelled.";
+
+      setWorkspaceConfigurationError(message);
+      setNotification({
+        type: "error",
+        title: "Cancel failed",
+        message,
+      });
+    } finally {
+      setCancelingInvitationId("");
     }
   };
 
@@ -1773,40 +1853,26 @@ const Configuration = ({
         </div>
       </ConfigurationCard>
 
-      {canInviteMembers && (
-        <ConfigurationCard
-          icon={MailPlus}
-          title="Workspace Members"
-          description="Manage team access and invite new members to this financial workspace."
-        >
+      <ConfigurationCard
+        icon={MailPlus}
+        title="Workspace Members"
+        description="Manage team access and invite new members to this financial workspace."
+      >
+        {canInviteMembers && (
           <form onSubmit={handleInviteMember} className="grid grid-cols-1 gap-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-muted">
-                  Email
-                </span>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(event) => setInviteEmail(event.target.value)}
-                  placeholder="pasangan@example.com"
-                  className="form-control w-full rounded-xl px-4 py-3 text-sm"
-                  required
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-muted">
-                  Member Name
-                </span>
-                <input
-                  value={inviteName}
-                  onChange={(event) => setInviteName(event.target.value)}
-                  placeholder="Nama member (opsional)"
-                  className="form-control w-full rounded-xl px-4 py-3 text-sm"
-                />
-              </label>
-            </div>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-muted">
+                Email
+              </span>
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                placeholder="pasangan@example.com"
+                className="form-control w-full rounded-xl px-4 py-3 text-sm"
+                required
+              />
+            </label>
 
             <div className="flex justify-stretch sm:justify-end">
               <button
@@ -1823,8 +1889,9 @@ const Configuration = ({
               </button>
             </div>
           </form>
+        )}
 
-          <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+          <div className={`${canInviteMembers ? "mt-6" : ""} rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]`}>
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted">
               Current Members
             </p>
@@ -1857,8 +1924,60 @@ const Configuration = ({
               </p>
             )}
           </div>
-        </ConfigurationCard>
-      )}
+
+        {canInviteMembers && (
+          <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted">
+              Pending Invitations
+            </p>
+
+            {workspacePendingInvitations.length > 0 ? (
+              <ul className="space-y-2">
+                {workspacePendingInvitations.map((invitation) => (
+                  <li
+                    key={invitation.id}
+                    className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3 dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-main">
+                        {invitation.email}
+                      </p>
+                      <p className="truncate text-xs text-muted">
+                        {invitation.role} | Waiting for acceptance
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                        pending
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCancelInvitation(invitation.id)}
+                        disabled={cancelingInvitationId === invitation.id}
+                        className="secondary-button min-h-9 rounded-lg px-3 py-1.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {cancelingInvitationId === invitation.id ? (
+                          <LoaderCircle size={14} className="animate-spin" />
+                        ) : (
+                          <XCircle size={14} />
+                        )}
+                        {cancelingInvitationId === invitation.id
+                          ? "Cancelling..."
+                          : "Cancel Invite"}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">
+                No pending invitations.
+              </p>
+            )}
+          </div>
+        )}
+      </ConfigurationCard>
     </div>
 
     <div className="mt-8 flex justify-stretch sm:justify-end">
