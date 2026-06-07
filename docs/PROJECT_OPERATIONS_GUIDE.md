@@ -284,7 +284,12 @@ docs/WEEK6_SECURITY_HARDENING.md
 docs/WEEK6_ONBOARDING_EMPTY_STATE.md
 docs/WEEK6_WORKSPACE_SWITCHER.md
 docs/WEEK6_WORKSPACE_INVITATIONS.md
+docs/WEEK7_STAGING_ARCHITECTURE.md
 ```
+
+Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment
+artifact. Deployment aktual dilakukan di prompt Week 7 berikutnya setelah env,
+Render, Vercel, Supabase, dan Google OAuth staging disiapkan.
 
 ## 8. Financial Type Analytics
 
