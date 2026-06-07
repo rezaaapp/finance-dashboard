@@ -63,6 +63,7 @@ import {
   getBudgetForecast,
   getWorkspaceConfiguration,
 } from "../api/dashboardApi";
+import { getGoogleOAuthConnectionStatus } from "../api/googleOAuthApi";
 import { getGoogleSheetSources } from "../api/googleSheetSourcesApi";
 import { getWorkspaces } from "../api/workspacesApi";
 import {
@@ -183,6 +184,8 @@ const Dashboard = ({
   const [anomalies, setAnomalies] = useState([]);
   const [currentSheetName, setCurrentSheetName] = useState("");
   const [hasActiveGoogleSheet, setHasActiveGoogleSheet] = useState(false);
+  const [googleConnection, setGoogleConnection] = useState({ connected: false });
+  const [googleSheetSources, setGoogleSheetSources] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
   const [activeWorkspaceId, setActiveWorkspaceIdState] = useState(() => (
     getActiveWorkspaceId()
