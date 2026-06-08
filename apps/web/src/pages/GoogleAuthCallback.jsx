@@ -1,16 +1,54 @@
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ACTIVE_WORKSPACE_STORAGE_KEY } from "../api/workspaceContext";
+
+const getCallbackParams = () => {
+  const hashParams = new URLSearchParams(
+    window.location.hash.replace(/^#/, "")
+  );
+  const searchParams = new URLSearchParams(window.location.search);
+
+  return {
+    token: hashParams.get("token") || searchParams.get("token"),
+    username:
+      hashParams.get("name") ||
+      hashParams.get("username") ||
+      searchParams.get("name") ||
+      searchParams.get("username"),
+    email: hashParams.get("email") || searchParams.get("email"),
+    userId:
+      hashParams.get("user_id") ||
+      hashParams.get("userId") ||
+      searchParams.get("user_id") ||
+      searchParams.get("userId"),
+    role: hashParams.get("role") || searchParams.get("role"),
+    workspaceId:
+      hashParams.get("workspace_id") ||
+      hashParams.get("workspaceId") ||
+      searchParams.get("workspace_id") ||
+      searchParams.get("workspaceId"),
+  };
+};
 
 const GoogleAuthCallback = ({ onLogin }) => {
   const [error, setError] = useState("");
+  const processedRef = useRef(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const token = params.get("token");
-    const name = params.get("name");
-    const email = params.get("email");
-    const userId = params.get("user_id");
-    const role = params.get("role");
+    if (processedRef.current) {
+      return;
+    }
+
+    processedRef.current = true;
+
+    const {
+      token,
+      username,
+      email,
+      userId,
+      role,
+      workspaceId,
+    } = getCallbackParams();
 
     if (!token) {
       setError("Token login Google tidak ditemukan.");
@@ -19,14 +57,19 @@ const GoogleAuthCallback = ({ onLogin }) => {
 
     onLogin({
       token,
-      username: name || email || "Google User",
+      username: username || email || "Google User",
       email,
       userId,
       role,
       provider: "google",
     });
 
-    window.history.replaceState({}, "", "/");
+    if (workspaceId) {
+      localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+    }
+
+    window.history.replaceState({}, "", "/dashboard");
+    window.location.assign("/dashboard");
   }, [onLogin]);
 
   return (
