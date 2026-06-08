@@ -24,6 +24,8 @@ default onboarding user publik. Target arsitektur production adalah:
 
 Panduan database Supabase/PostgreSQL tersedia di
 `docs/DATABASE.md`.
+Panduan validasi database staging Week 7 tersedia di
+`docs/WEEK7_STAGING_DATABASE_VALIDATION.md`.
 
 Bagian-bagian di bawah masih mempertahankan command lokal yang berguna untuk
 development saat ini. Jika ada perbedaan antara workflow lokal dan arah
@@ -410,25 +412,40 @@ AI Auto memakai historical average dari data transaksi.
 
 ## 13. Deploy Backend ke Render
 
-Gunakan panduan detail di:
+Gunakan panduan Week 7 terbaru di:
+
+```text
+docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+```
+
+Panduan lama masih tersedia sebagai referensi historis:
 
 ```text
 DEPLOY_RENDER_VERCEL.md
 ```
 
-Ringkas:
+Ringkas rekomendasi staging:
 
 ```text
 Runtime: Docker
 Root Directory: backend
 Dockerfile Path: backend/Dockerfile
+Health Check Path: /api/health
 ```
 
-Catatan production direction: konfigurasi Render saat ini boleh dipakai untuk
-deployment development/internal demo. Untuk public user, jangan jadikan shared
-service account sebagai onboarding default. Arah production adalah Google OAuth
-per user/workspace, penyimpanan token terenkripsi, dan data operasional di
-PostgreSQL.
+Catatan production direction: staging Week 7 menggunakan Google OAuth per
+user/workspace, penyimpanan token terenkripsi, Supabase/PostgreSQL, dan
+classification rule-based. Jangan jadikan shared service account sebagai
+onboarding default untuk public user.
+
+Jika Render Free meminta card/payment verification dan kamu ingin menghindari
+add card dulu, gunakan Replit hanya sebagai fallback personal sementara:
+
+```text
+docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
+```
+
+Render tetap preferred path yang lebih stabil untuk backend staging.
 
 Health check:
 
@@ -444,11 +461,17 @@ Response benar:
 
 ## 14. Deploy Frontend ke Vercel
 
-Vercel settings untuk dashboard app:
+Gunakan panduan Week 7 terbaru di:
+
+```text
+docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
+```
+
+Vercel settings final untuk dashboard app:
 
 ```text
 Root Directory: .
-Build Command: npm run build
+Build Command: npm run build:web
 Output Directory: apps/web/dist
 ```
 

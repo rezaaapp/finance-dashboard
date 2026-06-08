@@ -1,5 +1,14 @@
 # Deploy Financial Dashboard
 
+> Legacy reference. Current Week 7 staging plan uses Google OAuth,
+> workspace-aware PostgreSQL data, and Supabase-backed Render deployment.
+> For the current backend Render setup, use
+> `docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md`. For env and secret management,
+> use `docs/WEEK7_ENVIRONMENT_SETUP.md`. For the current frontend Vercel
+> setup, use `docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md`. If Render Free
+> requires card verification and you need a temporary personal backend fallback,
+> see `docs/WEEK7_REPLIT_BACKEND_FALLBACK.md`.
+
 Panduan ini dipakai agar frontend Vercel terhubung ke backend FastAPI, bukan ke service lain.
 
 ## 1. Deploy Backend FastAPI ke Render
