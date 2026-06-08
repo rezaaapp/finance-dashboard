@@ -31,8 +31,11 @@ safe_load_dotenv(REPO_ROOT / ".env")
 safe_load_dotenv(BACKEND_ROOT / ".env", override=True)
 
 class Settings:
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    DATABASE_MIGRATION_URL = os.getenv("DATABASE_MIGRATION_URL")
+    DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL")
+    DATABASE_MIGRATION_URL = (
+        os.getenv("DATABASE_MIGRATION_URL")
+        or os.getenv("SUPABASE_MIGRATION_DATABASE_URL")
+    )
     DATABASE_SSL = os.getenv("DATABASE_SSL", "true").lower() != "false"
     DATABASE_SSL_REJECT_UNAUTHORIZED = (
         os.getenv("DATABASE_SSL_REJECT_UNAUTHORIZED", "true").lower()

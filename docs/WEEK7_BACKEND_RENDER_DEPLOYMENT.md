@@ -13,6 +13,9 @@ card/payment verification is acceptable. If Render Free requires card
 verification and you need a temporary personal backend fallback, see
 `docs/WEEK7_REPLIT_BACKEND_FALLBACK.md`.
 
+For the current personal staging path that serves backend and frontend from one
+Replit URL, see `docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md`.
+
 ## Current Backend Architecture Summary
 
 - Backend app: `backend/app/main.py`

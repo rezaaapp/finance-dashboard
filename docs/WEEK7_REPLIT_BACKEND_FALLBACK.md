@@ -12,6 +12,13 @@ Render remains the preferred/stable backend path when payment verification is
 acceptable. Replit is a practical fallback for Reza/Divya personal staging, not
 the final recommendation for public beta.
 
+Current personal staging now uses the Replit single-app setup, where one Replit
+URL serves both FastAPI `/api/*` and the built React frontend:
+
+```text
+docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md
+```
+
 ## Why Fallback From Render
 
 The Week 7 preferred stack is still:

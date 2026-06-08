@@ -15,6 +15,9 @@ Supabase migration and validation rules apply. See
 `docs/WEEK7_REPLIT_BACKEND_FALLBACK.md` for the backend host-specific env and
 smoke test notes.
 
+For single-app Replit staging, use
+`docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md`.
+
 ## Staging Database Strategy
 
 Option A: existing Supabase project for personal staging.

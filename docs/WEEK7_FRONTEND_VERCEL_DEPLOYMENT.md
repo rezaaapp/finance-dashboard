@@ -28,6 +28,9 @@ If Render is temporarily replaced by Replit for personal staging, set the Vercel
 API env values to the Replit backend URL instead. See
 `docs/WEEK7_REPLIT_BACKEND_FALLBACK.md`.
 
+For the current no-Vercel personal staging path, use Replit single-app mode:
+`docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md`.
+
 ## Existing Vercel Artifact Audit
 
 | Artifact | Current role | Audit result | Decision |

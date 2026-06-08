@@ -30,6 +30,7 @@ callback values use `https://<replit-backend>.replit.app`. See:
 
 ```text
 docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
+docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md
 ```
 
 ## Env Artifact Audit

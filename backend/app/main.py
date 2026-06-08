@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from gspread.exceptions import APIError
+from pathlib import Path
 
 
 from app.api.admin import router as admin_router
@@ -17,6 +20,10 @@ from app.api.workspace_invitations import router as workspace_invitations_router
 from app.api.workspaces import router as workspaces_router
 from app.config import settings
 from app.database import check_database_connection, close_database_pool
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = PROJECT_ROOT / "apps" / "web" / "dist"
+FRONTEND_INDEX = FRONTEND_DIST / "index.html"
 
 app = FastAPI()
 
@@ -56,6 +63,9 @@ app.add_middleware(
 
 @app.get("/")
 def root():
+    if FRONTEND_INDEX.is_file():
+        return FileResponse(FRONTEND_INDEX)
+
     return {
         "service": "finance-dashboard-api",
         "status": "ok",
@@ -124,3 +134,39 @@ app.include_router(workspaces_router)
 app.include_router(workspace_invitations_router)
 
 app.include_router(admin_router)
+
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIST / "assets"),
+        name="frontend-assets",
+    )
+
+
+@app.get("/{frontend_path:path}", include_in_schema=False)
+def serve_frontend(frontend_path: str):
+    if frontend_path.startswith("api/") or frontend_path == "api":
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    if not FRONTEND_INDEX.is_file():
+        return JSONResponse(
+            status_code=404,
+            content={
+                "detail": (
+                    "Frontend build not found. Run npm run build:web before "
+                    "serving SPA routes."
+                )
+            },
+        )
+
+    requested_path = (FRONTEND_DIST / frontend_path).resolve()
+
+    try:
+        requested_path.relative_to(FRONTEND_DIST.resolve())
+    except ValueError:
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    if requested_path.is_file():
+        return FileResponse(requested_path)
+
+    return FileResponse(FRONTEND_INDEX)
