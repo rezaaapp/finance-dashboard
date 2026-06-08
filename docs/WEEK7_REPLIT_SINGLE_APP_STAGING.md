@@ -114,7 +114,7 @@ Single-app frontend/backend URL:
 
 ```env
 FRONTEND_URL=https://<replit-app-url>
-FRONTEND_AUTH_REDIRECT_URL=https://<replit-app-url>
+FRONTEND_AUTH_REDIRECT_URL=https://<replit-app-url>/auth/callback
 CORS_ALLOWED_ORIGINS=https://<replit-app-url>
 ```
 
@@ -124,6 +124,7 @@ Google OAuth:
 GOOGLE_OAUTH_CLIENT_ID=<google-oauth-client-id>.apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=<google-oauth-client-secret>
 GOOGLE_OAUTH_REDIRECT_URI=https://<replit-app-url>/api/google/oauth/callback
+GOOGLE_LOGIN_REDIRECT_URI=https://<replit-app-url>/api/auth/google/callback
 GOOGLE_OAUTH_SCOPES=openid email profile https://www.googleapis.com/auth/spreadsheets.readonly
 ```
 
@@ -171,13 +172,24 @@ Replit Secrets:
 
 ```env
 FRONTEND_URL=https://<replit-app-url>
-FRONTEND_AUTH_REDIRECT_URL=https://<replit-app-url>
+FRONTEND_AUTH_REDIRECT_URL=https://<replit-app-url>/auth/callback
 CORS_ALLOWED_ORIGINS=https://<replit-app-url>
 GOOGLE_OAUTH_REDIRECT_URI=https://<replit-app-url>/api/google/oauth/callback
+GOOGLE_LOGIN_REDIRECT_URI=https://<replit-app-url>/api/auth/google/callback
 ```
 
 Keep local OAuth redirect URI in Google Cloud if local development still needs
 it.
+
+For Google login, keep the backend callback and frontend token handoff route
+separate:
+
+- `GOOGLE_LOGIN_REDIRECT_URI` is the backend callback route:
+  `https://<replit-app-url>/api/auth/google/callback`.
+- `FRONTEND_AUTH_REDIRECT_URL` is the frontend token handoff route:
+  `https://<replit-app-url>/auth/callback`.
+- Do not use `/auth/google/callback` as `FRONTEND_AUTH_REDIRECT_URL` in
+  Replit single-app staging if that route conflicts with the backend.
 
 ## Supabase Existing Warning
 
