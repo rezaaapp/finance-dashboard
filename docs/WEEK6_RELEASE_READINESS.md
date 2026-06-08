@@ -58,16 +58,16 @@ Run migrations:
 Validate applied migration records:
 
 ```sql
-select filename, applied_at
+select version as filename, applied_at
 from public.schema_migrations
-where filename in (
+where version in (
   '007_add_week5_classification_columns.sql',
   '008_add_week5_classification_rule_columns.sql',
   '009_add_classification_performance_indexes.sql',
   '010_add_workspace_insight_settings.sql',
   '011_add_workspace_invitations.sql'
 )
-order by filename;
+order by version;
 ```
 
 Validate required tables:

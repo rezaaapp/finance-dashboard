@@ -139,9 +139,9 @@ Migration command:
 Validation SQL:
 
 ```sql
-select filename, applied_at
+select version as filename, applied_at
 from public.schema_migrations
-order by filename;
+order by version;
 ```
 
 ## Google OAuth Staging Setup
@@ -403,6 +403,12 @@ Prompt E - Staging Database Migration & Validation:
 
 - Run migrations against selected Supabase target.
 - Validate schema, workspaces, classifications, settings, and invitations.
+
+Current staging database validation guidance:
+
+```text
+docs/WEEK7_STAGING_DATABASE_VALIDATION.md
+```
 
 Prompt F - End-to-End Staging Smoke Test:
 

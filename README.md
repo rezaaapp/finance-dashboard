@@ -70,6 +70,8 @@ asli hanya di file `.env` lokal atau environment variable provider deployment.
 
 Panduan database Supabase/PostgreSQL tersedia di
 [docs/DATABASE.md](docs/DATABASE.md).
+Panduan validasi database staging Week 7 tersedia di
+[docs/WEEK7_STAGING_DATABASE_VALIDATION.md](docs/WEEK7_STAGING_DATABASE_VALIDATION.md).
 
 Dokumentasi Week 5 rule-based classification tersedia di
 [docs/RULE_BASED_CLASSIFICATION.md](docs/RULE_BASED_CLASSIFICATION.md), dengan
@@ -224,6 +226,7 @@ Panduan staging terbaru:
 - [docs/WEEK7_ENVIRONMENT_SETUP.md](docs/WEEK7_ENVIRONMENT_SETUP.md)
 - [docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md](docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md)
 - [docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md](docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md)
+- [docs/WEEK7_STAGING_DATABASE_VALIDATION.md](docs/WEEK7_STAGING_DATABASE_VALIDATION.md)
 
 `DEPLOY_RENDER_VERCEL.md` masih ada sebagai referensi legacy.
 

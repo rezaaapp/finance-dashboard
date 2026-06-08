@@ -4,6 +4,9 @@ Finance Dashboard memakai Supabase PostgreSQL sebagai database provider saat
 ini. Nama environment variable sengaja dibuat provider-neutral agar aplikasi
 tetap bisa berjalan di PostgreSQL compatible provider lain jika diperlukan.
 
+Panduan validasi migration dan SQL pack untuk staging Week 7 tersedia di
+[`docs/WEEK7_STAGING_DATABASE_VALIDATION.md`](WEEK7_STAGING_DATABASE_VALIDATION.md).
+
 ## Environment Variables
 
 Konfigurasi database utama:
