@@ -368,7 +368,8 @@ Recommended staging sequence:
 3. Confirm `DATABASE_URL` and `DATABASE_MIGRATION_URL`.
 4. Run migrations manually before smoke testing.
 5. Confirm the `schema_migrations` table.
-6. Verify required schema through Week 6 release readiness checks.
+6. Verify required schema through
+   `docs/WEEK7_STAGING_DATABASE_VALIDATION.md`.
 
 Command from repository root:
 
@@ -473,8 +474,8 @@ ConvertTo-Json -Depth 10
 
 - After Render backend is deployed, update Vercel env using
   `docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md`.
-- In Week 7 Prompt E, run and validate migrations against the staging Supabase
-  target.
+- Validate migrations against the staging Supabase target with
+  `docs/WEEK7_STAGING_DATABASE_VALIDATION.md`.
 - In Week 7 Prompt F, run end-to-end staging smoke tests.
 - Consider a one-off Render job for migrations after the manual staging process
   is proven.

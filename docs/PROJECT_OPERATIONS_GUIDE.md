@@ -24,6 +24,8 @@ default onboarding user publik. Target arsitektur production adalah:
 
 Panduan database Supabase/PostgreSQL tersedia di
 `docs/DATABASE.md`.
+Panduan validasi database staging Week 7 tersedia di
+`docs/WEEK7_STAGING_DATABASE_VALIDATION.md`.
 
 Bagian-bagian di bawah masih mempertahankan command lokal yang berguna untuk
 development saat ini. Jika ada perbedaan antara workflow lokal dan arah
@@ -288,6 +290,7 @@ docs/WEEK7_STAGING_ARCHITECTURE.md
 docs/WEEK7_ENVIRONMENT_SETUP.md
 docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
 docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
+docs/WEEK7_STAGING_DATABASE_VALIDATION.md
 ```
 
 Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment

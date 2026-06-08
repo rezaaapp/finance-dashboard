@@ -230,7 +230,8 @@ Before running migrations against a shared or real project:
 - Backup/export current database.
 - Confirm target database URL.
 - Confirm `schema_migrations` table state.
-- Run migration validation SQL from `docs/WEEK6_RELEASE_READINESS.md`.
+- Run migration validation SQL from
+  `docs/WEEK7_STAGING_DATABASE_VALIDATION.md`.
 
 ## Google OAuth Staging Plan
 
@@ -398,6 +399,7 @@ Prompt E - Staging Database Migration & Validation:
 - Run migrations against chosen staging database.
 - Validate `schema_migrations` and required tables.
 - Confirm workspace/classification/settings/invitation schema.
+- Use `docs/WEEK7_STAGING_DATABASE_VALIDATION.md` as the SQL validation pack.
 
 Prompt F - End-to-End Staging Smoke Test:
 
