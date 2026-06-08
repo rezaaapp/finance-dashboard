@@ -291,6 +291,7 @@ docs/WEEK7_ENVIRONMENT_SETUP.md
 docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
 docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
 docs/WEEK7_STAGING_DATABASE_VALIDATION.md
+docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
 ```
 
 Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment
@@ -441,6 +442,15 @@ Catatan production direction: staging Week 7 menggunakan Google OAuth per
 user/workspace, penyimpanan token terenkripsi, Supabase/PostgreSQL, dan
 classification rule-based. Jangan jadikan shared service account sebagai
 onboarding default untuk public user.
+
+Jika Render Free meminta card/payment verification dan kamu ingin menghindari
+add card dulu, gunakan Replit hanya sebagai fallback personal sementara:
+
+```text
+docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
+```
+
+Render tetap preferred path yang lebih stabil untuk backend staging.
 
 Health check:
 
