@@ -218,8 +218,13 @@ Target deployment saat ini:
 - Dashboard dan landing page: Vercel
 - Backend API: Render
 
-Lihat juga `DEPLOY_RENDER_VERCEL.md` untuk catatan deployment yang lebih
-spesifik.
+Panduan staging terbaru:
+
+- [docs/WEEK7_STAGING_ARCHITECTURE.md](docs/WEEK7_STAGING_ARCHITECTURE.md)
+- [docs/WEEK7_ENVIRONMENT_SETUP.md](docs/WEEK7_ENVIRONMENT_SETUP.md)
+- [docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md](docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md)
+
+`DEPLOY_RENDER_VERCEL.md` masih ada sebagai referensi legacy.
 
 ## Keamanan
 
