@@ -24,6 +24,10 @@ The dashboard is a browser-only SPA. Vercel must serve `index.html` for nested
 routes such as `/dashboard`, `/analytics`, `/configuration`, and
 `/settings/data-sources`.
 
+If Render is temporarily replaced by Replit for personal staging, set the Vercel
+API env values to the Replit backend URL instead. See
+`docs/WEEK7_REPLIT_BACKEND_FALLBACK.md`.
+
 ## Existing Vercel Artifact Audit
 
 | Artifact | Current role | Audit result | Decision |

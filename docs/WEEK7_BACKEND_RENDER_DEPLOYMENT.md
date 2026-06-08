@@ -8,6 +8,11 @@ secrets are documented, and no backend business logic, OAuth flow, Google Sheet
 sync, rule-based classification, workspace invitation logic, or dependency set
 is changed.
 
+Render remains the preferred/stable backend path for Week 7 staging when
+card/payment verification is acceptable. If Render Free requires card
+verification and you need a temporary personal backend fallback, see
+`docs/WEEK7_REPLIT_BACKEND_FALLBACK.md`.
+
 ## Current Backend Architecture Summary
 
 - Backend app: `backend/app/main.py`

@@ -24,6 +24,14 @@ Staging should start with platform default domains:
 - OAuth callback:
   `https://<render-backend>.onrender.com/api/google/oauth/callback`
 
+If Render Free requires card/payment verification, Replit can be used as a
+temporary personal backend fallback. In that case, backend URL and OAuth
+callback values use `https://<replit-backend>.replit.app`. See:
+
+```text
+docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
+```
+
 ## Env Artifact Audit
 
 | File/path | Purpose | Relevant env vars | Staging-ready? | Risk/issue | Recommendation |
@@ -414,3 +422,5 @@ Prompt F - End-to-End Staging Smoke Test:
 
 - Test login, OAuth, data source connect, sync, dashboard, analytics, workspace
   switcher, and invitations.
+- If Render is blocked by card verification, prepare the temporary Replit
+  backend fallback first with `docs/WEEK7_REPLIT_BACKEND_FALLBACK.md`.

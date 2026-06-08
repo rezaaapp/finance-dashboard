@@ -61,6 +61,9 @@ Important notes:
 - Supabase remains the database for Week 7A.
 - Use platform environment variables. Do not commit production/staging `.env`
   files.
+- If Render Free asks for card/payment verification, Replit can be used as a
+  temporary personal backend fallback. Render remains the preferred backend
+  path when payment verification is acceptable.
 
 ## Why Free/Low-Cost First
 
@@ -178,6 +181,12 @@ Detailed backend Render audit and setup guidance lives in:
 
 ```text
 docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+```
+
+Temporary personal Replit backend fallback guidance lives in:
+
+```text
+docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
 ```
 
 ## Database/Supabase Plan
@@ -367,6 +376,7 @@ Cleanup candidates for later prompts:
 | --- | --- | --- |
 | Use Vercel for dashboard staging frontend first | Recommended | Existing config/scripts already support Vite static hosting. |
 | Use Render for backend staging first | Recommended | Existing Dockerfile and Render blueprint exist; FastAPI suits a web service. |
+| Use Replit as temporary backend fallback if Render requires card verification | Accepted fallback | Useful for personal staging by Reza/Divya, but not the preferred public beta backend. |
 | Avoid Vercel serverless for FastAPI backend | Recommended | Current backend is a conventional long-running FastAPI app. |
 | Keep Supabase as database | Recommended | Current app already targets PostgreSQL/Supabase. |
 | Use default platform subdomains first | Recommended | Reduces domain/DNS complexity during staging. |
@@ -405,6 +415,7 @@ Prompt F - End-to-End Staging Smoke Test:
 
 - Test auth, OAuth, data source connect, sync, dashboard, analytics, workspace
   switcher, and invitations against staging URLs.
+- If Render is blocked by card verification, prepare the Replit fallback first.
 
 Prompt G - Limited Public Beta Checklist:
 

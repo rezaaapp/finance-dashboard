@@ -10,6 +10,11 @@ dependencies, or add any AI provider.
 Use this guide after Render/Vercel environment variables are prepared and
 before end-to-end staging smoke testing.
 
+If the backend is temporarily hosted on Replit instead of Render, the same
+Supabase migration and validation rules apply. See
+`docs/WEEK7_REPLIT_BACKEND_FALLBACK.md` for the backend host-specific env and
+smoke test notes.
+
 ## Staging Database Strategy
 
 Option A: existing Supabase project for personal staging.
