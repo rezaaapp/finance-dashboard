@@ -122,7 +122,11 @@ function App() {
     setAuth(null);
   };
 
-  if (window.location.pathname === "/auth/google/callback") {
+  const isGoogleAuthCallback =
+    window.location.pathname === "/auth/callback" ||
+    window.location.pathname === "/auth/google/callback";
+
+  if (isGoogleAuthCallback) {
     return <GoogleAuthCallback onLogin={handleLogin} />;
   }
 
