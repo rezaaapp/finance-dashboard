@@ -20,10 +20,16 @@ const apiUrl = process.env.VITE_API_URL
   || process.env.VITE_API_BASE_URL
   || localEnv.VITE_API_URL
   || localEnv.VITE_API_BASE_URL;
+const apiMode = process.env.VITE_API_MODE || localEnv.VITE_API_MODE;
+
+if (apiMode === "same-origin") {
+  console.log("Using same-origin API mode for production build.");
+  process.exit(0);
+}
 
 if (!apiUrl) {
   console.error(
-    "Missing VITE_API_URL or VITE_API_BASE_URL. Set it before building for production."
+    "Missing VITE_API_URL or VITE_API_BASE_URL. Set one to your backend URL, or set VITE_API_MODE=same-origin for Replit single-app deployment."
   );
   process.exit(1);
 }

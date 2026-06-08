@@ -287,6 +287,12 @@ docs/WEEK6_ONBOARDING_EMPTY_STATE.md
 docs/WEEK6_WORKSPACE_SWITCHER.md
 docs/WEEK6_WORKSPACE_INVITATIONS.md
 docs/WEEK7_STAGING_ARCHITECTURE.md
+docs/WEEK7_ENVIRONMENT_SETUP.md
+docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
+docs/WEEK7_STAGING_DATABASE_VALIDATION.md
+docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
+docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md
 ```
 
 Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment
@@ -443,9 +449,13 @@ add card dulu, gunakan Replit hanya sebagai fallback personal sementara:
 
 ```text
 docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
+docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md
 ```
 
-Render tetap preferred path yang lebih stabil untuk backend staging.
+Current personal staging path memakai Replit single-app: satu URL Replit untuk
+FastAPI `/api/*` dan React SPA. Render tetap preferred path yang lebih stabil
+untuk backend staging/beta saat payment verification atau paid hosting sudah
+siap.
 
 Health check:
 

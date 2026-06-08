@@ -61,6 +61,9 @@ Important notes:
 - Supabase remains the database for Week 7A.
 - Use platform environment variables. Do not commit production/staging `.env`
   files.
+- Current personal staging can use Replit single-app mode: one Replit URL serves
+  both FastAPI `/api/*` and the built React frontend. Vercel + Render remains
+  documented for future stable/beta hosting.
 
 ## Why Free/Low-Cost First
 
@@ -166,6 +169,12 @@ Start Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 
 Recommendation: use the existing Docker setup first. It is already represented
 by `backend/Dockerfile` and `render.yaml`.
+
+Current personal staging alternative:
+
+```text
+docs/WEEK7_REPLIT_SINGLE_APP_STAGING.md
+```
 
 ## Database/Supabase Plan
 
@@ -348,6 +357,7 @@ Cleanup candidates for later prompts:
 | --- | --- | --- |
 | Use Vercel for dashboard staging frontend first | Recommended | Existing config/scripts already support Vite static hosting. |
 | Use Render for backend staging first | Recommended | Existing Dockerfile and Render blueprint exist; FastAPI suits a web service. |
+| Use Replit single-app for current personal staging | Accepted current personal path | Keeps frontend/backend on one Replit URL while Vercel/Render remain documented for future stable hosting. |
 | Avoid Vercel serverless for FastAPI backend | Recommended | Current backend is a conventional long-running FastAPI app. |
 | Keep Supabase as database | Recommended | Current app already targets PostgreSQL/Supabase. |
 | Use default platform subdomains first | Recommended | Reduces domain/DNS complexity during staging. |

@@ -1,4 +1,5 @@
 const DEFAULT_LOCAL_API_URL = "http://127.0.0.1:8000/api/dashboard";
+const SAME_ORIGIN_API_URL = "/api/dashboard";
 
 const normalizeDashboardUrl = (value) => {
   if (!value) {
@@ -19,6 +20,10 @@ const normalizeDashboardUrl = (value) => {
 };
 
 export const DASHBOARD_API_URL = (() => {
+  if (import.meta.env.VITE_API_MODE === "same-origin") {
+    return SAME_ORIGIN_API_URL;
+  }
+
   const apiUrl = normalizeDashboardUrl(
     import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
   );
