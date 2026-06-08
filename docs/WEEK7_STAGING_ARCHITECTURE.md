@@ -61,9 +61,6 @@ Important notes:
 - Supabase remains the database for Week 7A.
 - Use platform environment variables. Do not commit production/staging `.env`
   files.
-- If Render Free asks for card/payment verification, Replit can be used as a
-  temporary personal backend fallback. Render remains the preferred backend
-  path when payment verification is acceptable.
 
 ## Why Free/Low-Cost First
 
@@ -109,9 +106,8 @@ Build Command: npm run build
 Output Directory: dist
 ```
 
-This remains viable through manual Vercel settings, but the checked-in
-app-level `apps/web/vercel.json` has been removed so the repository has one
-canonical dashboard Vercel config.
+This is also viable because `apps/web/vercel.json` exists, but it requires
+being very clear that Vercel project root is `apps/web`, not repository root.
 
 Frontend environment variables:
 
@@ -122,12 +118,6 @@ VITE_API_BASE_URL=https://<render-backend>.onrender.com
 
 The production build validator rejects localhost API URLs, so staging must use
 the Render backend URL.
-
-Detailed frontend Vercel audit and setup guidance lives in:
-
-```text
-docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
-```
 
 ## Backend Hosting Plan
 
@@ -176,18 +166,6 @@ Start Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 
 Recommendation: use the existing Docker setup first. It is already represented
 by `backend/Dockerfile` and `render.yaml`.
-
-Detailed backend Render audit and setup guidance lives in:
-
-```text
-docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
-```
-
-Temporary personal Replit backend fallback guidance lives in:
-
-```text
-docs/WEEK7_REPLIT_BACKEND_FALLBACK.md
-```
 
 ## Database/Supabase Plan
 
@@ -239,8 +217,7 @@ Before running migrations against a shared or real project:
 - Backup/export current database.
 - Confirm target database URL.
 - Confirm `schema_migrations` table state.
-- Run migration validation SQL from
-  `docs/WEEK7_STAGING_DATABASE_VALIDATION.md`.
+- Run migration validation SQL from `docs/WEEK6_RELEASE_READINESS.md`.
 
 ## Google OAuth Staging Plan
 
@@ -275,12 +252,6 @@ Google Cloud Console checklist:
 5. Ensure backend `FRONTEND_URL` points to the Vercel staging URL.
 
 ## Environment Variable Matrix
-
-Detailed Week 7 staging env and secret management guidance lives in:
-
-```text
-docs/WEEK7_ENVIRONMENT_SETUP.md
-```
 
 | Variable | Used by | Local value example | Staging value example | Required? | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -321,8 +292,8 @@ Security notes:
 
 | File/path | Current purpose | Still relevant? | Risk/issue | Recommendation |
 | --- | --- | --- | --- | --- |
-| `vercel.json` | Root-level Vercel config for dashboard SPA. Installs `apps/web`, builds root `npm run build:web`, outputs `apps/web/dist`, rewrites to `index.html`. | Yes, final dashboard Vercel setup. | Must be paired with Vercel Root Directory `.`. | Keep as the single canonical dashboard Vercel config. |
-| `apps/web/vercel.json` | Former app-level Vercel config for `apps/web` root setup. | No longer checked in after Prompt D. | Keeping both root and app configs made root/build/output selection ambiguous. | Removed; use root setup or configure app-root manually in Vercel only if intentionally switching strategy later. |
+| `vercel.json` | Root-level Vercel config for dashboard SPA. Installs `apps/web`, builds root `npm run build`, outputs `apps/web/dist`, rewrites to `index.html`. | Yes, for root-directory Vercel setup. | Build command is `npm run build`, which currently maps to web build, but `npm run build:web` is clearer. | Review in Week 7 Prompt D; likely keep and consider changing build command to `npm run build:web`. |
+| `apps/web/vercel.json` | App-level Vercel config for `apps/web` root setup. Outputs `dist` and SPA rewrites. | Yes, for app-root Vercel setup only. | Having both root and app Vercel configs can confuse project root selection. | Keep for now; document which Vercel root option is chosen in Prompt D. |
 | `apps/web/scripts/validate-env.mjs` | Prevents production frontend build when API env is missing, localhost, or invalid. | Yes. | Build fails if Vercel env is missing or still localhost. | Keep. Document `VITE_API_URL` and `VITE_API_BASE_URL` as required. |
 | `apps/web/vite.config.js` | Vite React/Tailwind config. | Yes. | No deployment issue found. | Keep. |
 | `apps/landing/vite.config.js` | Landing Vite config. | Yes if landing deployed. | Separate app can be confused with dashboard in Vercel. | Keep; deploy landing as separate project later if needed. |
@@ -350,8 +321,9 @@ Cleanup candidates for later prompts:
   default.
 - `DEPLOY_RENDER_VERCEL.md`: supersede service-account guidance with OAuth
   staging guidance.
-- Root `vercel.json`: now uses `buildCommand: npm run build:web`.
-- Vercel project root is now documented as repo root `.` for the dashboard.
+- Root `vercel.json`: consider `buildCommand: npm run build:web` for clarity.
+- Decide whether Vercel project root is repo root or `apps/web`; then document
+  one path as canonical.
 
 ## Deployment Risk List
 
@@ -376,7 +348,6 @@ Cleanup candidates for later prompts:
 | --- | --- | --- |
 | Use Vercel for dashboard staging frontend first | Recommended | Existing config/scripts already support Vite static hosting. |
 | Use Render for backend staging first | Recommended | Existing Dockerfile and Render blueprint exist; FastAPI suits a web service. |
-| Use Replit as temporary backend fallback if Render requires card verification | Accepted fallback | Useful for personal staging by Reza/Divya, but not the preferred public beta backend. |
 | Avoid Vercel serverless for FastAPI backend | Recommended | Current backend is a conventional long-running FastAPI app. |
 | Keep Supabase as database | Recommended | Current app already targets PostgreSQL/Supabase. |
 | Use default platform subdomains first | Recommended | Reduces domain/DNS complexity during staging. |
@@ -395,27 +366,25 @@ Prompt C - Backend Render Deployment Preparation:
 - Update/confirm Render settings.
 - Decide Docker vs Python runtime.
 - Prepare Render env checklist and health checks.
-- Audit `backend/Dockerfile`, update `render.yaml` placeholders if safe, and
-  document the final Render backend strategy.
+- Optionally update `render.yaml` if approved.
 
 Prompt D - Frontend Vercel Deployment Preparation:
 
-- Use repository root `.` as the final dashboard Vercel setup.
-- Keep root `vercel.json` as the single checked-in Vercel config.
+- Choose root setup option.
+- Review `vercel.json` files.
 - Prepare exact Vercel build/output/env settings.
+- Optionally cleanup duplicate/confusing Vercel config if approved.
 
 Prompt E - Staging Database Migration & Validation:
 
 - Run migrations against chosen staging database.
 - Validate `schema_migrations` and required tables.
 - Confirm workspace/classification/settings/invitation schema.
-- Use `docs/WEEK7_STAGING_DATABASE_VALIDATION.md` as the SQL validation pack.
 
 Prompt F - End-to-End Staging Smoke Test:
 
 - Test auth, OAuth, data source connect, sync, dashboard, analytics, workspace
   switcher, and invitations against staging URLs.
-- If Render is blocked by card verification, prepare the Replit fallback first.
 
 Prompt G - Limited Public Beta Checklist:
 
