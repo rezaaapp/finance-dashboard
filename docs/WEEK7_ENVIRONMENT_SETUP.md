@@ -35,8 +35,8 @@ Staging should start with platform default domains:
 | `apps/web/src/api/config.js` | Frontend API URL normalizer and endpoint derivation. | `VITE_API_URL`, `VITE_API_BASE_URL`. | Yes. | Uses `VITE_API_URL || VITE_API_BASE_URL`; only `VITE_` vars are browser-visible. | Set both Vite vars to the same Render backend base URL for compatibility. |
 | `apps/web/scripts/validate-env.mjs` | Production build guard for dashboard. | `VITE_API_URL`, `VITE_API_BASE_URL`, optional local `.env` fallback. | Yes. | Accepts either API var but rejects localhost/invalid URLs. Missing env fails build. | Keep. This protects Vercel from accidentally building against localhost. |
 | `render.yaml` | Existing Render Docker blueprint. | Old sheet registry/service-account env, `CORS_ALLOWED_ORIGINS`. | Partly. | Env list is legacy and CORS points to an old Vercel URL; OAuth/Supabase staging env is incomplete. | Do not change in Prompt B. Update/review in Week 7 Prompt C. |
-| `vercel.json` | Root Vercel config for dashboard SPA. | Build uses env through `npm run build`. | Yes if root setup is chosen. | Build command currently `npm run build`; `npm run build:web` is clearer. | Review in Prompt D. Recommended Vercel setup still uses root project and `build:web`. |
-| `apps/web/vercel.json` | App-root Vercel config for dashboard SPA. | Build uses env through app build. | Yes if `apps/web` root setup is chosen. | Having two Vercel configs can confuse deployment root decisions. | Keep for now. Pick one canonical setup in Prompt D. |
+| `vercel.json` | Root Vercel config for dashboard SPA. | Build uses env through `npm run build:web`. | Yes, final dashboard Vercel setup. | Must be paired with Vercel Root Directory `.` and output `apps/web/dist`. | Keep as the single checked-in dashboard Vercel config. |
+| `apps/web/vercel.json` | Former app-root Vercel config for dashboard SPA. | N/A. | Removed in Prompt D. | Keeping both configs made root/build/output choices ambiguous. | Use root setup; configure app-root manually only if intentionally changing strategy later. |
 | `docs/ENVIRONMENT.md` | General env reference. | Local/dev env, OAuth, DB, AI guard, frontend vars. | Useful but broad. | Not staging-specific. | Link this Week 7 staging doc from it. |
 | `docs/GOOGLE_OAUTH.md` | OAuth setup reference. | OAuth client ID/secret/redirect, frontend URL, encryption key. | Useful but local/production generic. | Needs explicit staging link/checklist. | Link this Week 7 staging doc from it. |
 
@@ -366,7 +366,8 @@ Frontend build check:
 
 - `render.yaml` still needs a Week 7 Prompt C review for OAuth/Supabase staging
   env completeness.
-- Two Vercel configs exist; Prompt D should choose one canonical setup.
+- Prompt D chose repository root `.` as the canonical Vercel setup and removed
+  the redundant app-level Vercel config.
 - Email delivery for workspace invitations is not implemented, so no SMTP env
   is needed yet.
 - Legacy service-account/Gemini placeholders remain in examples for historical
@@ -388,9 +389,15 @@ docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
 
 Prompt D - Frontend Vercel Deployment Preparation:
 
-- Pick root `.` or `apps/web` Vercel setup.
-- Review duplicate Vercel configs.
+- Use root `.` as the final dashboard Vercel setup.
+- Keep root `vercel.json` as the single checked-in Vercel config.
 - Prepare final Vercel build/output/env settings.
+
+Current frontend Vercel deployment guidance:
+
+```text
+docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
+```
 
 Prompt E - Staging Database Migration & Validation:
 
