@@ -286,6 +286,7 @@ docs/WEEK6_WORKSPACE_SWITCHER.md
 docs/WEEK6_WORKSPACE_INVITATIONS.md
 docs/WEEK7_STAGING_ARCHITECTURE.md
 docs/WEEK7_ENVIRONMENT_SETUP.md
+docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
 ```
 
 Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment
@@ -411,25 +412,31 @@ AI Auto memakai historical average dari data transaksi.
 
 ## 13. Deploy Backend ke Render
 
-Gunakan panduan detail di:
+Gunakan panduan Week 7 terbaru di:
+
+```text
+docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+```
+
+Panduan lama masih tersedia sebagai referensi historis:
 
 ```text
 DEPLOY_RENDER_VERCEL.md
 ```
 
-Ringkas:
+Ringkas rekomendasi staging:
 
 ```text
 Runtime: Docker
 Root Directory: backend
 Dockerfile Path: backend/Dockerfile
+Health Check Path: /api/health
 ```
 
-Catatan production direction: konfigurasi Render saat ini boleh dipakai untuk
-deployment development/internal demo. Untuk public user, jangan jadikan shared
-service account sebagai onboarding default. Arah production adalah Google OAuth
-per user/workspace, penyimpanan token terenkripsi, dan data operasional di
-PostgreSQL.
+Catatan production direction: staging Week 7 menggunakan Google OAuth per
+user/workspace, penyimpanan token terenkripsi, Supabase/PostgreSQL, dan
+classification rule-based. Jangan jadikan shared service account sebagai
+onboarding default untuk public user.
 
 Health check:
 

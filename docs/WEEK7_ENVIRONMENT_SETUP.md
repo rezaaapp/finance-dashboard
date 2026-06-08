@@ -380,6 +380,12 @@ Prompt C - Backend Render Deployment Preparation:
 - Confirm Docker runtime and backend health checks.
 - Prepare Render env entry checklist.
 
+Current backend Render deployment guidance:
+
+```text
+docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+```
+
 Prompt D - Frontend Vercel Deployment Preparation:
 
 - Pick root `.` or `apps/web` Vercel setup.

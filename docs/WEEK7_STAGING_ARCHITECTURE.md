@@ -167,6 +167,12 @@ Start Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 Recommendation: use the existing Docker setup first. It is already represented
 by `backend/Dockerfile` and `render.yaml`.
 
+Detailed backend Render audit and setup guidance lives in:
+
+```text
+docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+```
+
 ## Database/Supabase Plan
 
 Option A: use existing Supabase project for staging.
@@ -372,7 +378,8 @@ Prompt C - Backend Render Deployment Preparation:
 - Update/confirm Render settings.
 - Decide Docker vs Python runtime.
 - Prepare Render env checklist and health checks.
-- Optionally update `render.yaml` if approved.
+- Audit `backend/Dockerfile`, update `render.yaml` placeholders if safe, and
+  document the final Render backend strategy.
 
 Prompt D - Frontend Vercel Deployment Preparation:
 

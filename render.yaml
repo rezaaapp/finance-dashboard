@@ -7,23 +7,59 @@ services:
     dockerfilePath: backend/Dockerfile
     healthCheckPath: /api/health
     envVars:
-      - key: GOOGLE_SHEET_ID
+      - key: DATABASE_URL
         sync: false
-      - key: GOOGLE_SHEET_REGISTRY_JSON
+      - key: DATABASE_MIGRATION_URL
         sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_SSL_REJECT_UNAUTHORIZED
+        value: "true"
+      - key: DATABASE_POOL_MAX
+        value: "10"
       - key: DASHBOARD_USERNAME
         sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
       - key: DASHBOARD_AUTH_TOKEN
         sync: false
-      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+      - key: JWT_SECRET
         sync: false
-      - key: GOOGLE_SERVICE_ACCOUNT_JSON_BASE64
+      - key: TOKEN_ENCRYPTION_KEY
         sync: false
-      - key: FINANCIAL_CLASSIFICATION_JSON_BASE64
+      - key: TOKEN_ENCRYPTION_SECRET
         sync: false
+      - key: SUPER_ADMIN_EMAILS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: FRONTEND_AUTH_REDIRECT_URL
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_LOGIN_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_OAUTH_SCOPES
+        value: openid email profile https://www.googleapis.com/auth/spreadsheets.readonly
+      - key: MAX_GOOGLE_SHEET_SOURCES
+        value: "5"
       - key: USE_MOCK_DATA
         value: "false"
+      - key: AI_CLASSIFICATION_ENABLED
+        value: "false"
+      - key: AI_PROVIDER
+        value: rule_based
+      - key: AI_MODEL
+        value: none
+      - key: AI_ONLY_LOW_CONFIDENCE
+        value: "true"
+      - key: AI_CONFIDENCE_THRESHOLD
+        value: "0.75"
+      - key: AI_MAX_TRANSACTIONS_PER_RUN
+        value: "500"
       - key: CORS_ALLOWED_ORIGINS
-        value: https://finance-dashboard-mu-lac.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+        sync: false
