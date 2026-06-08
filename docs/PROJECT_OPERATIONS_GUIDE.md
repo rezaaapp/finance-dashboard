@@ -287,6 +287,7 @@ docs/WEEK6_WORKSPACE_INVITATIONS.md
 docs/WEEK7_STAGING_ARCHITECTURE.md
 docs/WEEK7_ENVIRONMENT_SETUP.md
 docs/WEEK7_BACKEND_RENDER_DEPLOYMENT.md
+docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
 ```
 
 Week 7 dimulai dari arsitektur staging free/low-cost dan audit deployment
@@ -452,11 +453,17 @@ Response benar:
 
 ## 14. Deploy Frontend ke Vercel
 
-Vercel settings untuk dashboard app:
+Gunakan panduan Week 7 terbaru di:
+
+```text
+docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
+```
+
+Vercel settings final untuk dashboard app:
 
 ```text
 Root Directory: .
-Build Command: npm run build
+Build Command: npm run build:web
 Output Directory: apps/web/dist
 ```
 

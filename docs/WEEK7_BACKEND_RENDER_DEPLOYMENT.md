@@ -471,7 +471,8 @@ ConvertTo-Json -Depth 10
 
 ## Follow-Up Tasks
 
-- After Render backend is deployed, update Vercel env in Week 7 Prompt D.
+- After Render backend is deployed, update Vercel env using
+  `docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md`.
 - In Week 7 Prompt E, run and validate migrations against the staging Supabase
   target.
 - In Week 7 Prompt F, run end-to-end staging smoke tests.

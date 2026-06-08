@@ -106,8 +106,9 @@ Build Command: npm run build
 Output Directory: dist
 ```
 
-This is also viable because `apps/web/vercel.json` exists, but it requires
-being very clear that Vercel project root is `apps/web`, not repository root.
+This remains viable through manual Vercel settings, but the checked-in
+app-level `apps/web/vercel.json` has been removed so the repository has one
+canonical dashboard Vercel config.
 
 Frontend environment variables:
 
@@ -118,6 +119,12 @@ VITE_API_BASE_URL=https://<render-backend>.onrender.com
 
 The production build validator rejects localhost API URLs, so staging must use
 the Render backend URL.
+
+Detailed frontend Vercel audit and setup guidance lives in:
+
+```text
+docs/WEEK7_FRONTEND_VERCEL_DEPLOYMENT.md
+```
 
 ## Backend Hosting Plan
 
@@ -304,8 +311,8 @@ Security notes:
 
 | File/path | Current purpose | Still relevant? | Risk/issue | Recommendation |
 | --- | --- | --- | --- | --- |
-| `vercel.json` | Root-level Vercel config for dashboard SPA. Installs `apps/web`, builds root `npm run build`, outputs `apps/web/dist`, rewrites to `index.html`. | Yes, for root-directory Vercel setup. | Build command is `npm run build`, which currently maps to web build, but `npm run build:web` is clearer. | Review in Week 7 Prompt D; likely keep and consider changing build command to `npm run build:web`. |
-| `apps/web/vercel.json` | App-level Vercel config for `apps/web` root setup. Outputs `dist` and SPA rewrites. | Yes, for app-root Vercel setup only. | Having both root and app Vercel configs can confuse project root selection. | Keep for now; document which Vercel root option is chosen in Prompt D. |
+| `vercel.json` | Root-level Vercel config for dashboard SPA. Installs `apps/web`, builds root `npm run build:web`, outputs `apps/web/dist`, rewrites to `index.html`. | Yes, final dashboard Vercel setup. | Must be paired with Vercel Root Directory `.`. | Keep as the single canonical dashboard Vercel config. |
+| `apps/web/vercel.json` | Former app-level Vercel config for `apps/web` root setup. | No longer checked in after Prompt D. | Keeping both root and app configs made root/build/output selection ambiguous. | Removed; use root setup or configure app-root manually in Vercel only if intentionally switching strategy later. |
 | `apps/web/scripts/validate-env.mjs` | Prevents production frontend build when API env is missing, localhost, or invalid. | Yes. | Build fails if Vercel env is missing or still localhost. | Keep. Document `VITE_API_URL` and `VITE_API_BASE_URL` as required. |
 | `apps/web/vite.config.js` | Vite React/Tailwind config. | Yes. | No deployment issue found. | Keep. |
 | `apps/landing/vite.config.js` | Landing Vite config. | Yes if landing deployed. | Separate app can be confused with dashboard in Vercel. | Keep; deploy landing as separate project later if needed. |
@@ -333,9 +340,8 @@ Cleanup candidates for later prompts:
   default.
 - `DEPLOY_RENDER_VERCEL.md`: supersede service-account guidance with OAuth
   staging guidance.
-- Root `vercel.json`: consider `buildCommand: npm run build:web` for clarity.
-- Decide whether Vercel project root is repo root or `apps/web`; then document
-  one path as canonical.
+- Root `vercel.json`: now uses `buildCommand: npm run build:web`.
+- Vercel project root is now documented as repo root `.` for the dashboard.
 
 ## Deployment Risk List
 
@@ -383,10 +389,9 @@ Prompt C - Backend Render Deployment Preparation:
 
 Prompt D - Frontend Vercel Deployment Preparation:
 
-- Choose root setup option.
-- Review `vercel.json` files.
+- Use repository root `.` as the final dashboard Vercel setup.
+- Keep root `vercel.json` as the single checked-in Vercel config.
 - Prepare exact Vercel build/output/env settings.
-- Optionally cleanup duplicate/confusing Vercel config if approved.
 
 Prompt E - Staging Database Migration & Validation:
 
