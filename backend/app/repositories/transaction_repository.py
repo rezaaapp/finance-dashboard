@@ -25,6 +25,7 @@ def _transaction_params(row: dict):
         payload["direction"],
         Jsonb(payload["raw_payload"]),
         payload["normalized_hash"],
+        payload["search_text_normalized"],
     )
 
 
@@ -135,9 +136,10 @@ def bulk_insert_transactions(
                     note,
                     direction,
                     raw_payload,
-                    normalized_hash
+                    normalized_hash,
+                    search_text_normalized
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 on conflict (workspace_id, sheet_source_id, external_row_key)
                 do nothing
                 """,
@@ -175,6 +177,7 @@ def bulk_update_transactions(
                     direction = %s,
                     raw_payload = %s,
                     normalized_hash = %s,
+                    search_text_normalized = %s,
                     updated_at = now()
                 where workspace_id = %s
                   and sheet_source_id = %s
@@ -194,6 +197,7 @@ def bulk_update_transactions(
                         row["payload"]["direction"],
                         Jsonb(row["payload"]["raw_payload"]),
                         row["payload"]["normalized_hash"],
+                        row["payload"]["search_text_normalized"],
                         row["workspace_id"],
                         row["sheet_source_id"],
                         row["external_row_key"],
@@ -313,9 +317,10 @@ def upsert_transaction(
                 note,
                 direction,
                 raw_payload,
-                normalized_hash
+                normalized_hash,
+                search_text_normalized
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (workspace_id, sheet_source_id, external_row_key)
             do update set
                 row_number = excluded.row_number,
@@ -329,6 +334,7 @@ def upsert_transaction(
                 direction = excluded.direction,
                 raw_payload = excluded.raw_payload,
                 normalized_hash = excluded.normalized_hash,
+                search_text_normalized = excluded.search_text_normalized,
                 updated_at = now()
             where transactions.normalized_hash is distinct from excluded.normalized_hash
             returning
@@ -352,6 +358,7 @@ def upsert_transaction(
                 payload["direction"],
                 Jsonb(payload["raw_payload"]),
                 payload["normalized_hash"],
+                payload["search_text_normalized"],
             ),
         )
         result = cursor.fetchone()
