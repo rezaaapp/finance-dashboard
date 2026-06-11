@@ -9,6 +9,7 @@ import {
   LogOut,
   Moon,
   RefreshCw,
+  Search as SearchIcon,
   Settings,
   ShieldCheck,
   Sun,
@@ -38,6 +39,7 @@ import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
+import SearchPage from "./Search";
 import { PRIVACY_MODES } from "../utils/privacy";
 
 import {
@@ -101,6 +103,18 @@ const hasSummaryData = (summary = {}) => (
   || Number(summary.total_income || 0) > 0
   || Number(summary.transaction_count || 0) > 0
 );
+
+const getInitialView = () => {
+  if (window.location.pathname.startsWith("/search")) {
+    return "search";
+  }
+
+  if (window.location.pathname.startsWith("/settings")) {
+    return "configuration";
+  }
+
+  return "dashboard";
+};
 
 const LockedFeature = ({ title, message }) => (
   <div className="panel rounded-lg p-6 shadow-lg">
@@ -199,9 +213,7 @@ const Dashboard = ({
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [activeView, setActiveView] = useState(() => (
-    window.location.pathname.startsWith("/settings")
-      ? "configuration"
-      : "dashboard"
+    getInitialView()
   ));
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
@@ -972,6 +984,31 @@ const Dashboard = ({
 
           <button
             type="button"
+            onClick={() => setActiveView("search")}
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "search"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
+            }`}
+            aria-label="Search"
+            title="Search"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <SearchIcon size={18} />
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Search
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveView("budgeting")}
             className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
               isSidebarCollapsed
@@ -1519,6 +1556,13 @@ const Dashboard = ({
               </>
             )}
           </div>
+        ) : activeView === "search" ? (
+          <SearchPage
+            availableYears={years}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onUnauthorized={onLogout}
+          />
         ) : activeView === "budgeting" && !hasPremiumAccess ? (
           <LockedFeature
             title="Decision Alert Terkunci"
@@ -1552,7 +1596,7 @@ const Dashboard = ({
       </main>
 
       <nav className={`fixed inset-x-0 bottom-0 z-50 grid gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden ${
-        isSuperAdmin ? "grid-cols-5" : "grid-cols-4"
+        isSuperAdmin ? "grid-cols-6" : "grid-cols-5"
       }`}>
         <button
           type="button"
@@ -1601,6 +1645,19 @@ const Dashboard = ({
               Locked
             </span>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("search")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
+            activeView === "search"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <SearchIcon size={18} />
+          Search
         </button>
 
         <button
