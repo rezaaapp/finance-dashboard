@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
-  --landing-sage: #7ba187;
-  --landing-navy: #0b1e36;
-  --landing-off-white: #fcfbfa;
-  --landing-coral: #dd8484;
+  color-scheme: light dark;
+  --landing-green: #2f7a4f;
+  --landing-ink: #0b1e36;
+  --landing-off-white: #f7faf8;
+  --landing-coral: #ff8b6b;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   text-rendering: geometricPrecision;
+  font-synthesis: none;
 }
 
 * {
@@ -22,6 +23,7 @@ body {
   margin: 0;
   min-width: 320px;
   background: #f7faf8;
+  color: #0b1e36;
 }
 
 a {
@@ -31,4 +33,129 @@ a {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(47, 122, 79, 0.2);
+  color: #0b1e36;
+}
+
+.omon-card {
+  transition:
+    transform 240ms ease,
+    box-shadow 240ms ease,
+    border-color 240ms ease;
+}
+
+.omon-card:hover {
+  transform: translateY(-4px);
+  border-color: #c3dcc9;
+  box-shadow: 0 18px 45px rgba(11, 30, 54, 0.09);
+}
+
+.omon-fade-in {
+  animation: omon-fade-up 720ms ease both;
+}
+
+.omon-delay-1 {
+  animation-delay: 90ms;
+}
+
+.omon-delay-2 {
+  animation-delay: 160ms;
+}
+
+.omon-delay-3 {
+  animation-delay: 230ms;
+}
+
+.omon-mascot-float {
+  animation: omon-float 6s ease-in-out infinite;
+}
+
+.omon-dashboard-float {
+  animation: omon-dashboard-breathe 8s ease-in-out infinite;
+}
+
+.omon-drift {
+  animation: omon-drift 5.5s ease-in-out infinite;
+}
+
+.omon-drift-slow {
+  animation: omon-drift 7s ease-in-out infinite;
+}
+
+@keyframes omon-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes omon-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-7px) rotate(-1.5deg);
+  }
+}
+
+@keyframes omon-dashboard-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+    filter: drop-shadow(0 0 0 rgba(47, 122, 79, 0));
+  }
+
+  50% {
+    transform: translateY(-5px);
+    filter: drop-shadow(0 20px 35px rgba(47, 122, 79, 0.12));
+  }
+}
+
+@keyframes omon-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+
+  .omon-card:hover,
+  .omon-dashboard-float,
+  .omon-drift,
+  .omon-drift-slow,
+  .omon-mascot-float {
+    transform: none !important;
+    filter: none !important;
+  }
 }
