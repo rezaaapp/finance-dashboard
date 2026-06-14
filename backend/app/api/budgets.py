@@ -5,8 +5,12 @@ from app.api.google_connection import get_current_workspace
 from app.auth import require_current_user
 from app.database import get_db_connection
 from app.repositories.budget_repository import (
+    add_ignored_category,
+    delete_budgets_by_period,
     delete_budget_category,
     get_budgets_by_period,
+    get_ignored_categories_by_period,
+    remove_ignored_category,
     update_budget_category,
     upsert_budget_category,
 )
@@ -28,6 +32,12 @@ class BudgetCreateRequest(BaseModel):
 class BudgetUpdateRequest(BaseModel):
     category: str
     amount: float
+
+
+class IgnoredCategoryRequest(BaseModel):
+    year: int
+    month: int
+    category: str
 
 
 def _validate_period(year: int, month: int) -> tuple[int, int]:
@@ -119,6 +129,94 @@ def create_or_update_budget(
             )
 
     return {"budget": budget}
+
+
+@router.delete("")
+def delete_period_budgets(
+    year: int,
+    month: int,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    selected_year, selected_month = _validate_period(year, month)
+
+    with get_db_connection() as connection:
+        with connection.transaction():
+            deleted_count = delete_budgets_by_period(
+                connection,
+                workspace_id=str(workspace["id"]),
+                year=selected_year,
+                month=selected_month,
+            )
+
+    return {"deleted_count": deleted_count}
+
+
+@router.get("/ignored")
+def list_ignored_categories(
+    year: int,
+    month: int,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    selected_year, selected_month = _validate_period(year, month)
+
+    with get_db_connection() as connection:
+        ignored_categories = get_ignored_categories_by_period(
+            connection,
+            workspace_id=str(workspace["id"]),
+            year=selected_year,
+            month=selected_month,
+        )
+
+    return {
+        "year": selected_year,
+        "month": selected_month,
+        "ignored_categories": ignored_categories,
+    }
+
+
+@router.post("/ignored", status_code=status.HTTP_201_CREATED)
+def ignore_category(
+    payload: IgnoredCategoryRequest,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    selected_year, selected_month = _validate_period(payload.year, payload.month)
+    category = _validate_category(payload.category)
+
+    with get_db_connection() as connection:
+        with connection.transaction():
+            ignored_category = add_ignored_category(
+                connection,
+                workspace_id=str(workspace["id"]),
+                year=selected_year,
+                month=selected_month,
+                category=category,
+            )
+
+    return {"ignored_category": ignored_category}
+
+
+@router.delete("/ignored/{ignored_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unignore_category(
+    ignored_id: str,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    with get_db_connection() as connection:
+        with connection.transaction():
+            removed_category = remove_ignored_category(
+                connection,
+                workspace_id=str(workspace["id"]),
+                ignored_id=ignored_id,
+            )
+
+    if not removed_category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ignored category not found",
+        )
 
 
 @router.put("/{budget_id}")
