@@ -1,9 +1,13 @@
 from collections import defaultdict
 from datetime import date
-from math import sqrt
+from math import ceil, sqrt
 
 from psycopg.errors import UndefinedTable
 from psycopg.rows import dict_row
+
+from app.repositories.budget_repository import (
+    get_budgets_by_period,
+)
 
 
 FINANCIAL_TYPES = ("need", "want", "saving", "income", "uncategorized")
@@ -662,6 +666,195 @@ def get_spending_by_category(connection, *, workspace_id: str, year=None, month=
         }
         for row in rows
     ]
+
+
+def get_budget_spending_by_category(
+    connection,
+    *,
+    workspace_id: str,
+    year: int,
+    month: int,
+):
+    financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select
+            category,
+            coalesce(sum(amount), 0) as total,
+            count(*) as row_count
+        from (
+            select
+                t.amount,
+                {category_expr} as category,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where t.workspace_id = %s
+              and t.transaction_date is not null
+              and t.transaction_date <= current_date
+              and extract(year from t.transaction_date)::int = %s
+              and extract(month from t.transaction_date)::int = %s
+        ) budget_transactions
+        where financial_type in ('need', 'want', 'uncategorized')
+        group by 1
+        order by total desc
+        """,
+        (workspace_id, int(year), int(month)),
+    )
+
+    return [
+        {
+            "Kategori": row["category"],
+            "Harga": float(row["total"] or 0),
+            "count": int(row["row_count"] or 0),
+        }
+        for row in rows
+    ]
+
+
+def get_available_budget_categories(connection, *, workspace_id: str) -> list[str]:
+    financial_type_expr = _classification_financial_type_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select category
+        from (
+            select
+                trim(t.raw_category) as category,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where t.workspace_id = %s
+              and nullif(trim(coalesce(t.raw_category, '')), '') is not null
+        ) available_transactions
+        where financial_type in ('need', 'want', 'uncategorized')
+        group by category
+        order by lower(category), category
+        """,
+        (workspace_id,),
+    )
+    categories_by_key = {}
+
+    for row in rows:
+        category = str(row["category"] or "").strip()
+
+        if not category:
+            continue
+
+        categories_by_key.setdefault(category.casefold(), category)
+
+    return sorted(categories_by_key.values(), key=lambda value: value.casefold())
+
+
+def _previous_month_periods(year: int, month: int, count: int = 3) -> list[dict]:
+    periods = []
+    current_year = int(year)
+    current_month = int(month)
+
+    for _index in range(count):
+        current_month -= 1
+
+        if current_month < 1:
+            current_month = 12
+            current_year -= 1
+
+        periods.append({
+            "year": current_year,
+            "month": current_month,
+            "label": f"{current_year:04d}-{current_month:02d}",
+        })
+
+    return periods
+
+
+def _round_up_to_nearest(value: float, increment: int = 50000) -> float:
+    value = float(value or 0)
+
+    if value <= 0:
+        return 0
+
+    return float(ceil(value / increment) * increment)
+
+
+def get_budget_history_by_category(
+    connection,
+    *,
+    workspace_id: str,
+    periods: list[dict],
+):
+    if not periods:
+        return {}
+
+    period_values = [
+        (period["year"], period["month"], period["label"])
+        for period in periods
+    ]
+    financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        with selected_periods(year, month, period_label) as (
+            values {", ".join(["(%s, %s, %s)"] * len(period_values))}
+        ),
+        budget_transactions as (
+            select
+                {category_expr} as category,
+                sp.period_label,
+                t.amount,
+                {financial_type_expr} as financial_type
+            from transactions t
+            join selected_periods sp
+              on extract(year from t.transaction_date)::int = sp.year
+             and extract(month from t.transaction_date)::int = sp.month
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where t.workspace_id = %s
+              and t.transaction_date is not null
+              and t.transaction_date <= current_date
+        )
+        select
+            category,
+            period_label,
+            coalesce(sum(amount), 0) as total
+        from budget_transactions
+        where financial_type in ('need', 'want', 'uncategorized')
+        group by 1, 2
+        order by 1, 2
+        """,
+        (
+            *[
+                value
+                for period in period_values
+                for value in period
+            ],
+            workspace_id,
+        ),
+    )
+    history_by_category = defaultdict(list)
+
+    for row in rows:
+        total = float(row["total"] or 0)
+
+        if total <= 0:
+            continue
+
+        history_by_category[row["category"]].append({
+            "period": row["period_label"],
+            "total": total,
+        })
+
+    return dict(history_by_category)
 
 
 def get_financial_type_breakdown(connection, *, workspace_id: str, year=None, month=None):
@@ -1350,30 +1543,243 @@ def get_latest_insight(connection, *, workspace_id: str, year=None, month=None):
     }
 
 
-def get_budget_forecast(connection, *, workspace_id: str, year=None, month=None):
-    current_spending = get_spending_by_category(
-        connection,
-        workspace_id=workspace_id,
-        year=year,
-        month=month,
-    )
-    forecast = [
-        {
-            "category": row["Kategori"],
-            "forecast_budget": 0,
-            "current_spending": row["Harga"],
-            "usage_rate": 0,
-        }
-        for row in current_spending[:8]
-    ]
+def _budget_alert_for_usage(category: str, usage_rate: float, spending: float, budget: float):
+    if usage_rate >= 100:
+        severity = "danger"
+        message = f"{category} sudah melewati anggaran bulan ini."
+    elif usage_rate >= 90:
+        severity = "warning"
+        message = f"{category} sudah memakai {round(usage_rate)}% anggaran."
+    elif usage_rate >= 80:
+        severity = "info"
+        message = f"{category} mendekati batas anggaran."
+    else:
+        return None
 
     return {
-        "method": "actual_spending",
-        "alerts": [],
-        "forecast": forecast,
+        "severity": severity,
+        "category": category,
+        "message": message,
+        "usage_rate": round(usage_rate, 2),
+        "current_spending": round(spending, 2),
+        "budget": round(budget, 2),
+    }
+
+
+def _budget_recommendation_payload(category: str, history_rows: list[dict]) -> dict:
+    history_totals = [float(row["total"] or 0) for row in history_rows]
+    historical_average = (
+        sum(history_totals) / len(history_totals)
+        if history_totals
+        else 0
+    )
+    recommended_budget = _round_up_to_nearest(historical_average * 1.1)
+
+    return {
+        "category": category,
+        "historical_average": round(historical_average, 2),
+        "recommended_budget": round(recommended_budget, 2),
+        "history_months_count": len(history_rows),
+        "history_periods": [row["period"] for row in history_rows],
+    }
+
+
+def _history_rows_for_category(
+    history_by_category: dict,
+    history_by_key: dict,
+    category: str,
+) -> list[dict]:
+    return (
+        history_by_category.get(category)
+        or history_by_key.get(category.strip().casefold())
+        or []
+    )
+
+
+def get_budget_forecast(connection, *, workspace_id: str, year=None, month=None):
+    available_categories = get_available_budget_categories(
+        connection,
+        workspace_id=workspace_id,
+    )
+
+    if not year or not month:
+        return {
+            "method": "monthly_budget",
+            "period_required": True,
+            "alerts": [],
+            "categories": [],
+            "forecast": [],
+            "available_categories": available_categories,
+            "category_recommendations": {},
+            "ignored_categories": [],
+            "summary": {
+                "total_budget": 0,
+                "total_forecast": 0,
+                "current_spending": 0,
+                "remaining_budget": 0,
+                "budgeted_category_count": 0,
+                "unbudgeted_category_count": 0,
+                "over_budget_category_count": 0,
+                "alert_count": 0,
+            },
+        }
+
+    selected_year = int(year)
+    selected_month = int(month)
+    history_periods = _previous_month_periods(selected_year, selected_month)
+    budgets = get_budgets_by_period(
+        connection,
+        workspace_id=workspace_id,
+        year=selected_year,
+        month=selected_month,
+    )
+    spending_rows = get_budget_spending_by_category(
+        connection,
+        workspace_id=workspace_id,
+        year=selected_year,
+        month=selected_month,
+    )
+    history_by_category = get_budget_history_by_category(
+        connection,
+        workspace_id=workspace_id,
+        periods=history_periods,
+    )
+    history_by_key = {
+        category.strip().casefold(): rows
+        for category, rows in history_by_category.items()
+    }
+    spending_by_category = {
+        row["Kategori"]: float(row["Harga"] or 0)
+        for row in spending_rows
+    }
+    budget_by_category = {
+        budget["category"]: budget
+        for budget in budgets
+    }
+    category_names = sorted(
+        {*budget_by_category.keys(), *spending_by_category.keys()},
+        key=lambda value: value.lower(),
+    )
+    categories = []
+    alerts = []
+    recommendation_category_names = sorted(
+        {
+            *available_categories,
+            *budget_by_category.keys(),
+            *spending_by_category.keys(),
+            *history_by_category.keys(),
+        },
+        key=lambda value: value.casefold(),
+    )
+    category_recommendations = {
+        category: _budget_recommendation_payload(
+            category,
+            _history_rows_for_category(
+                history_by_category,
+                history_by_key,
+                category,
+            ),
+        )
+        for category in recommendation_category_names
+        if str(category or "").strip()
+    }
+
+    for category in category_names:
+        budget = budget_by_category.get(category)
+        budget_amount = float(budget["amount"] if budget else 0)
+        current_spending = float(spending_by_category.get(category, 0))
+        remaining_budget = budget_amount - current_spending
+        recommendation = category_recommendations.get(category) or (
+            _budget_recommendation_payload(
+                category,
+                _history_rows_for_category(
+                    history_by_category,
+                    history_by_key,
+                    category,
+                ),
+            )
+        )
+        usage_rate = (
+            current_spending / budget_amount * 100
+            if budget_amount > 0
+            else 0
+        )
+        is_budgeted = bool(budget)
+        budget_status = "budgeted" if is_budgeted else "unbudgeted"
+        alert = (
+            _budget_alert_for_usage(
+                category,
+                usage_rate,
+                current_spending,
+                budget_amount,
+            )
+            if budget_amount > 0
+            else None
+        )
+
+        if alert:
+            alerts.append(alert)
+
+        categories.append({
+            "id": budget["id"] if budget else None,
+            "budget_id": budget["id"] if budget else None,
+            "category": category,
+            "budget": round(budget_amount, 2),
+            "forecast_budget": round(budget_amount, 2),
+            "spent": round(current_spending, 2),
+            "current_spending": round(current_spending, 2),
+            "remaining_budget": round(remaining_budget, 2),
+            "remaining": round(remaining_budget, 2),
+            "usage_rate": round(usage_rate, 2),
+            "usage_percentage": round(usage_rate, 2),
+            "status": alert["severity"] if alert else "neutral",
+            "budget_status": budget_status,
+            "is_budgeted": is_budgeted,
+            "severity": alert["severity"] if alert else "neutral",
+            "historical_average": recommendation["historical_average"],
+            "recommended_budget": recommendation["recommended_budget"],
+            "history_months_count": recommendation["history_months_count"],
+            "history_periods": recommendation["history_periods"],
+        })
+
+    categories.sort(
+        key=lambda item: (
+            not item["is_budgeted"],
+            -float(item["current_spending"] or 0),
+            item["category"].lower(),
+        )
+    )
+    total_budget = sum(item["budget"] for item in categories)
+    current_spending = sum(item["current_spending"] for item in categories)
+
+    return {
+        "method": "monthly_budget",
+        "period": f"{selected_year:04d}-{selected_month:02d}",
+        "period_required": False,
+        "alerts": alerts,
+        "categories": categories,
+        "forecast": categories,
+        "available_categories": available_categories,
+        "category_recommendations": category_recommendations,
+        "ignored_categories": [],
         "summary": {
-            "total_forecast": 0,
-            "current_spending": round(sum(item["current_spending"] for item in forecast), 2),
-            "alert_count": 0,
+            "total_budget": round(total_budget, 2),
+            "total_forecast": round(total_budget, 2),
+            "current_spending": round(current_spending, 2),
+            "remaining_budget": round(total_budget - current_spending, 2),
+            "budgeted_category_count": sum(
+                1 for item in categories if item["is_budgeted"]
+            ),
+            "unbudgeted_category_count": sum(
+                1 for item in categories if not item["is_budgeted"]
+            ),
+            "over_budget_category_count": sum(
+                1
+                for item in categories
+                if item["is_budgeted"]
+                and item["budget"] > 0
+                and item["usage_percentage"] >= 100
+            ),
+            "alert_count": len(alerts),
         },
     }
