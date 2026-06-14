@@ -634,6 +634,30 @@ const Dashboard = ({
     }
   }, [hasPremiumAccess, onLogout, selectedAnalyticsUser]);
 
+  const refreshBudgetForecast = useCallback(async () => {
+    if (!hasPremiumAccess || selectedYear === "" || selectedMonth === "") {
+      setBudgetForecast({});
+      return;
+    }
+
+    try {
+      const budgetForecastData = await getBudgetForecast(
+        selectedYear,
+        selectedMonth
+      );
+      setBudgetForecast(budgetForecastData);
+    } catch (err) {
+      console.error("Failed to fetch budgeting data.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setBudgetForecast({});
+    }
+  }, [hasPremiumAccess, onLogout, selectedMonth, selectedYear]);
+
   // =========================
   // INITIAL DATA
   // =========================
@@ -733,6 +757,12 @@ const Dashboard = ({
       );
     }
   }, [activeView, fetchDashboardData, selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    if (activeView === "budgeting") {
+      refreshBudgetForecast();
+    }
+  }, [activeView, refreshBudgetForecast]);
 
   // =========================
   // LAZY FETCH ANALYTICS DATA
@@ -1573,7 +1603,9 @@ const Dashboard = ({
             data={budgetForecast}
             theme={theme}
             privacyMode={privacyMode}
-            autoBudget={autoBudget}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onRefresh={refreshBudgetForecast}
           />
         ) : activeView === "admin" && isSuperAdmin ? (
           <AdminUsers

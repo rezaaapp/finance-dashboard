@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
+from app.api.budgets import router as budgets_router
 from app.api.classifications import router as classifications_router
 from app.api.data_sources import router as data_sources_router
 from app.api.dashboard import router as dashboard_router
@@ -130,6 +131,7 @@ app.include_router(data_sources_router)
 app.include_router(sync_jobs_router)
 app.include_router(classifications_router)
 app.include_router(settings_router)
+app.include_router(budgets_router)
 app.include_router(workspaces_router)
 app.include_router(workspace_invitations_router)
 

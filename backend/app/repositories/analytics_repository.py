@@ -5,6 +5,8 @@ from math import sqrt
 from psycopg.errors import UndefinedTable
 from psycopg.rows import dict_row
 
+from app.repositories.budget_repository import get_budgets_by_period
+
 
 FINANCIAL_TYPES = ("need", "want", "saving", "income", "uncategorized")
 
@@ -652,6 +654,55 @@ def get_spending_by_category(connection, *, workspace_id: str, year=None, month=
         order by total desc
         """,
         (workspace_id, *params),
+    )
+
+    return [
+        {
+            "Kategori": row["category"],
+            "Harga": float(row["total"] or 0),
+            "count": int(row["row_count"] or 0),
+        }
+        for row in rows
+    ]
+
+
+def get_budget_spending_by_category(
+    connection,
+    *,
+    workspace_id: str,
+    year: int,
+    month: int,
+):
+    financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
+    rows = _fetch_all(
+        connection,
+        f"""
+        select
+            category,
+            coalesce(sum(amount), 0) as total,
+            count(*) as row_count
+        from (
+            select
+                t.amount,
+                {category_expr} as category,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where t.workspace_id = %s
+              and t.transaction_date is not null
+              and t.transaction_date <= current_date
+              and extract(year from t.transaction_date)::int = %s
+              and extract(month from t.transaction_date)::int = %s
+        ) budget_transactions
+        where financial_type in ('need', 'want', 'uncategorized')
+        group by 1
+        order by total desc
+        """,
+        (workspace_id, int(year), int(month)),
     )
 
     return [
@@ -1350,30 +1401,142 @@ def get_latest_insight(connection, *, workspace_id: str, year=None, month=None):
     }
 
 
-def get_budget_forecast(connection, *, workspace_id: str, year=None, month=None):
-    current_spending = get_spending_by_category(
-        connection,
-        workspace_id=workspace_id,
-        year=year,
-        month=month,
-    )
-    forecast = [
-        {
-            "category": row["Kategori"],
-            "forecast_budget": 0,
-            "current_spending": row["Harga"],
-            "usage_rate": 0,
-        }
-        for row in current_spending[:8]
-    ]
+def _budget_alert_for_usage(category: str, usage_rate: float, spending: float, budget: float):
+    if usage_rate >= 100:
+        severity = "danger"
+        message = f"{category} sudah melewati anggaran bulan ini."
+    elif usage_rate >= 90:
+        severity = "warning"
+        message = f"{category} sudah memakai {round(usage_rate)}% anggaran."
+    elif usage_rate >= 80:
+        severity = "info"
+        message = f"{category} mendekati batas anggaran."
+    else:
+        return None
 
     return {
-        "method": "actual_spending",
-        "alerts": [],
-        "forecast": forecast,
+        "severity": severity,
+        "category": category,
+        "message": message,
+        "usage_rate": round(usage_rate, 2),
+        "current_spending": round(spending, 2),
+        "budget": round(budget, 2),
+    }
+
+
+def get_budget_forecast(connection, *, workspace_id: str, year=None, month=None):
+    if not year or not month:
+        return {
+            "method": "monthly_budget",
+            "period_required": True,
+            "alerts": [],
+            "categories": [],
+            "forecast": [],
+            "summary": {
+                "total_budget": 0,
+                "total_forecast": 0,
+                "current_spending": 0,
+                "remaining_budget": 0,
+                "budgeted_category_count": 0,
+                "unbudgeted_category_count": 0,
+                "alert_count": 0,
+            },
+        }
+
+    selected_year = int(year)
+    selected_month = int(month)
+    budgets = get_budgets_by_period(
+        connection,
+        workspace_id=workspace_id,
+        year=selected_year,
+        month=selected_month,
+    )
+    spending_rows = get_budget_spending_by_category(
+        connection,
+        workspace_id=workspace_id,
+        year=selected_year,
+        month=selected_month,
+    )
+    spending_by_category = {
+        row["Kategori"]: float(row["Harga"] or 0)
+        for row in spending_rows
+    }
+    budget_by_category = {
+        budget["category"]: budget
+        for budget in budgets
+    }
+    category_names = sorted(
+        {*budget_by_category.keys(), *spending_by_category.keys()},
+        key=lambda value: value.lower(),
+    )
+    categories = []
+    alerts = []
+
+    for category in category_names:
+        budget = budget_by_category.get(category)
+        budget_amount = float(budget["amount"] if budget else 0)
+        current_spending = float(spending_by_category.get(category, 0))
+        remaining_budget = budget_amount - current_spending
+        usage_rate = (
+            current_spending / budget_amount * 100
+            if budget_amount > 0
+            else 0
+        )
+        status = "budgeted" if budget else "unbudgeted"
+        alert = (
+            _budget_alert_for_usage(
+                category,
+                usage_rate,
+                current_spending,
+                budget_amount,
+            )
+            if budget_amount > 0
+            else None
+        )
+
+        if alert:
+            alerts.append(alert)
+
+        categories.append({
+            "id": budget["id"] if budget else None,
+            "category": category,
+            "budget": round(budget_amount, 2),
+            "forecast_budget": round(budget_amount, 2),
+            "current_spending": round(current_spending, 2),
+            "remaining_budget": round(remaining_budget, 2),
+            "usage_rate": round(usage_rate, 2),
+            "status": status,
+            "severity": alert["severity"] if alert else "neutral",
+        })
+
+    categories.sort(
+        key=lambda item: (
+            item["status"] != "budgeted",
+            -float(item["current_spending"] or 0),
+            item["category"].lower(),
+        )
+    )
+    total_budget = sum(item["budget"] for item in categories)
+    current_spending = sum(item["current_spending"] for item in categories)
+
+    return {
+        "method": "monthly_budget",
+        "period": f"{selected_year:04d}-{selected_month:02d}",
+        "period_required": False,
+        "alerts": alerts,
+        "categories": categories,
+        "forecast": categories,
         "summary": {
-            "total_forecast": 0,
-            "current_spending": round(sum(item["current_spending"] for item in forecast), 2),
-            "alert_count": 0,
+            "total_budget": round(total_budget, 2),
+            "total_forecast": round(total_budget, 2),
+            "current_spending": round(current_spending, 2),
+            "remaining_budget": round(total_budget - current_spending, 2),
+            "budgeted_category_count": sum(
+                1 for item in categories if item["status"] == "budgeted"
+            ),
+            "unbudgeted_category_count": sum(
+                1 for item in categories if item["status"] == "unbudgeted"
+            ),
+            "alert_count": len(alerts),
         },
     }

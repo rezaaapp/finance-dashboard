@@ -69,6 +69,11 @@ export const SETTINGS_API_URL = DASHBOARD_API_URL.replace(
   "/api/settings"
 );
 
+export const BUDGETS_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/budgets"
+);
+
 export const WORKSPACES_API_URL = DASHBOARD_API_URL.replace(
   /\/api\/dashboard$/,
   "/api/workspaces"
