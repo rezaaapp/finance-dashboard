@@ -9,9 +9,9 @@ import {
 } from "recharts";
 
 import {
+  formatPrivateCompact,
   formatPrivateRupiah,
   maskChartRows,
-  maskNumber,
 } from "../../utils/privacy";
 import { chartTheme } from "../../theme/chartTheme";
 
@@ -67,9 +67,7 @@ const MonthlyChart = ({
             <YAxis
               stroke={colors.tick}
               tick={{ fill: colors.tick, fontSize: 12 }}
-              tickFormatter={(value) =>
-                `${(maskNumber(value, privacyMode) / 1000000).toFixed(0)}jt`
-              }
+              tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
             />
 
             <Tooltip

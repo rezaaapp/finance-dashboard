@@ -9,6 +9,7 @@ import {
 } from "recharts";
 
 import {
+  formatPrivateCompact,
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
@@ -18,24 +19,6 @@ const allocationKeys = [
   { key: "Wants", color: "#f59e0b" },
   { key: "Savings", color: "#10b981" },
 ];
-
-const formatCompactRupiah = (value) => {
-  const numericValue = Number(value || 0);
-
-  if (numericValue >= 1_000_000_000) {
-    return `Rp ${(numericValue / 1_000_000_000).toFixed(1)}B`;
-  }
-
-  if (numericValue >= 1_000_000) {
-    return `Rp ${(numericValue / 1_000_000).toFixed(1)}M`;
-  }
-
-  if (numericValue >= 1_000) {
-    return `Rp ${(numericValue / 1_000).toFixed(0)}k`;
-  }
-
-  return `Rp ${numericValue}`;
-};
 
 const formatMonthLabel = (month) => {
   const [year, monthNumber] = String(month || "").split("-");
@@ -173,7 +156,7 @@ const MonthlyAllocationTrend = ({
               <YAxis
                 stroke="var(--color-muted)"
                 tick={{ fill: "var(--color-muted)", fontSize: 12 }}
-                tickFormatter={formatCompactRupiah}
+                tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
               />
               <Tooltip
                 content={(props) => (
