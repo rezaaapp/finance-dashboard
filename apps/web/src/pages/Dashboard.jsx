@@ -15,7 +15,7 @@ import {
   Sun,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import EmptyState from "../components/EmptyState";
 import SummaryCard from "../components/SummaryCard";
@@ -135,6 +135,8 @@ const LockedFeature = ({ title, message }) => (
 );
 
 const ProfileWidget = ({ auth, onLogout }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const hasSessionEmail = Boolean(auth?.email);
   const displayName = hasSessionEmail
     ? auth?.username || auth?.name || "Reza Putra Pratama"
@@ -142,22 +144,64 @@ const ProfileWidget = ({ auth, onLogout }) => {
   const displayEmail = auth?.email || "rezaaapp@gmail.com";
   const initial = (displayName || displayEmail || "R").trim().charAt(0).toUpperCase();
 
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMenuOpen]);
+
+  const handleLogout = () => {
+    setIsMenuOpen(false);
+    onLogout();
+  };
+
   return (
-    <div className="group relative inline-flex">
+    <div ref={menuRef} className="group relative inline-flex">
       <button
         type="button"
+        onClick={() => setIsMenuOpen((current) => !current)}
         className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-bold text-gray-800 shadow-sm transition-colors hover:border-amber-300 hover:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-700"
         aria-label={`Profile menu ${displayName}`}
+        aria-expanded={isMenuOpen}
+        aria-haspopup="menu"
         title={`${displayName} (${displayEmail})`}
       >
         {initial || <UserRound size={18} />}
       </button>
 
-      <div className="invisible absolute right-0 top-full z-50 mt-2 w-40 translate-y-1 opacity-0 transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+      <div
+        className={`absolute right-0 top-full z-50 mt-2 w-40 transition-all ${
+          isMenuOpen
+            ? "visible translate-y-0 opacity-100"
+            : "invisible translate-y-1 opacity-0 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+        }`}
+        role="menu"
+      >
         <button
           type="button"
-          onClick={onLogout}
+          onClick={handleLogout}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 shadow-lg transition-colors hover:bg-red-50 dark:border-gray-600 dark:bg-gray-700 dark:text-red-300 dark:hover:bg-red-950/30"
+          role="menuitem"
         >
           <LogOut size={16} />
           Logout
