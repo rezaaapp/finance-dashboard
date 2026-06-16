@@ -125,6 +125,26 @@ def update_import_job_status(
         return cursor.fetchone()
 
 
+def update_import_job_provider(
+    connection,
+    *,
+    job_id: str,
+    provider: str,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            update import_jobs
+            set provider = %s
+            where id = %s
+            returning *
+            """,
+            (provider, job_id),
+        )
+
+        return cursor.fetchone()
+
+
 def increment_import_job_rejected_count(
     connection,
     *,

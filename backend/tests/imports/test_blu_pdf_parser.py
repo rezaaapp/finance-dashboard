@@ -43,10 +43,12 @@ from app.imports.services.import_service import ImportService
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
+from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.models.import_models import ParsedImportResult
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_sample.pdf"
+REAL_JUNE_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_june_real.pdf"
 
 
 class NamedBytesIO(io.BytesIO):
@@ -61,6 +63,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.parser = BluPdfParser()
         self.merchant_normalizer = MerchantNormalizer()
         self.fixture_bytes = FIXTURE_PATH.read_bytes()
+        self.real_june_fixture_bytes = REAL_JUNE_FIXTURE_PATH.read_bytes()
 
     def test_parser_detects_sections_and_review_groups(self):
         transactions = self.parser.parse(io.BytesIO(self.fixture_bytes)).transactions
@@ -157,6 +160,93 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("income", dana_masuk["direction"])
         self.assertEqual("bluAccount", dana_masuk["review_group"])
 
+    def test_provider_detection_supports_filename_and_content_markers(self):
+        filename_detection = detect_import_provider(
+            filename="bluAccount _ bluSpending_000000002555_01-16Juni2026.pdf",
+        )
+        content_detection = detect_import_provider(
+            filename="statement.pdf",
+            extracted_text="Ringkasan bluAccount | bluSpending dari BCA Digital",
+        )
+
+        self.assertEqual(
+            {"provider": "blu", "detection_source": "filename"},
+            filename_detection,
+        )
+        self.assertEqual(
+            {"provider": "blu", "detection_source": "content"},
+            content_detection,
+        )
+
+    def test_parser_supports_all_required_month_abbreviations(self):
+        months = [
+            ("Jan", "01"),
+            ("Feb", "02"),
+            ("Mar", "03"),
+            ("Apr", "04"),
+            ("Mei", "05"),
+            ("May", "05"),
+            ("Jun", "06"),
+            ("Jul", "07"),
+            ("Agu", "08"),
+            ("Aug", "08"),
+            ("Sep", "09"),
+            ("Okt", "10"),
+            ("Oct", "10"),
+            ("Nov", "11"),
+            ("Des", "12"),
+            ("Dec", "12"),
+        ]
+
+        for month_name, expected_month in months:
+            with self.subTest(month=month_name):
+                transactions = self.parser._parse_lines([
+                    "bluSpending - Makan Bulanan",
+                    f"01 {month_name} 2026 Pembayaran QRIS",
+                    "- 1.000,00 10.000,00",
+                    "08:00",
+                    "TEST MERCHANT 001",
+                ])
+
+                self.assertEqual(1, len(transactions))
+                self.assertEqual(f"01/{expected_month}/2026 08:00", transactions[0]["datetime"])
+
+    def test_parser_real_june_pdf_returns_transactions_and_expected_examples(self):
+        result = self.parser.parse(io.BytesIO(self.real_june_fixture_bytes))
+        transactions = result.transactions
+        superindo = next(
+            transaction for transaction in transactions
+            if "SUPERINDO" in transaction["merchant_original"]
+        )
+        ayam_gepuk = next(
+            transaction for transaction in transactions
+            if "Ayam Gepuk" in transaction["merchant_original"]
+        )
+        seabank = next(
+            transaction for transaction in transactions
+            if "SEABANK" in transaction["merchant_original"]
+        )
+        dana_masuk = next(
+            transaction for transaction in transactions
+            if transaction["transaction_type"] == "Dana Masuk dari bluSaving"
+        )
+
+        self.assertGreater(result.page_count, 0)
+        self.assertGreater(result.extracted_text_length, 0)
+        self.assertGreater(len(transactions), 0)
+        self.assertEqual(
+            {"bluAccount", "Belanja Bulanan", "Makan Bulanan", "Operasional Pacaran"},
+            {transaction["review_group"] for transaction in transactions},
+        )
+        self.assertEqual(159750.0, superindo["amount"])
+        self.assertEqual("expense", superindo["direction"])
+        self.assertEqual(52000.0, ayam_gepuk["amount"])
+        self.assertEqual("expense", ayam_gepuk["direction"])
+        self.assertEqual(250000.0, seabank["amount"])
+        self.assertEqual("expense", seabank["direction"])
+        self.assertEqual(250000.0, dana_masuk["amount"])
+        self.assertEqual("income", dana_masuk["direction"])
+
     def test_import_service_calls_blu_parser_and_returns_preview(self):
         fake_upload = NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf")
         fake_job = {
@@ -167,10 +257,11 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
              patch("app.imports.services.import_service.save_temp_import_file", return_value={
-                 "path": "temp/blu-estatement-june.pdf",
+                 "path": str(FIXTURE_PATH),
                  "expires_at": "2026-06-17T10:00:00Z",
              }), \
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", return_value=set()), \
              patch("app.imports.services.import_service.create_import_draft_transactions"), \
@@ -283,10 +374,11 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
              patch("app.imports.services.import_service.save_temp_import_file", return_value={
-                 "path": "temp/blu-estatement-june.pdf",
+                 "path": str(FIXTURE_PATH),
                  "expires_at": "2026-06-17T10:00:00Z",
              }), \
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
              patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
@@ -374,7 +466,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "status": kwargs["status"],
             }
 
-        def fake_parse(_file, *, provider):
+        def fake_parse_extracted(_extraction, *, provider):
             self.assertEqual("blu", provider)
             return parse_queue.pop(0)
 
@@ -384,13 +476,14 @@ class BluPdfParserTestCase(unittest.TestCase):
         def fake_create_drafts(_connection, *, draft_transactions):
             stored_drafts.append(draft_transactions)
 
-        with patch.object(ImportService, "parse", side_effect=fake_parse), \
+        with patch.object(ImportService, "parse_extracted", side_effect=fake_parse_extracted), \
              patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
              patch("app.imports.services.import_service.save_temp_import_file", return_value={
-                 "path": "temp/blu-estatement-june.pdf",
+                 "path": str(FIXTURE_PATH),
                  "expires_at": "2026-06-17T10:00:00Z",
              }), \
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
              patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
@@ -420,6 +513,81 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(2, len(stored_drafts[-1]))
         self.assertFalse(stored_drafts[-1][0]["is_existing"])
         self.assertFalse(stored_drafts[-1][1]["is_existing"])
+
+    def test_import_service_fails_blu_pdf_when_text_layer_is_empty(self):
+        fake_upload = NamedBytesIO(b"%PDF-empty", "blu-empty.pdf")
+        fake_job = {
+            "id": "job-empty",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": str(FIXTURE_PATH),
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch.object(BluPdfParser, "extract_pdf_metadata", return_value={
+                 "lines": [],
+                 "page_count": 1,
+                 "extracted_text": "",
+                 "extracted_text_length": 0,
+                 "extracted_text_hash": "",
+             }):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("PDF tidak memiliki text layer atau gagal dibaca.", result.error)
+        self.assertEqual(0, result.transactions_found)
+
+    def test_import_service_fails_blu_pdf_when_text_exists_but_parser_returns_zero(self):
+        fake_upload = NamedBytesIO(b"%PDF-no-transactions", "statement.pdf")
+        fake_job = {
+            "id": "job-zero",
+            "provider": "unknown",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": str(FIXTURE_PATH),
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch.object(BluPdfParser, "extract_pdf_metadata", return_value={
+                 "lines": ["bluAccount | bluSpending"],
+                 "page_count": 1,
+                 "extracted_text": "bluAccount | bluSpending",
+                 "extracted_text_length": 24,
+                 "extracted_text_hash": "hash",
+             }), \
+             patch.object(ImportService, "parse_extracted", return_value=ParsedImportResult(
+                 provider="blu",
+                 transactions=[],
+                 page_count=1,
+                 extracted_text_length=24,
+             )):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("content", result.detection_source)
+        self.assertEqual("PDF Blu terbaca, tapi transaksi tidak berhasil diparse.", result.error)
+        self.assertEqual(0, result.transactions_found)
 
     def test_review_payload_contains_only_new_transactions_and_filters(self):
         service = ImportService()

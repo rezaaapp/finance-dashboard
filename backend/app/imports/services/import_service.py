@@ -1,5 +1,7 @@
-from typing import BinaryIO
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import BinaryIO
+import logging
 
 from app.imports.models.import_models import ImportPreviewItem
 from app.imports.models.import_models import (
@@ -33,6 +35,7 @@ from app.imports.repositories.import_repository import (
     reject_import_draft_transactions,
     refresh_import_job_aggregates,
     set_import_job_temp_file,
+    update_import_job_provider,
     update_import_job_status,
     update_import_job_summary,
 )
@@ -41,9 +44,13 @@ from app.imports.services.incremental_import_engine import IncrementalImportEngi
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
+from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.utils.temp_storage import delete_temp_import_file, save_temp_import_file
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
 from app.repositories.google_sheet_source_repository import ensure_import_google_sheet_source
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImportService:
@@ -54,18 +61,34 @@ class ImportService:
         self.spreadsheet_sync_service = SpreadsheetSyncService()
 
     def detect_provider(self, filename: str) -> str:
-        normalized_filename = filename.lower()
+        return self.detect_provider_details(filename=filename)["provider"]
 
-        if normalized_filename.endswith(".pdf") and "blu" in normalized_filename:
-            return "blu"
-
-        return "unknown"
+    def detect_provider_details(self, *, filename: str, extracted_text: str = "") -> dict:
+        return detect_import_provider(
+            filename=filename,
+            extracted_text=extracted_text,
+        )
 
     def parse(self, file: BinaryIO, *, provider: str) -> ParsedImportResult:
         if provider == "blu":
             return BluPdfParser().parse(file)
 
         return ParsedImportResult(provider=provider, transactions=[])
+
+    def parse_extracted(self, extraction: dict, *, provider: str) -> ParsedImportResult:
+        if provider == "blu":
+            return BluPdfParser().parse_extracted_lines(
+                extraction.get("lines", []),
+                page_count=extraction.get("page_count", 0),
+                extracted_text_length=extraction.get("extracted_text_length", 0),
+            )
+
+        return ParsedImportResult(
+            provider=provider,
+            transactions=[],
+            page_count=extraction.get("page_count", 0),
+            extracted_text_length=extraction.get("extracted_text_length", 0),
+        )
 
     def enrich_transactions(self, parsed_result: ParsedImportResult) -> ParsedImportResult:
         enriched_transactions = []
@@ -148,34 +171,137 @@ class ImportService:
         )
 
     def receive_upload(self, connection, *, workspace_id: str, file) -> ImportUploadResult:
-        provider = self.detect_provider(file.filename or "")
+        filename = file.filename or "uploaded-file"
+        filename_provider = self.detect_provider(filename)
         job = create_import_job(
             connection,
             workspace_id=workspace_id,
-            provider=provider,
-            filename=file.filename or "uploaded-file",
+            provider=filename_provider,
+            filename=filename,
             status=ImportJobStatus.UPLOADED.value,
         )
+        job_id = str(job["id"])
+        self._log_import_event(
+            "smart_import.upload.started",
+            job_id=job_id,
+            filename=filename,
+            file_size=self._get_upload_file_size(file),
+        )
         temp_file = save_temp_import_file(
-            job_id=str(job["id"]),
-            filename=file.filename or "uploaded-file.pdf",
+            job_id=job_id,
+            filename=filename,
             source_file=file.file,
         )
         set_import_job_temp_file(
             connection,
-            job_id=str(job["id"]),
+            job_id=job_id,
             temp_file_path=temp_file["path"],
             expires_at=temp_file["expires_at"],
         )
+        extraction = {
+            "lines": [],
+            "page_count": 0,
+            "extracted_text": "",
+            "extracted_text_length": 0,
+            "extracted_text_hash": "",
+        }
         try:
+            temp_path = Path(temp_file["path"])
+
+            if not temp_path.is_file():
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=filename_provider,
+                    detection_source="filename" if filename_provider != "unknown" else "unknown",
+                    page_count=0,
+                    extracted_text_length=0,
+                    stage="temp_storage",
+                    reason="Temporary PDF file was not found before parsing",
+                    user_error="File import sementara tidak ditemukan.",
+                )
+
+            with temp_path.open("rb") as temp_pdf:
+                extraction = BluPdfParser().extract_pdf_metadata(temp_pdf)
+
+            provider_detection = self.detect_provider_details(
+                filename=filename,
+                extracted_text=extraction.get("extracted_text", ""),
+            )
+            provider = provider_detection["provider"]
+            detection_source = provider_detection["detection_source"]
+            update_import_job_provider(
+                connection,
+                job_id=job_id,
+                provider=provider,
+            )
+            self._log_import_event(
+                "smart_import.provider.detected",
+                job_id=job_id,
+                provider=provider,
+                detection_source=detection_source,
+            )
+            self._log_import_event(
+                "smart_import.pdf.extracted",
+                job_id=job_id,
+                provider=provider,
+                page_count=extraction["page_count"],
+                extracted_text_length=extraction["extracted_text_length"],
+                extracted_text_hash=extraction.get("extracted_text_hash", "")[:16],
+            )
+
+            if extraction["extracted_text_length"] == 0:
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=provider,
+                    detection_source=detection_source,
+                    page_count=extraction["page_count"],
+                    extracted_text_length=extraction["extracted_text_length"],
+                    stage="pdf_extraction",
+                    reason="PDF text layer is empty",
+                    user_error="PDF tidak memiliki text layer atau gagal dibaca.",
+                )
+
             update_import_job_status(
                 connection,
-                job_id=str(job["id"]),
+                job_id=job_id,
                 status=ImportJobStatus.PARSING.value,
             )
-            parsed_result = self.enrich_transactions(
-                self.parse(file.file, provider=provider)
+            self._log_import_event(
+                "smart_import.parser.started",
+                job_id=job_id,
+                provider=provider,
             )
+            parsed_result = self.enrich_transactions(
+                self.parse_extracted(extraction, provider=provider)
+            )
+
+            self._log_import_event(
+                "smart_import.parser.completed",
+                job_id=job_id,
+                provider=provider,
+                transactions_found=len(parsed_result.transactions),
+                review_groups_found=sorted({
+                    str(transaction.get("review_group", ""))
+                    for transaction in parsed_result.transactions
+                    if str(transaction.get("review_group", "")).strip()
+                }),
+            )
+
+            if provider == "blu" and not parsed_result.transactions:
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=provider,
+                    detection_source=detection_source,
+                    page_count=extraction["page_count"],
+                    extracted_text_length=extraction["extracted_text_length"],
+                    stage="parser",
+                    reason="Blu PDF text was extracted but no transactions were parsed",
+                    user_error="PDF Blu terbaca, tapi transaksi tidak berhasil diparse.",
+                )
+
             parsed_result = self.mark_existing_transactions(
                 connection,
                 workspace_id=workspace_id,
@@ -196,23 +322,45 @@ class ImportService:
             ]
             update_import_job_summary(
                 connection,
-                job_id=str(job["id"]),
+                job_id=job_id,
                 transactions_found=len(parsed_result.transactions),
                 new_transactions=len(new_transactions),
                 existing_transactions=len(existing_transactions),
                 status=ImportJobStatus.REVIEW.value,
             )
+            self._log_import_event(
+                "smart_import.incremental.completed",
+                job_id=job_id,
+                transactions_found=len(parsed_result.transactions),
+                new_transactions=len(new_transactions),
+                existing_transactions=len(existing_transactions),
+            )
         except Exception:
             delete_temp_import_file(temp_file["path"])
+            update_import_job_status(
+                connection,
+                job_id=job_id,
+                status=ImportJobStatus.FAILED.value,
+                completed_at=datetime.now(timezone.utc),
+            )
+            self._log_import_event(
+                "smart_import.failed",
+                job_id=job_id,
+                stage="runtime_exception",
+                reason="Import upload failed unexpectedly",
+            )
             raise
 
         return ImportUploadResult(
-            job_id=str(job["id"]),
+            job_id=job_id,
             provider=parsed_result.provider or job["provider"],
+            detection_source=detection_source,
             status=ImportJobStatus.REVIEW,
             transactions_found=len(parsed_result.transactions),
             new_transactions=len(new_transactions),
             existing_transactions=len(existing_transactions),
+            page_count=parsed_result.page_count,
+            extracted_text_length=parsed_result.extracted_text_length,
             preview=[
                 ImportPreviewItem(
                     datetime=str(transaction.get("datetime", "")),
@@ -222,6 +370,68 @@ class ImportService:
                 )
                 for transaction in new_transactions[:5]
             ],
+        )
+
+    def _fail_upload(
+        self,
+        connection,
+        *,
+        job_id: str,
+        provider: str,
+        detection_source: str,
+        page_count: int,
+        extracted_text_length: int,
+        stage: str,
+        reason: str,
+        user_error: str,
+    ) -> ImportUploadResult:
+        update_import_job_summary(
+            connection,
+            job_id=job_id,
+            transactions_found=0,
+            new_transactions=0,
+            existing_transactions=0,
+            status=ImportJobStatus.FAILED.value,
+        )
+        update_import_job_status(
+            connection,
+            job_id=job_id,
+            status=ImportJobStatus.FAILED.value,
+            completed_at=datetime.now(timezone.utc),
+        )
+        self._log_import_event(
+            "smart_import.failed",
+            job_id=job_id,
+            stage=stage,
+            reason=reason,
+        )
+
+        return ImportUploadResult(
+            job_id=job_id,
+            provider=provider,
+            detection_source=detection_source,
+            status=ImportJobStatus.FAILED,
+            transactions_found=0,
+            new_transactions=0,
+            existing_transactions=0,
+            page_count=page_count,
+            extracted_text_length=extracted_text_length,
+            error=user_error,
+            preview=[],
+        )
+
+    def _get_upload_file_size(self, file) -> int | None:
+        size = getattr(file, "size", None)
+
+        if isinstance(size, int):
+            return size
+
+        return None
+
+    def _log_import_event(self, event_name: str, **fields):
+        logger.info(
+            event_name,
+            extra={"smart_import": fields},
         )
 
     def get_review_payload(self, connection, *, workspace_id: str, job_id: str):

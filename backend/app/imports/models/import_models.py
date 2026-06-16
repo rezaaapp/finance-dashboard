@@ -35,6 +35,8 @@ class ImportJob(BaseModel):
 class ParsedImportResult(BaseModel):
     provider: str = ""
     transactions: list[dict[str, Any]] = Field(default_factory=list)
+    page_count: int = 0
+    extracted_text_length: int = 0
 
 
 class ImportPreviewItem(BaseModel):
@@ -65,8 +67,12 @@ class ImportDraftTransaction(BaseModel):
 class ImportUploadResult(BaseModel):
     job_id: str
     provider: str = "unknown"
+    detection_source: str = "unknown"
     status: ImportJobStatus = ImportJobStatus.UPLOADED
     transactions_found: int = 0
     new_transactions: int = 0
     existing_transactions: int = 0
+    page_count: int = 0
+    extracted_text_length: int = 0
+    error: str | None = None
     preview: list[ImportPreviewItem] = Field(default_factory=list)
