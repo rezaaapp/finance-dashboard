@@ -1004,13 +1004,38 @@ const Dashboard = ({
             )}
           </button>
 
+          <button
+            type="button"
+            onClick={() => setActiveView("import")}
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "import"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
+            }`}
+            aria-label="Import Transaksi"
+            title="Import Transaksi"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <Upload size={18} />
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Import Transaksi
+              </span>
+            )}
+          </button>
+
           {isSidebarCollapsed ? (
             <div className="group relative">
               <button
                 type="button"
                 onClick={() => setActiveView("configuration")}
                 className={`nav-link flex min-h-11 w-full items-center justify-center rounded-xl border border-transparent text-left transition-colors duration-200 ${
-                  activeView === "configuration" || activeView === "admin" || activeView === "import"
+                  activeView === "configuration" || activeView === "admin"
                     ? "bg-[var(--color-accent-bg)] text-accent"
                     : "bg-transparent"
                 }`}
@@ -1063,13 +1088,6 @@ const Dashboard = ({
                   Google Sheets
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveView("import")}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
-                >
-                  📥 Import Transaksi
-                </button>
               </div>
             </div>
           ) : (
@@ -1078,7 +1096,7 @@ const Dashboard = ({
                 type="button"
                 onClick={() => setActiveView("configuration")}
                 className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent py-2.5 px-4 text-left transition-colors duration-200 ${
-                  activeView === "configuration" || activeView === "admin" || activeView === "import"
+                  activeView === "configuration" || activeView === "admin"
                     ? "bg-[var(--color-accent-bg)] text-accent"
                     : "bg-transparent"
                 }`}
@@ -1098,7 +1116,7 @@ const Dashboard = ({
               </button>
 
               <div className={`overflow-hidden transition-all duration-300 ease-out ${
-                activeView === "configuration" || activeView === "admin" || activeView === "import"
+                activeView === "configuration" || activeView === "admin"
                   ? "max-h-80 opacity-100"
                   : "max-h-0 opacity-0 group-hover:max-h-80 group-hover:opacity-100"
               }`}>
@@ -1148,17 +1166,6 @@ const Dashboard = ({
                   Google Sheets
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveView("import")}
-                  className={`w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm transition-colors duration-200 ${
-                  activeView === "import"
-                    ? "bg-[var(--color-accent-bg)] text-accent"
-                    : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
-                }`}
-              >
-                  📥 Import Transaksi
-                </button>
               </div>
             </div>
           )}
@@ -1631,19 +1638,6 @@ const Dashboard = ({
 
         <button
           type="button"
-          onClick={() => setActiveView("configuration")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
-            activeView === "configuration"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <Settings size={18} />
-          Configuration
-        </button>
-
-        <button
-          type="button"
           onClick={() => setActiveView("import")}
           className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
             activeView === "import"
@@ -1653,6 +1647,19 @@ const Dashboard = ({
         >
           <Upload size={18} />
           Import
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("configuration")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
+            activeView === "configuration"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <Settings size={18} />
+          Settings
         </button>
 
         {isSuperAdmin && (
