@@ -30,7 +30,15 @@ class ParsedImportResult(BaseModel):
     transactions: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ImportPreviewItem(BaseModel):
+    datetime: str = ""
+    merchant: str = ""
+    amount: float | int = 0
+
+
 class ImportUploadResult(BaseModel):
     job_id: str
     provider: str = "unknown"
     status: ImportJobStatus = ImportJobStatus.UPLOADED
+    transactions_found: int = 0
+    preview: list[ImportPreviewItem] = Field(default_factory=list)
