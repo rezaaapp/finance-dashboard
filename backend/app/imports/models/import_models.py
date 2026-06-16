@@ -37,9 +37,25 @@ class ImportPreviewItem(BaseModel):
     amount: float | int = 0
 
 
+class ImportDraftTransaction(BaseModel):
+    import_job_id: str
+    transaction_fingerprint: str
+    datetime: str = ""
+    merchant_original: str = ""
+    merchant_normalized: str = ""
+    amount: float | int = 0
+    direction: str = ""
+    transaction_type: str = ""
+    review_group: str = ""
+    raw_text: str = ""
+    is_existing: bool = False
+
+
 class ImportUploadResult(BaseModel):
     job_id: str
     provider: str = "unknown"
     status: ImportJobStatus = ImportJobStatus.UPLOADED
     transactions_found: int = 0
+    new_transactions: int = 0
+    existing_transactions: int = 0
     preview: list[ImportPreviewItem] = Field(default_factory=list)

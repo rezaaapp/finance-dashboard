@@ -16,6 +16,7 @@ from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.services.import_service import ImportService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
+from app.imports.models.import_models import ParsedImportResult
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_sample.pdf"
@@ -63,7 +64,9 @@ class BluPdfParserTestCase(unittest.TestCase):
             "status": "uploaded",
         }
 
-        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job):
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.get_existing_transaction_fingerprints", return_value=set()), \
+             patch("app.imports.services.import_service.create_import_draft_transactions"):
             result = ImportService().receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -73,6 +76,8 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("blu", result.provider)
         self.assertEqual("uploaded", result.status)
         self.assertEqual(4, result.transactions_found)
+        self.assertEqual(4, result.new_transactions)
+        self.assertEqual(0, result.existing_transactions)
         self.assertEqual(4, len(result.preview))
         self.assertEqual("14/06/2026 09:15", result.preview[0].datetime)
         self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_original)
@@ -146,6 +151,154 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertNotEqual(baseline, different_datetime)
         self.assertNotEqual(baseline, different_amount)
         self.assertNotEqual(baseline, different_merchant)
+
+    def test_incremental_engine_marks_second_upload_as_existing(self):
+        service = ImportService()
+        fake_upload = NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf")
+        stored_fingerprints = set()
+        stored_drafts = []
+        job_counter = {"value": 0}
+
+        def fake_create_import_job(_connection, **kwargs):
+            job_counter["value"] += 1
+            return {
+                "id": f"job-{job_counter['value']}",
+                "provider": kwargs["provider"],
+                "status": kwargs["status"],
+            }
+
+        def fake_get_existing(_connection, **_kwargs):
+            return set(stored_fingerprints)
+
+        def fake_create_drafts(_connection, *, draft_transactions):
+            stored_drafts.append(draft_transactions)
+
+        with patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
+             patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
+             patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts):
+            first_result = service.receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf"),
+            )
+            stored_fingerprints.update(
+                draft["transaction_fingerprint"] for draft in stored_drafts[-1]
+            )
+            second_result = service.receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf"),
+            )
+
+        self.assertEqual(4, first_result.new_transactions)
+        self.assertEqual(0, first_result.existing_transactions)
+        self.assertEqual(4, second_result.existing_transactions)
+        self.assertEqual(0, second_result.new_transactions)
+        self.assertEqual([], second_result.preview)
+        self.assertTrue(all(draft["is_existing"] for draft in stored_drafts[-1]))
+
+    def test_incremental_engine_supports_overlap_upload_previewing_only_new_rows(self):
+        service = ImportService()
+        first_half_transactions = ParsedImportResult(
+            provider="blu",
+            transactions=[
+                {
+                    "datetime": "01/06/2026 08:00",
+                    "merchant_original": "Fore Coffee 61715",
+                    "amount": 28000,
+                    "direction": "expense",
+                    "transaction_type": "DB",
+                    "review_group": "Makan Bulanan",
+                    "raw_text": "first-half-1",
+                },
+                {
+                    "datetime": "15/06/2026 12:00",
+                    "merchant_original": "SUPERINDO BCY QR",
+                    "amount": 150000,
+                    "direction": "expense",
+                    "transaction_type": "DB",
+                    "review_group": "Belanja Bulanan",
+                    "raw_text": "first-half-2",
+                },
+            ],
+        )
+        full_month_transactions = ParsedImportResult(
+            provider="blu",
+            transactions=[
+                *first_half_transactions.transactions,
+                {
+                    "datetime": "20/06/2026 19:00",
+                    "merchant_original": "Family Mart 000885",
+                    "amount": 45000,
+                    "direction": "expense",
+                    "transaction_type": "DB",
+                    "review_group": "Makan Bulanan",
+                    "raw_text": "full-month-3",
+                },
+                {
+                    "datetime": "30/06/2026 09:30",
+                    "merchant_original": "Top Up dari Bank Lain",
+                    "amount": 500000,
+                    "direction": "income",
+                    "transaction_type": "CR",
+                    "review_group": "bluAccount",
+                    "raw_text": "full-month-4",
+                },
+            ],
+        )
+        parse_queue = [first_half_transactions, full_month_transactions]
+        stored_fingerprints = set()
+        stored_drafts = []
+        job_counter = {"value": 0}
+
+        def fake_create_import_job(_connection, **kwargs):
+            job_counter["value"] += 1
+            return {
+                "id": f"job-{job_counter['value']}",
+                "provider": kwargs["provider"],
+                "status": kwargs["status"],
+            }
+
+        def fake_parse(_file, *, provider):
+            self.assertEqual("blu", provider)
+            return parse_queue.pop(0)
+
+        def fake_get_existing(_connection, **_kwargs):
+            return set(stored_fingerprints)
+
+        def fake_create_drafts(_connection, *, draft_transactions):
+            stored_drafts.append(draft_transactions)
+
+        with patch.object(ImportService, "parse", side_effect=fake_parse), \
+             patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
+             patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
+             patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts):
+            first_result = service.receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=NamedBytesIO(b"first-half", "blu-first-half.pdf"),
+            )
+            stored_fingerprints.update(
+                draft["transaction_fingerprint"] for draft in stored_drafts[-1]
+            )
+            second_result = service.receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=NamedBytesIO(b"full-month", "blu-full-month.pdf"),
+            )
+
+        self.assertEqual(2, first_result.new_transactions)
+        self.assertEqual(0, first_result.existing_transactions)
+        self.assertEqual(2, second_result.new_transactions)
+        self.assertEqual(2, second_result.existing_transactions)
+        self.assertEqual(2, len(second_result.preview))
+        self.assertEqual("Family Mart 000885", second_result.preview[0].merchant_original)
+        self.assertEqual("Family Mart", second_result.preview[0].merchant_normalized)
+        self.assertEqual("Top Up dari Bank Lain", second_result.preview[1].merchant_original)
+        self.assertTrue(stored_drafts[-1][0]["is_existing"])
+        self.assertTrue(stored_drafts[-1][1]["is_existing"])
+        self.assertFalse(stored_drafts[-1][2]["is_existing"])
+        self.assertFalse(stored_drafts[-1][3]["is_existing"])
 
 
 if __name__ == "__main__":

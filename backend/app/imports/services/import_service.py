@@ -2,18 +2,25 @@ from typing import BinaryIO
 
 from app.imports.models.import_models import ImportPreviewItem
 from app.imports.models.import_models import (
+    ImportDraftTransaction,
     ImportJobStatus,
     ImportUploadResult,
     ParsedImportResult,
 )
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
-from app.imports.repositories.import_repository import create_import_job
+from app.imports.repositories.import_repository import (
+    create_import_draft_transactions,
+    create_import_job,
+    get_existing_transaction_fingerprints,
+)
+from app.imports.services.incremental_import_engine import IncrementalImportEngine
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 
 
 class ImportService:
     def __init__(self):
+        self.incremental_engine = IncrementalImportEngine()
         self.merchant_normalizer = MerchantNormalizer()
 
     def detect_provider(self, filename: str) -> str:
@@ -55,6 +62,54 @@ class ImportService:
             transactions=enriched_transactions,
         )
 
+    def mark_existing_transactions(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        parsed_result: ParsedImportResult,
+    ) -> ParsedImportResult:
+        transaction_fingerprints = [
+            str(transaction.get("transaction_fingerprint", ""))
+            for transaction in parsed_result.transactions
+            if transaction.get("transaction_fingerprint")
+        ]
+        existing_fingerprints = get_existing_transaction_fingerprints(
+            connection,
+            workspace_id=workspace_id,
+            transaction_fingerprints=transaction_fingerprints,
+        )
+
+        return ParsedImportResult(
+            provider=parsed_result.provider,
+            transactions=self.incremental_engine.apply(
+                parsed_result.transactions,
+                existing_fingerprints=existing_fingerprints,
+            ),
+        )
+
+    def persist_draft_transactions(self, connection, *, import_job_id: str, transactions: list[dict]):
+        draft_transactions = [
+            ImportDraftTransaction(
+                import_job_id=import_job_id,
+                transaction_fingerprint=str(transaction.get("transaction_fingerprint", "")),
+                datetime=str(transaction.get("datetime", "")),
+                merchant_original=str(transaction.get("merchant_original", "")),
+                merchant_normalized=str(transaction.get("merchant_normalized", "")),
+                amount=transaction.get("amount", 0),
+                direction=str(transaction.get("direction", "")),
+                transaction_type=str(transaction.get("transaction_type", "")),
+                review_group=str(transaction.get("review_group", "")),
+                raw_text=str(transaction.get("raw_text", "")),
+                is_existing=bool(transaction.get("is_existing", False)),
+            ).model_dump()
+            for transaction in transactions
+        ]
+        create_import_draft_transactions(
+            connection,
+            draft_transactions=draft_transactions,
+        )
+
     def receive_upload(self, connection, *, workspace_id: str, file) -> ImportUploadResult:
         provider = self.detect_provider(file.filename or "")
         parsed_result = self.enrich_transactions(
@@ -67,12 +122,32 @@ class ImportService:
             filename=file.filename or "uploaded-file",
             status=ImportJobStatus.UPLOADED.value,
         )
+        parsed_result = self.mark_existing_transactions(
+            connection,
+            workspace_id=workspace_id,
+            parsed_result=parsed_result,
+        )
+        self.persist_draft_transactions(
+            connection,
+            import_job_id=str(job["id"]),
+            transactions=parsed_result.transactions,
+        )
+        new_transactions = [
+            transaction for transaction in parsed_result.transactions
+            if not transaction.get("is_existing", False)
+        ]
+        existing_transactions = [
+            transaction for transaction in parsed_result.transactions
+            if transaction.get("is_existing", False)
+        ]
 
         return ImportUploadResult(
             job_id=str(job["id"]),
             provider=job["provider"],
             status=job["status"],
             transactions_found=len(parsed_result.transactions),
+            new_transactions=len(new_transactions),
+            existing_transactions=len(existing_transactions),
             preview=[
                 ImportPreviewItem(
                     datetime=str(transaction.get("datetime", "")),
@@ -80,6 +155,6 @@ class ImportService:
                     merchant_normalized=str(transaction.get("merchant_normalized", "")),
                     amount=transaction.get("amount", 0),
                 )
-                for transaction in parsed_result.transactions[:5]
+                for transaction in new_transactions[:5]
             ],
         )
