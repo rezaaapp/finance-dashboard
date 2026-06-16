@@ -1,5 +1,7 @@
-import { FileText, Upload } from "lucide-react";
-import { useRef } from "react";
+import { CircleAlert, FileText, LoaderCircle, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+
+import { uploadImportFile } from "../../api/importApi";
 
 const comingSoonProviders = [
   "BCA PDF",
@@ -18,11 +20,40 @@ const ProviderBadge = ({ children, variant = "default" }) => (
   </span>
 );
 
-const ImportLanding = () => {
+const ImportLanding = ({ onReviewReady }) => {
   const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event) => {
+    const selectedFile = event.target.files?.[0];
+
+    if (!selectedFile) {
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+
+    try {
+      const response = await uploadImportFile(selectedFile);
+      onReviewReady({
+        ...response,
+        filename: selectedFile.name,
+      });
+    } catch (uploadError) {
+      setError(
+        uploadError?.response?.data?.detail
+        || "Upload import belum berhasil. Coba lagi."
+      );
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
   };
 
   return (
@@ -59,16 +90,22 @@ const ImportLanding = () => {
           <button
             type="button"
             onClick={openFilePicker}
+            disabled={uploading}
             className="primary-button mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold sm:w-auto"
           >
-            <Upload size={18} />
-            Upload PDF
+            {uploading ? (
+              <LoaderCircle size={18} className="animate-spin" />
+            ) : (
+              <Upload size={18} />
+            )}
+            {uploading ? "Membaca PDF..." : "Upload PDF"}
           </button>
 
           <input
             ref={fileInputRef}
             type="file"
             accept="application/pdf,.pdf"
+            onChange={handleFileChange}
             className="hidden"
           />
         </article>
@@ -106,6 +143,15 @@ const ImportLanding = () => {
           </article>
         ))}
       </section>
+
+      {error && (
+        <section className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+          <div className="flex items-start gap-3">
+            <CircleAlert size={18} className="mt-0.5 shrink-0" />
+            <p>{error}</p>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
         Saat ini Import Transaksi hanya mendukung PDF e-Statement Blu.

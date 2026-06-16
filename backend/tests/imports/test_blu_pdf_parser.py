@@ -66,7 +66,8 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", return_value=set()), \
-             patch("app.imports.services.import_service.create_import_draft_transactions"):
+             patch("app.imports.services.import_service.create_import_draft_transactions"), \
+             patch("app.imports.services.import_service.update_import_job_summary"):
             result = ImportService().receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -175,7 +176,8 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
-             patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts):
+             patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
+             patch("app.imports.services.import_service.update_import_job_summary"):
             first_result = service.receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -195,7 +197,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(4, second_result.existing_transactions)
         self.assertEqual(0, second_result.new_transactions)
         self.assertEqual([], second_result.preview)
-        self.assertTrue(all(draft["is_existing"] for draft in stored_drafts[-1]))
+        self.assertEqual([], stored_drafts[-1])
 
     def test_incremental_engine_supports_overlap_upload_previewing_only_new_rows(self):
         service = ImportService()
@@ -272,7 +274,8 @@ class BluPdfParserTestCase(unittest.TestCase):
         with patch.object(ImportService, "parse", side_effect=fake_parse), \
              patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
-             patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts):
+             patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
+             patch("app.imports.services.import_service.update_import_job_summary"):
             first_result = service.receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -295,10 +298,96 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Family Mart 000885", second_result.preview[0].merchant_original)
         self.assertEqual("Family Mart", second_result.preview[0].merchant_normalized)
         self.assertEqual("Top Up dari Bank Lain", second_result.preview[1].merchant_original)
-        self.assertTrue(stored_drafts[-1][0]["is_existing"])
-        self.assertTrue(stored_drafts[-1][1]["is_existing"])
-        self.assertFalse(stored_drafts[-1][2]["is_existing"])
-        self.assertFalse(stored_drafts[-1][3]["is_existing"])
+        self.assertEqual(2, len(stored_drafts[-1]))
+        self.assertFalse(stored_drafts[-1][0]["is_existing"])
+        self.assertFalse(stored_drafts[-1][1]["is_existing"])
+
+    def test_review_payload_contains_only_new_transactions_and_filters(self):
+        service = ImportService()
+        review_summary = {
+            "id": "job-1",
+            "filename": "blu_statement_juni.pdf",
+            "provider": "blu",
+            "status": "uploaded",
+            "transactions_found": 4,
+            "new_transactions": 2,
+            "existing_transactions": 2,
+            "created_at": "2026-06-16T10:00:00Z",
+        }
+        draft_transactions = [
+            {
+                "id": "draft-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "status": "new",
+                "category": "",
+                "notes": "",
+            },
+            {
+                "id": "draft-2",
+                "datetime": "02/06/2026 09:00",
+                "merchant_original": "Top Up dari Bank Lain",
+                "merchant_normalized": "Top Up dari Bank Lain",
+                "amount": 500000,
+                "direction": "income",
+                "transaction_type": "CR",
+                "review_group": "bluAccount",
+                "raw_text": "raw-2",
+                "status": "new",
+                "category": "",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value=review_summary), \
+             patch("app.imports.services.import_service.list_import_draft_transactions", return_value=draft_transactions):
+            payload = service.get_review_payload(
+                connection=object(),
+                workspace_id="workspace-1",
+                job_id="job-1",
+            )
+
+        self.assertEqual("blu_statement_juni.pdf", payload["summary"]["filename"])
+        self.assertEqual(2, len(payload["draft_transactions"]))
+        self.assertEqual(
+            ["Semua", "Makan Bulanan", "bluAccount", "Perlu Review"],
+            [filter_item["label"] for filter_item in payload["filters"]],
+        )
+
+    def test_approve_and_reject_review_transactions(self):
+        service = ImportService()
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1"}), \
+             patch("app.imports.services.import_service.approve_import_draft_transactions", return_value=[{"id": "draft-1"}]), \
+             patch("app.imports.services.import_service.reject_import_draft_transactions", return_value=[{"id": "draft-2"}]):
+            approve_result = service.approve_review_transactions(
+                connection=object(),
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-1"],
+                item_updates=[{
+                    "draft_id": "draft-1",
+                    "category": "Makan",
+                    "notes": "Approved manually",
+                }],
+            )
+            reject_result = service.reject_review_transactions(
+                connection=object(),
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-2"],
+            )
+
+        self.assertEqual(1, approve_result["approved_count"])
+        self.assertEqual(["draft-1"], approve_result["draft_ids"])
+        self.assertEqual(1, reject_result["rejected_count"])
+        self.assertEqual(["draft-2"], reject_result["draft_ids"])
 
 
 if __name__ == "__main__":

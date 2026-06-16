@@ -38,6 +38,7 @@ class ImportPreviewItem(BaseModel):
 
 
 class ImportDraftTransaction(BaseModel):
+    id: str | None = None
     import_job_id: str
     transaction_fingerprint: str
     datetime: str = ""
@@ -49,6 +50,9 @@ class ImportDraftTransaction(BaseModel):
     review_group: str = ""
     raw_text: str = ""
     is_existing: bool = False
+    status: str = "new"
+    category: str = ""
+    notes: str = ""
 
 
 class ImportUploadResult(BaseModel):

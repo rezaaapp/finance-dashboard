@@ -79,4 +79,9 @@ export const WORKSPACE_INVITATIONS_API_URL = DASHBOARD_API_URL.replace(
   "/api/workspace-invitations"
 );
 
+export const IMPORT_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/import"
+);
+
 export const AUTH_BASE_URL = AUTH_API_URL.replace(/\/api\/auth$/, "/auth");
