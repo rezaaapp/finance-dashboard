@@ -165,6 +165,26 @@ def increment_import_job_rejected_count(
         return cursor.fetchone()
 
 
+def list_workspace_transaction_categories(connection, *, workspace_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select category
+            from (
+                select distinct btrim(raw_category) as category
+                from transactions
+                where workspace_id = %s
+                  and raw_category is not null
+                  and btrim(raw_category) <> ''
+            ) categories
+            order by category asc
+            """,
+            (workspace_id,),
+        )
+
+        return [row["category"] for row in cursor.fetchall()]
+
+
 def get_existing_transaction_fingerprints(
     connection,
     *,

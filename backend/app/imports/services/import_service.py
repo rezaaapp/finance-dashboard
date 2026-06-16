@@ -35,6 +35,7 @@ from app.imports.repositories.import_repository import (
     reject_import_draft_transactions,
     refresh_import_job_aggregates,
     set_import_job_temp_file,
+    list_workspace_transaction_categories,
     update_import_job_provider,
     update_import_job_status,
     update_import_job_summary,
@@ -480,6 +481,14 @@ class ImportService:
             },
             "filters": self._build_review_filters(serialized_transactions),
             "draft_transactions": serialized_transactions,
+        }
+
+    def get_category_options_payload(self, connection, *, workspace_id: str):
+        return {
+            "categories": list_workspace_transaction_categories(
+                connection,
+                workspace_id=workspace_id,
+            ),
         }
 
     def approve_review_transactions(

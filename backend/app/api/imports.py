@@ -43,6 +43,20 @@ def upload_import_file(
     return result.model_dump()
 
 
+@router.get("/category-options")
+def get_import_category_options(
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    service = ImportService()
+
+    with get_db_connection() as connection:
+        return service.get_category_options_payload(
+            connection,
+            workspace_id=str(workspace["id"]),
+        )
+
+
 @router.get("/review/{job_id}")
 def get_import_review(
     job_id: str,

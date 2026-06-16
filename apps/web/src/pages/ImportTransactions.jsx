@@ -2,18 +2,17 @@ import { useState } from "react";
 
 import { startGoogleOAuth } from "../api/googleOAuthApi";
 import {
+  approveImportReview,
+  getImportCategoryOptions,
   getImportHistory,
   getImportHistoryDetail,
+  getImportReview,
+  rejectImportReview,
   retryImportSync,
 } from "../api/importApi";
 import ImportLanding from "../components/import/ImportLanding";
 import ImportHistory from "../components/import/ImportHistory";
 import ImportReview from "../components/import/ImportReview";
-import {
-  approveImportReview,
-  getImportReview,
-  rejectImportReview,
-} from "../api/importApi";
 
 const ImportTransactions = () => {
   const [activeTab, setActiveTab] = useState("upload");
@@ -27,15 +26,38 @@ const ImportTransactions = () => {
   const [historyDetail, setHistoryDetail] = useState(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState("");
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(false);
+  const [categoryOptionsError, setCategoryOptionsError] = useState("");
 
   const loadReview = async (jobId) => {
     setLoading(true);
     setError("");
     setActiveJobId(jobId);
+    setCategoryOptionsLoading(true);
+    setCategoryOptionsError("");
 
     try {
-      const review = await getImportReview(jobId);
-      setReviewData(review);
+      const [reviewResult, categoryResult] = await Promise.allSettled([
+        getImportReview(jobId),
+        getImportCategoryOptions(),
+      ]);
+
+      if (categoryResult.status === "fulfilled") {
+        setCategoryOptions(categoryResult.value.categories || []);
+      } else {
+        setCategoryOptions([]);
+        setCategoryOptionsError(
+          categoryResult.reason?.response?.data?.detail
+          || "Kategori transaksi belum bisa dimuat. Review tetap bisa dilanjutkan."
+        );
+      }
+
+      if (reviewResult.status === "rejected") {
+        throw reviewResult.reason;
+      }
+
+      setReviewData(reviewResult.value);
     } catch (reviewError) {
       setError(
         reviewError?.response?.data?.detail
@@ -44,6 +66,7 @@ const ImportTransactions = () => {
       setReviewData(null);
     } finally {
       setLoading(false);
+      setCategoryOptionsLoading(false);
     }
   };
 
@@ -176,10 +199,15 @@ const ImportTransactions = () => {
             error={error}
             onApprove={handleApprove}
             onReject={handleReject}
+            categoryOptions={categoryOptions}
+            categoryOptionsLoading={categoryOptionsLoading}
+            categoryOptionsError={categoryOptionsError}
             onBack={() => {
               setActiveJobId("");
               setReviewData(null);
               setError("");
+              setCategoryOptions([]);
+              setCategoryOptionsError("");
               setActiveTab("upload");
             }}
           />

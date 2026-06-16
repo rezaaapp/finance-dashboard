@@ -647,6 +647,27 @@ class BluPdfParserTestCase(unittest.TestCase):
             [filter_item["label"] for filter_item in payload["filters"]],
         )
 
+    def test_category_options_payload_uses_workspace_transaction_categories(self):
+        connection = object()
+
+        with patch(
+            "app.imports.services.import_service.list_workspace_transaction_categories",
+            return_value=["Groceries", "Makanan", "Parkir", "Pacaran"],
+        ) as list_categories_mock:
+            payload = ImportService().get_category_options_payload(
+                connection,
+                workspace_id="workspace-1",
+            )
+
+        self.assertEqual(
+            {"categories": ["Groceries", "Makanan", "Parkir", "Pacaran"]},
+            payload,
+        )
+        list_categories_mock.assert_called_once_with(
+            connection,
+            workspace_id="workspace-1",
+        )
+
     def test_approve_review_transactions_creates_final_transactions_and_registers_fingerprint(self):
         service = ImportService()
         selected_drafts = [

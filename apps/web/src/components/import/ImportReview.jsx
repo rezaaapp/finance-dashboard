@@ -9,18 +9,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-const CATEGORY_OPTIONS = [
-  "",
-  "Belanja",
-  "Makan",
-  "Transportasi",
-  "Hiburan",
-  "Tagihan",
-  "Top Up",
-  "Operasional",
-  "Lainnya",
-];
-
 const formatAmount = (amount) => new Intl.NumberFormat("id-ID", {
   style: "currency",
   currency: "IDR",
@@ -76,6 +64,9 @@ const ImportReview = ({
   error,
   onApprove,
   onReject,
+  categoryOptions = [],
+  categoryOptionsLoading = false,
+  categoryOptionsError = "",
   onBack,
 }) => {
   const [activeFilter, setActiveFilter] = useState("all");
@@ -86,6 +77,51 @@ const ImportReview = ({
   ));
   const [searchTerm, setSearchTerm] = useState("");
   const [actionLoading, setActionLoading] = useState("");
+
+  const normalizedCategoryOptions = useMemo(() => {
+    const options = new Set();
+
+    categoryOptions.forEach((option) => {
+      const normalizedOption = String(option || "").trim();
+      if (normalizedOption) {
+        options.add(normalizedOption);
+      }
+    });
+
+    draftRows.forEach((row) => {
+      const currentCategory = String(row.category || "").trim();
+      if (currentCategory) {
+        options.add(currentCategory);
+      }
+    });
+
+    return Array.from(options).sort((first, second) => first.localeCompare(second, "id"));
+  }, [categoryOptions, draftRows]);
+
+  const categoryNotice = useMemo(() => {
+    if (categoryOptionsLoading) {
+      return {
+        tone: "info",
+        message: "Memuat kategori transaksi...",
+      };
+    }
+
+    if (categoryOptionsError) {
+      return {
+        tone: "warning",
+        message: categoryOptionsError,
+      };
+    }
+
+    if (normalizedCategoryOptions.length === 0) {
+      return {
+        tone: "muted",
+        message: "Belum ada kategori dari data transaksi",
+      };
+    }
+
+    return null;
+  }, [categoryOptionsError, categoryOptionsLoading, normalizedCategoryOptions.length]);
 
   useEffect(() => {
     const normalizedRows = normalizeRowsForState(reviewData?.draft_transactions);
@@ -394,6 +430,16 @@ const ImportReview = ({
                 </button>
               </div>
             </div>
+
+            {categoryNotice && (
+              <div className={`rounded-lg border px-4 py-3 text-sm ${
+                categoryNotice.tone === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+                  : "border-[var(--color-border)] bg-[var(--color-panel-hover)] text-muted"
+              }`}>
+                {categoryNotice.message}
+              </div>
+            )}
           </div>
         </section>
 
@@ -462,8 +508,24 @@ const ImportReview = ({
                         <td className="px-4 py-3 font-semibold text-main">
                           {formatAmount(row.amount)}
                         </td>
-                        <td className="px-4 py-3 text-muted">
-                          {row.category || "Belum dipilih"}
+                        <td className="px-4 py-3">
+                          <select
+                            value={row.category}
+                            onChange={(event) => handleDraftFieldChange(
+                              row.id,
+                              "category",
+                              event.target.value
+                            )}
+                            onClick={(event) => event.stopPropagation()}
+                            className="form-control w-44 rounded-lg px-3 py-2 text-xs"
+                          >
+                            <option value="">Pilih kategori</option>
+                            {normalizedCategoryOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-4 py-3 text-muted">
                           {row.review_group || "-"}
@@ -556,12 +618,17 @@ const ImportReview = ({
                 className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm"
               >
                 <option value="">Pilih kategori</option>
-                {CATEGORY_OPTIONS.filter(Boolean).map((option) => (
+                {normalizedCategoryOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
                 ))}
               </select>
+              {normalizedCategoryOptions.length === 0 && !categoryOptionsLoading && (
+                <p className="mt-2 text-xs text-muted">
+                  Belum ada kategori dari data transaksi
+                </p>
+              )}
             </label>
 
             <label className="block">

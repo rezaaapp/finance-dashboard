@@ -38,6 +38,17 @@ export const getImportReview = async (jobId) => {
   return response.data;
 };
 
+export const getImportCategoryOptions = async () => {
+  const response = await axios.get(
+    `${IMPORT_API_URL}/category-options`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
 export const approveImportReview = async (jobId, payload) => {
   const response = await axios.post(
     `${IMPORT_API_URL}/review/${jobId}/approve`,
