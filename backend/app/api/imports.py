@@ -80,6 +80,8 @@ def approve_import_review(
         with connection.transaction():
             result = service.approve_review_transactions(
                 connection,
+                workspace=workspace,
+                current_user=current_user,
                 workspace_id=str(workspace["id"]),
                 import_job_id=job_id,
                 draft_ids=request.draft_ids,

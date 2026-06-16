@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 import types
 import unittest
@@ -6,14 +7,36 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+os.environ.setdefault("DASHBOARD_USERNAME", "test-user")
+os.environ.setdefault("DASHBOARD_PASSWORD", "test-password")
+os.environ.setdefault("DASHBOARD_AUTH_TOKEN", "test-token")
+os.environ.setdefault("JWT_SECRET", "test-secret")
+os.environ.setdefault("TOKEN_ENCRYPTION_SECRET", "test-secret")
+os.environ.setdefault(
+    "TOKEN_ENCRYPTION_KEY",
+    "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+)
 fake_psycopg = types.ModuleType("psycopg")
 fake_psycopg_rows = types.ModuleType("psycopg.rows")
+fake_psycopg_types = types.ModuleType("psycopg.types")
+fake_psycopg_types_json = types.ModuleType("psycopg.types.json")
+fake_dotenv = types.ModuleType("dotenv")
+fake_httpx = types.ModuleType("httpx")
 fake_psycopg_rows.dict_row = object()
+fake_psycopg_types_json.Jsonb = lambda value: value
+fake_dotenv.dotenv_values = lambda _path: {}
+fake_httpx.HTTPError = Exception
+fake_httpx.HTTPStatusError = Exception
 sys.modules.setdefault("psycopg", fake_psycopg)
 sys.modules.setdefault("psycopg.rows", fake_psycopg_rows)
+sys.modules.setdefault("psycopg.types", fake_psycopg_types)
+sys.modules.setdefault("psycopg.types.json", fake_psycopg_types_json)
+sys.modules.setdefault("dotenv", fake_dotenv)
+sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.services.import_service import ImportService
+from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.models.import_models import ParsedImportResult
@@ -360,14 +383,51 @@ class BluPdfParserTestCase(unittest.TestCase):
             [filter_item["label"] for filter_item in payload["filters"]],
         )
 
-    def test_approve_and_reject_review_transactions(self):
+    def test_approve_review_transactions_creates_final_transactions_and_registers_fingerprint(self):
         service = ImportService()
+        selected_drafts = [
+            {
+                "id": "draft-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "category": "",
+                "notes": "",
+            },
+        ]
+        created_transactions = [
+            {
+                "id": "txn-1",
+                "import_transaction_fingerprint": "fp-1",
+                "sync_status": "pending",
+            },
+        ]
 
-        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1"}), \
-             patch("app.imports.services.import_service.approve_import_draft_transactions", return_value=[{"id": "draft-1"}]), \
-             patch("app.imports.services.import_service.reject_import_draft_transactions", return_value=[{"id": "draft-2"}]):
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={"id": "oauth-1"}), \
+             patch("app.imports.services.import_service.ensure_import_google_sheet_source", return_value={"id": "sheet-source-1"}), \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=created_transactions) as create_transactions_mock, \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
+                 "status": "success",
+                 "sync_success": 1,
+                 "sync_failed": 0,
+                 "source_id": "sheet-source-1",
+                 "error": None,
+             }), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock:
             approve_result = service.approve_review_transactions(
                 connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
                 workspace_id="workspace-1",
                 import_job_id="job-1",
                 draft_ids=["draft-1"],
@@ -377,6 +437,123 @@ class BluPdfParserTestCase(unittest.TestCase):
                     "notes": "Approved manually",
                 }],
             )
+
+        created_row = create_transactions_mock.call_args.kwargs["rows"][0]
+        self.assertEqual("sheet-source-1", created_row["sheet_source_id"])
+        self.assertEqual("Fore Coffee", created_row["title"])
+        self.assertEqual("Makan", created_row["raw_category"])
+        self.assertEqual("Approved manually", created_row["note"])
+        self.assertEqual("Blu", created_row["source_fund"])
+        register_fingerprints_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            rows=[{
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+            }],
+        )
+        update_sync_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            transaction_fingerprints=["fp-1"],
+            sync_status="success",
+        )
+        delete_drafts_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            import_job_id="job-1",
+            draft_ids=["draft-1"],
+        )
+        self.assertEqual(1, approve_result["approved_count"])
+        self.assertEqual(["draft-1"], approve_result["draft_ids"])
+        self.assertEqual(1, approve_result["sync_success"])
+        self.assertEqual(0, approve_result["sync_failed"])
+
+    def test_approve_review_transactions_keeps_final_transactions_when_sync_fails(self):
+        service = ImportService()
+        selected_drafts = [
+            {
+                "id": "draft-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "category": "Makan",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={"id": "oauth-1"}), \
+             patch("app.imports.services.import_service.ensure_import_google_sheet_source", return_value={"id": "sheet-source-1"}), \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]), \
+             patch("app.imports.services.import_service.register_transaction_fingerprints"), \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
+                 "status": "failed",
+                 "sync_success": 0,
+                 "sync_failed": 1,
+                 "source_id": "sheet-source-1",
+                 "error": "append failed",
+             }), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock:
+            approve_result = service.approve_review_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-1"],
+                item_updates=[],
+            )
+
+        update_sync_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            transaction_fingerprints=["fp-1"],
+            sync_status="failed",
+            sync_error_message="append failed",
+        )
+        delete_drafts_mock.assert_called_once()
+        self.assertEqual("failed", approve_result["sync_status"])
+        self.assertEqual(0, approve_result["sync_success"])
+        self.assertEqual(1, approve_result["sync_failed"])
+
+    def test_spreadsheet_sync_requires_reconnect_for_readonly_scope(self):
+        sync_service = SpreadsheetSyncService()
+
+        with patch("app.imports.services.spreadsheet_sync_service.get_active_google_oauth_connection", return_value={
+            "id": "oauth-1",
+            "access_token_encrypted": "encrypted-token",
+            "scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        }), \
+             patch("app.imports.services.spreadsheet_sync_service.ensure_import_google_sheet_source") as ensure_source_mock, \
+             patch("app.imports.services.spreadsheet_sync_service.append_sheet_values") as append_values_mock:
+            result = sync_service.sync_import_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                approved_transactions=[{
+                    "datetime": "01/06/2026 08:00",
+                    "merchant_normalized": "Fore Coffee",
+                    "amount": 28000,
+                    "category": "Makan",
+                    "notes": "",
+                }],
+            )
+
+        ensure_source_mock.assert_not_called()
+        append_values_mock.assert_not_called()
+        self.assertEqual("needs_reconnect", result["status"])
+        self.assertEqual(1, result["sync_failed"])
+
+    def test_reject_review_transactions_removes_selected_drafts(self):
+        service = ImportService()
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1"}), \
+             patch("app.imports.services.import_service.reject_import_draft_transactions", return_value=[{"id": "draft-2"}]):
             reject_result = service.reject_review_transactions(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -384,8 +561,6 @@ class BluPdfParserTestCase(unittest.TestCase):
                 draft_ids=["draft-2"],
             )
 
-        self.assertEqual(1, approve_result["approved_count"])
-        self.assertEqual(["draft-1"], approve_result["draft_ids"])
         self.assertEqual(1, reject_result["rejected_count"])
         self.assertEqual(["draft-2"], reject_result["draft_ids"])
 

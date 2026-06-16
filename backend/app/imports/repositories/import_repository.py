@@ -1,5 +1,9 @@
 from psycopg.rows import dict_row
 
+from app.imports.repositories.fingerprint_registry_repository import (
+    get_registered_transaction_fingerprints,
+)
+
 
 def create_import_job(
     connection,
@@ -78,26 +82,11 @@ def get_existing_transaction_fingerprints(
     workspace_id: str,
     transaction_fingerprints: list[str],
 ):
-    if not transaction_fingerprints:
-        return set()
-
-    with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
-            """
-            select distinct draft.transaction_fingerprint
-            from import_draft_transactions as draft
-            inner join import_jobs as job
-                on job.id = draft.import_job_id
-            where job.workspace_id = %s
-              and draft.status = 'approved'
-              and draft.transaction_fingerprint = any(%s)
-            """,
-            (workspace_id, transaction_fingerprints),
-        )
-
-        rows = cursor.fetchall()
-
-    return {row["transaction_fingerprint"] for row in rows}
+    del workspace_id
+    return get_registered_transaction_fingerprints(
+        connection,
+        transaction_fingerprints=transaction_fingerprints,
+    )
 
 
 def create_import_draft_transactions(
@@ -195,6 +184,47 @@ def list_import_draft_transactions(connection, *, import_job_id: str, status: st
         return cursor.fetchall()
 
 
+def list_import_draft_transactions_by_ids(
+    connection,
+    *,
+    import_job_id: str,
+    draft_ids: list[str],
+):
+    if not draft_ids:
+        return []
+
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                import_job_id,
+                transaction_fingerprint,
+                datetime,
+                merchant_original,
+                merchant_normalized,
+                amount,
+                direction,
+                transaction_type,
+                review_group,
+                raw_text,
+                is_existing,
+                status,
+                category,
+                notes,
+                created_at
+            from import_draft_transactions
+            where import_job_id = %s
+              and id = any(%s)
+              and status = 'new'
+            order by created_at asc
+            """,
+            (import_job_id, draft_ids),
+        )
+
+        return cursor.fetchall()
+
+
 def approve_import_draft_transactions(
     connection,
     *,
@@ -254,6 +284,29 @@ def reject_import_draft_transactions(
             where import_job_id = %s
               and id = any(%s)
               and status = 'new'
+            returning id
+            """,
+            (import_job_id, draft_ids),
+        )
+
+        return cursor.fetchall()
+
+
+def delete_import_draft_transactions(
+    connection,
+    *,
+    import_job_id: str,
+    draft_ids: list[str],
+):
+    if not draft_ids:
+        return []
+
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            delete from import_draft_transactions
+            where import_job_id = %s
+              and id = any(%s)
             returning id
             """,
             (import_job_id, draft_ids),

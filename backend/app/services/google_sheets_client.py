@@ -89,3 +89,39 @@ def read_sheet_values(
         _raise_safe_google_error(exc)
 
     return response.json().get("values", [])
+
+
+def append_sheet_values(
+    access_token: str,
+    spreadsheet_id: str,
+    range_name: str,
+    rows: list[list],
+):
+    safe_range_name = (range_name or "").strip()
+
+    if not safe_range_name:
+        raise GoogleSheetsClientError("Google Sheets range is required")
+
+    if not rows:
+        return {"updatedRows": 0}
+
+    encoded_range = quote(safe_range_name, safe="")
+
+    try:
+        response = httpx.post(
+            f"{GOOGLE_SHEETS_API_BASE_URL}/{spreadsheet_id}/values/{encoded_range}:append",
+            params={
+                "valueInputOption": "USER_ENTERED",
+                "insertDataOption": "INSERT_ROWS",
+            },
+            headers=_authorization_headers(access_token),
+            json={
+                "values": rows,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        _raise_safe_google_error(exc)
+
+    return response.json()

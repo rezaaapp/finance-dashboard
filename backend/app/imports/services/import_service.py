@@ -8,25 +8,38 @@ from app.imports.models.import_models import (
     ParsedImportResult,
 )
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
+from app.imports.repositories.final_transaction_repository import (
+    create_import_transactions,
+    serialize_import_transaction_row,
+    update_import_transaction_sync_status,
+)
+from app.imports.repositories.fingerprint_registry_repository import (
+    register_transaction_fingerprints,
+)
 from app.imports.repositories.import_repository import (
-    approve_import_draft_transactions,
     create_import_draft_transactions,
     create_import_job,
+    delete_import_draft_transactions,
     get_existing_transaction_fingerprints,
     get_import_review_summary,
     list_import_draft_transactions,
+    list_import_draft_transactions_by_ids,
     reject_import_draft_transactions,
     update_import_job_summary,
 )
 from app.imports.services.incremental_import_engine import IncrementalImportEngine
+from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
+from app.repositories.google_oauth_repository import get_active_google_oauth_connection
+from app.repositories.google_sheet_source_repository import ensure_import_google_sheet_source
 
 
 class ImportService:
     def __init__(self):
         self.incremental_engine = IncrementalImportEngine()
         self.merchant_normalizer = MerchantNormalizer()
+        self.spreadsheet_sync_service = SpreadsheetSyncService()
 
     def detect_provider(self, filename: str) -> str:
         normalized_filename = filename.lower()
@@ -230,38 +243,111 @@ class ImportService:
         self,
         connection,
         *,
+        workspace: dict,
+        current_user: dict,
         workspace_id: str,
         import_job_id: str,
         draft_ids: list[str],
         item_updates: list[dict] | None = None,
     ):
-        if not get_import_review_summary(
+        review_summary = get_import_review_summary(
             connection,
             workspace_id=workspace_id,
             job_id=import_job_id,
-        ):
+        )
+        if not review_summary:
             return None
 
         normalized_ids = self._normalize_draft_ids(draft_ids, item_updates)
-        updates_by_id = {
-            str(item["draft_id"]): {
-                "category": str(item.get("category", "")),
-                "notes": str(item.get("notes", "")),
-            }
-            for item in (item_updates or [])
-            if item.get("draft_id")
-        }
-
-        updated_rows = approve_import_draft_transactions(
+        selected_drafts = list_import_draft_transactions_by_ids(
             connection,
             import_job_id=import_job_id,
             draft_ids=normalized_ids,
-            updates_by_id=updates_by_id,
+        )
+        merged_drafts = self._merge_review_item_updates(
+            selected_drafts,
+            item_updates=item_updates or [],
+        )
+        if not merged_drafts:
+            return {
+                "approved_count": 0,
+                "sync_success": 0,
+                "sync_failed": 0,
+                "sync_status": "skipped",
+                "draft_ids": [],
+            }
+
+        final_sheet_source_id = self._resolve_final_sheet_source_id(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+        )
+        final_transaction_rows = [
+            serialize_import_transaction_row(
+                workspace_id=workspace_id,
+                sheet_source_id=final_sheet_source_id,
+                import_job_id=import_job_id,
+                user_name=current_user.get("name") or current_user.get("email") or "User",
+                transaction=draft,
+            )
+            for draft in merged_drafts
+        ]
+        created_transactions = create_import_transactions(
+            connection,
+            rows=final_transaction_rows,
+        )
+        register_transaction_fingerprints(
+            connection,
+            rows=[
+                {
+                    "transaction_fingerprint": draft["transaction_fingerprint"],
+                    "provider": review_summary["provider"],
+                }
+                for draft in merged_drafts
+            ],
+        )
+        sync_result = self.spreadsheet_sync_service.sync_import_transactions(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            approved_transactions=merged_drafts,
+        )
+        transaction_fingerprints = [
+            draft["transaction_fingerprint"]
+            for draft in merged_drafts
+        ]
+        if sync_result["status"] == "success":
+            update_import_transaction_sync_status(
+                connection,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="success",
+            )
+        elif sync_result["status"] == "needs_reconnect":
+            update_import_transaction_sync_status(
+                connection,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="needs_reconnect",
+                sync_error_message="needs_reconnect",
+            )
+        else:
+            update_import_transaction_sync_status(
+                connection,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="failed",
+                sync_error_message=sync_result.get("error"),
+            )
+        delete_import_draft_transactions(
+            connection,
+            import_job_id=import_job_id,
+            draft_ids=[str(draft["id"]) for draft in merged_drafts],
         )
 
         return {
-            "approved_count": len(updated_rows),
-            "draft_ids": [str(row["id"]) for row in updated_rows],
+            "approved_count": len(created_transactions),
+            "sync_success": sync_result["sync_success"],
+            "sync_failed": sync_result["sync_failed"],
+            "sync_status": sync_result["status"],
+            "draft_ids": [str(draft["id"]) for draft in merged_drafts],
         }
 
     def reject_review_transactions(
@@ -300,6 +386,64 @@ class ImportService:
                 normalized_ids.append(draft_id)
 
         return normalized_ids
+
+    def _merge_review_item_updates(self, draft_transactions: list[dict], *, item_updates: list[dict]):
+        updates_by_id = {
+            str(item["draft_id"]): item
+            for item in item_updates
+            if item.get("draft_id")
+        }
+
+        merged_drafts = []
+
+        for draft in draft_transactions:
+            draft_id = str(draft["id"])
+            update = updates_by_id.get(draft_id, {})
+            merged_drafts.append({
+                "id": draft_id,
+                "transaction_fingerprint": draft["transaction_fingerprint"],
+                "datetime": draft["datetime"],
+                "merchant_original": draft["merchant_original"],
+                "merchant_normalized": draft["merchant_normalized"],
+                "amount": float(draft["amount"]),
+                "direction": draft["direction"],
+                "transaction_type": draft["transaction_type"],
+                "review_group": draft["review_group"],
+                "raw_text": draft["raw_text"],
+                "category": str(update.get("category", draft.get("category", ""))),
+                "notes": str(update.get("notes", draft.get("notes", ""))),
+            })
+
+        return merged_drafts
+
+    def _resolve_final_sheet_source_id(
+        self,
+        connection,
+        *,
+        workspace: dict,
+        current_user: dict,
+    ) -> str:
+        fallback_sheet_id = str(workspace.get("google_sheet_id") or "").strip()
+
+        if not fallback_sheet_id:
+            raise ValueError("Workspace does not have an active Google Sheet source")
+
+        oauth_connection = get_active_google_oauth_connection(
+            connection,
+            workspace_id=str(workspace["id"]),
+            user_id=current_user["sub"],
+        )
+        sheet_source = ensure_import_google_sheet_source(
+            connection,
+            workspace_id=str(workspace["id"]),
+            oauth_connection_id=(str(oauth_connection["id"]) if oauth_connection else None),
+            sheet_id=fallback_sheet_id,
+        )
+
+        if not sheet_source:
+            raise ValueError("Workspace does not have an active Google Sheet source")
+
+        return str(sheet_source["id"])
 
     def _build_review_filters(self, draft_transactions: list[dict]):
         review_group_counts: dict[str, int] = {}

@@ -59,7 +59,7 @@ class Settings:
     )
     GOOGLE_OAUTH_SCOPES = os.getenv(
         "GOOGLE_OAUTH_SCOPES",
-        "openid email profile https://www.googleapis.com/auth/spreadsheets.readonly",
+        "openid email profile https://www.googleapis.com/auth/spreadsheets",
     )
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")
     FRONTEND_AUTH_REDIRECT_URL = os.getenv("FRONTEND_AUTH_REDIRECT_URL")
