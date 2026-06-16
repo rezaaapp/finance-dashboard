@@ -14,6 +14,8 @@ sys.modules.setdefault("psycopg.rows", fake_psycopg_rows)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.services.import_service import ImportService
+from app.imports.utils.fingerprint import build_transaction_fingerprint
+from app.imports.utils.merchant_normalizer import MerchantNormalizer
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_sample.pdf"
@@ -29,6 +31,7 @@ class NamedBytesIO(io.BytesIO):
 class BluPdfParserTestCase(unittest.TestCase):
     def setUp(self):
         self.parser = BluPdfParser()
+        self.merchant_normalizer = MerchantNormalizer()
         self.fixture_bytes = FIXTURE_PATH.read_bytes()
 
     def test_parser_detects_sections_and_review_groups(self):
@@ -45,11 +48,11 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         self.assertEqual(4, len(transactions))
         self.assertEqual("14/06/2026 09:15", transactions[0]["datetime"])
-        self.assertEqual("Top Up dari Bank Lain", transactions[0]["merchant"])
+        self.assertEqual("Top Up dari Bank Lain", transactions[0]["merchant_original"])
         self.assertEqual(1500000.0, transactions[0]["amount"])
         self.assertEqual("income", transactions[0]["direction"])
         self.assertEqual("CR", transactions[0]["transaction_type"])
-        self.assertIn("Fore Coffee", transactions[1]["merchant"])
+        self.assertIn("Fore Coffee", transactions[1]["merchant_original"])
         self.assertEqual(28000.0, transactions[1]["amount"])
 
     def test_import_service_calls_blu_parser_and_returns_preview(self):
@@ -72,7 +75,77 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(4, result.transactions_found)
         self.assertEqual(4, len(result.preview))
         self.assertEqual("14/06/2026 09:15", result.preview[0].datetime)
-        self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant)
+        self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_original)
+        self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_normalized)
+
+    def test_merchant_normalizer_produces_stable_output(self):
+        self.assertEqual(
+            {
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+            },
+            self.merchant_normalizer.normalize("  Fore   Coffee 61715 "),
+        )
+        self.assertEqual(
+            {
+                "merchant_original": "SUPERINDO BCY QR",
+                "merchant_normalized": "SUPERINDO",
+            },
+            self.merchant_normalizer.normalize("SUPERINDO BCY QR"),
+        )
+        self.assertEqual(
+            {
+                "merchant_original": "jajanan ahmadi 000885",
+                "merchant_normalized": "jajanan ahmadi",
+            },
+            self.merchant_normalizer.normalize("jajanan ahmadi 000885"),
+        )
+
+    def test_fingerprint_is_deterministic_for_same_transaction(self):
+        fingerprint_a = build_transaction_fingerprint(
+            source_dana="Blu",
+            datetime_value="21/05/2026 17:54",
+            merchant_normalized="Fore Coffee",
+            amount=67200,
+        )
+        fingerprint_b = build_transaction_fingerprint(
+            source_dana="Blu",
+            datetime_value="21/05/2026 17:54",
+            merchant_normalized="Fore Coffee",
+            amount=67200,
+        )
+
+        self.assertEqual(fingerprint_a, fingerprint_b)
+
+    def test_fingerprint_changes_when_datetime_amount_or_merchant_changes(self):
+        baseline = build_transaction_fingerprint(
+            source_dana="Blu",
+            datetime_value="21/05/2026 17:54",
+            merchant_normalized="Fore Coffee",
+            amount=67200,
+        )
+        different_datetime = build_transaction_fingerprint(
+            source_dana="Blu",
+            datetime_value="21/05/2026 17:55",
+            merchant_normalized="Fore Coffee",
+            amount=67200,
+        )
+        different_amount = build_transaction_fingerprint(
+            source_dana="Blu",
+            datetime_value="21/05/2026 17:54",
+            merchant_normalized="Fore Coffee",
+            amount=67201,
+        )
+        different_merchant = build_transaction_fingerprint(
+            source_dana="Blu",
+            datetime_value="21/05/2026 17:54",
+            merchant_normalized="Family Mart",
+            amount=67200,
+        )
+
+        self.assertNotEqual(baseline, different_datetime)
+        self.assertNotEqual(baseline, different_amount)
+        self.assertNotEqual(baseline, different_merchant)
 
 
 if __name__ == "__main__":

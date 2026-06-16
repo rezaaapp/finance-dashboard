@@ -115,7 +115,7 @@ class BluPdfParser(BaseParser):
 
         return {
             "datetime": datetime_match.group("datetime"),
-            "merchant": merchant_text,
+            "merchant_original": merchant_text,
             "amount": amount,
             "direction": self._resolve_direction(transaction_type),
             "transaction_type": transaction_type,

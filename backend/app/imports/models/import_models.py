@@ -32,7 +32,8 @@ class ParsedImportResult(BaseModel):
 
 class ImportPreviewItem(BaseModel):
     datetime: str = ""
-    merchant: str = ""
+    merchant_original: str = ""
+    merchant_normalized: str = ""
     amount: float | int = 0
 
 
