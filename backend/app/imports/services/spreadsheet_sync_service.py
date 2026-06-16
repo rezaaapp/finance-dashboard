@@ -144,7 +144,10 @@ class SpreadsheetSyncService:
         return [
             current_user.get("name") or current_user.get("email") or "User",
             str(transaction.get("datetime", "")),
-            str(transaction.get("merchant_normalized", "")),
+            str(
+                transaction.get("merchant_display")
+                or transaction.get("merchant_normalized", "")
+            ),
             str(transaction.get("category", "")),
             transaction.get("amount", 0),
             "Blu",

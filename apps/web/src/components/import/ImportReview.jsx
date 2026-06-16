@@ -5,7 +5,6 @@ import {
   FileText,
   Inbox,
   Search,
-  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -23,6 +22,7 @@ const splitDateTime = (datetimeValue) => {
 const normalizeRowsForState = (rows = []) => (
   rows.map((row) => ({
     ...row,
+    merchant_display: row.merchant_display || row.merchant_normalized || row.merchant_original || "",
     category: row.category || "",
     notes: row.notes || "",
   }))
@@ -71,7 +71,6 @@ const ImportReview = ({
 }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState([]);
-  const [selectedTransactionId, setSelectedTransactionId] = useState("");
   const [draftRows, setDraftRows] = useState(() => (
     normalizeRowsForState(reviewData?.draft_transactions)
   ));
@@ -127,11 +126,6 @@ const ImportReview = ({
     const normalizedRows = normalizeRowsForState(reviewData?.draft_transactions);
     setDraftRows(normalizedRows);
     setSelectedIds([]);
-    setSelectedTransactionId((current) => (
-      normalizedRows.some((row) => row.id === current)
-        ? current
-        : normalizedRows[0]?.id || ""
-    ));
   }, [reviewData]);
 
   const filteredRows = useMemo(() => {
@@ -153,15 +147,14 @@ const ImportReview = ({
       }
 
       return [
+        row.merchant_display,
         row.merchant_original,
         row.merchant_normalized,
-        row.review_group,
         row.category,
       ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch));
     });
   }, [activeFilter, draftRows, searchTerm]);
 
-  const selectedTransaction = draftRows.find((row) => row.id === selectedTransactionId) || null;
   const visibleSelectedCount = filteredRows.filter((row) => selectedIds.includes(row.id)).length;
   const allFilteredSelected = filteredRows.length > 0 && visibleSelectedCount === filteredRows.length;
 
@@ -232,42 +225,6 @@ const ImportReview = ({
     }
   };
 
-  const handleApproveSingle = async () => {
-    if (!selectedTransaction) {
-      return;
-    }
-
-    setActionLoading("approve-single");
-    try {
-      await onApprove({
-        draft_ids: [selectedTransaction.id],
-        item_updates: [{
-          draft_id: selectedTransaction.id,
-          category: selectedTransaction.category,
-          notes: selectedTransaction.notes,
-        }],
-      });
-    } finally {
-      setActionLoading("");
-    }
-  };
-
-  const handleRejectSingle = async () => {
-    if (!selectedTransaction) {
-      return;
-    }
-
-    setActionLoading("reject-single");
-    try {
-      await onReject({
-        draft_ids: [selectedTransaction.id],
-        item_updates: [],
-      });
-    } finally {
-      setActionLoading("");
-    }
-  };
-
   if (loading) {
     return (
       <div className="panel rounded-lg p-6 shadow-lg">
@@ -308,8 +265,7 @@ const ImportReview = ({
   const filters = reviewData?.filters || [];
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="grid grid-cols-1 gap-6">
+    <div className="grid grid-cols-1 gap-6">
         <section className="panel rounded-lg p-5 shadow-lg sm:p-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
@@ -399,7 +355,7 @@ const ImportReview = ({
                   type="text"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Cari merchant atau review group..."
+                  placeholder="Cari nama transaksi atau kategori..."
                   className="form-control w-full rounded-xl py-3 pl-11 pr-4 text-sm"
                 />
               </label>
@@ -410,7 +366,7 @@ const ImportReview = ({
                   onClick={handleToggleSelectAll}
                   className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)]"
                 >
-                  {allFilteredSelected ? "Clear Select" : "Select All"}
+                  {allFilteredSelected ? "Hapus Pilihan" : "Pilih Semua"}
                 </button>
                 <button
                   type="button"
@@ -418,7 +374,7 @@ const ImportReview = ({
                   disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {actionLoading === "approve-selected" ? "Approving..." : "Approve Selected"}
+                  {actionLoading === "approve-selected" ? "Menyetujui..." : "Setujui Pilihan"}
                 </button>
                 <button
                   type="button"
@@ -426,7 +382,7 @@ const ImportReview = ({
                   disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="inline-flex min-h-11 items-center justify-center rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                 >
-                  {actionLoading === "reject-selected" ? "Rejecting..." : "Reject Selected"}
+                  {actionLoading === "reject-selected" ? "Menolak..." : "Tolak Pilihan"}
                 </button>
               </div>
             </div>
@@ -450,7 +406,7 @@ const ImportReview = ({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] border-collapse text-sm">
+              <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead>
                   <tr className="table-header table-border text-muted">
                     <th className="px-4 py-3 text-left">
@@ -458,39 +414,32 @@ const ImportReview = ({
                         type="checkbox"
                         checked={allFilteredSelected}
                         onChange={handleToggleSelectAll}
-                        aria-label="Select all visible transactions"
+                        aria-label="Pilih semua transaksi yang terlihat"
                       />
                     </th>
                     <th className="px-4 py-3 text-left font-semibold">Tanggal</th>
                     <th className="px-4 py-3 text-left font-semibold">Jam</th>
-                    <th className="px-4 py-3 text-left font-semibold">Merchant</th>
+                    <th className="px-4 py-3 text-left font-semibold">Nama Transaksi</th>
                     <th className="px-4 py-3 text-left font-semibold">Nominal</th>
                     <th className="px-4 py-3 text-left font-semibold">Kategori</th>
-                    <th className="px-4 py-3 text-left font-semibold">Review Group</th>
-                    <th className="px-4 py-3 text-left font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.map((row) => {
                     const { date, time } = splitDateTime(row.datetime);
                     const isSelected = selectedIds.includes(row.id);
-                    const isActive = row.id === selectedTransactionId;
 
                     return (
                       <tr
                         key={row.id}
-                        className={`table-row table-border cursor-pointer transition ${
-                          isActive ? "bg-[var(--color-accent-bg)]" : ""
-                        }`}
-                        onClick={() => setSelectedTransactionId(row.id)}
+                        className="table-row table-border transition"
                       >
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleRow(row.id)}
-                            onClick={(event) => event.stopPropagation()}
-                            aria-label={`Select ${row.merchant_original}`}
+                            aria-label={`Pilih ${row.merchant_display}`}
                           />
                         </td>
                         <td className="px-4 py-3 text-main">{date}</td>
@@ -498,10 +447,7 @@ const ImportReview = ({
                         <td className="px-4 py-3">
                           <div className="min-w-0">
                             <p className="truncate font-semibold text-main">
-                              {row.merchant_normalized || row.merchant_original}
-                            </p>
-                            <p className="truncate text-xs text-muted">
-                              {row.merchant_original}
+                              {row.merchant_display}
                             </p>
                           </div>
                         </td>
@@ -527,14 +473,6 @@ const ImportReview = ({
                             ))}
                           </select>
                         </td>
-                        <td className="px-4 py-3 text-muted">
-                          {row.review_group || "-"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            New
-                          </span>
-                        </td>
                       </tr>
                     );
                   })}
@@ -543,153 +481,6 @@ const ImportReview = ({
             </div>
           )}
         </section>
-      </div>
-
-      <aside className="panel min-h-[320px] rounded-lg p-5 shadow-lg xl:sticky xl:top-6 xl:h-fit">
-        {selectedTransaction ? (
-          <div className="grid grid-cols-1 gap-5">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">
-                Detail Review
-              </p>
-              <h3 className="mt-2 text-xl font-bold text-main">
-                {selectedTransaction.merchant_normalized || selectedTransaction.merchant_original}
-              </h3>
-              <p className="mt-1 text-sm text-muted">
-                {selectedTransaction.merchant_original}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Datetime
-                </p>
-                <p className="mt-2 font-semibold text-main">
-                  {selectedTransaction.datetime}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Amount
-                </p>
-                <p className="mt-2 font-semibold text-main">
-                  {formatAmount(selectedTransaction.amount)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Direction
-                </p>
-                <p className="mt-2 font-semibold capitalize text-main">
-                  {selectedTransaction.direction}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Transaction Type
-                </p>
-                <p className="mt-2 font-semibold text-main">
-                  {selectedTransaction.transaction_type}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                Review Group
-              </p>
-              <p className="mt-2 font-semibold text-main">
-                {selectedTransaction.review_group || "bluAccount"}
-              </p>
-            </div>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-muted">
-                Kategori
-              </span>
-              <select
-                value={selectedTransaction.category}
-                onChange={(event) => handleDraftFieldChange(
-                  selectedTransaction.id,
-                  "category",
-                  event.target.value
-                )}
-                className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm"
-              >
-                <option value="">Pilih kategori</option>
-                {normalizedCategoryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-              {normalizedCategoryOptions.length === 0 && !categoryOptionsLoading && (
-                <p className="mt-2 text-xs text-muted">
-                  Belum ada kategori dari data transaksi
-                </p>
-              )}
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-muted">
-                Notes
-              </span>
-              <textarea
-                value={selectedTransaction.notes}
-                onChange={(event) => handleDraftFieldChange(
-                  selectedTransaction.id,
-                  "notes",
-                  event.target.value
-                )}
-                rows={4}
-                placeholder="Tambahkan catatan bila perlu"
-                className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm"
-              />
-            </label>
-
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                Raw Review Data
-              </p>
-              <p className="mt-2 break-words text-sm leading-6 text-muted">
-                {selectedTransaction.raw_text}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={handleApproveSingle}
-                disabled={actionLoading !== ""}
-                className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {actionLoading === "approve-single" ? "Approving..." : "Approve"}
-              </button>
-              <button
-                type="button"
-                onClick={handleRejectSingle}
-                disabled={actionLoading !== ""}
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
-              >
-                {actionLoading === "reject-single" ? "Rejecting..." : "Reject"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-full min-h-[280px] flex-col items-center justify-center text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-accent-bg)] text-accent">
-              <XCircle size={24} />
-            </span>
-            <h3 className="mt-4 text-lg font-bold text-main">
-              Belum ada transaksi dipilih
-            </h3>
-            <p className="mt-2 max-w-xs text-sm leading-6 text-muted">
-              Klik salah satu baris transaksi baru untuk membuka detail review di panel ini.
-            </p>
-          </div>
-        )}
-      </aside>
     </div>
   );
 };

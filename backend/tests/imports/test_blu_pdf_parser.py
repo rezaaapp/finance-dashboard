@@ -287,6 +287,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "merchant_original": "Fore Coffee 61715",
                 "merchant_normalized": "Fore Coffee",
+                "merchant_display": "Fore Coffee",
             },
             self.merchant_normalizer.normalize("  Fore   Coffee 61715 "),
         )
@@ -294,6 +295,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "merchant_original": "SUPERINDO BCY QR",
                 "merchant_normalized": "SUPERINDO",
+                "merchant_display": "SUPERINDO",
             },
             self.merchant_normalizer.normalize("SUPERINDO BCY QR"),
         )
@@ -301,9 +303,26 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "merchant_original": "jajanan ahmadi 000885",
                 "merchant_normalized": "jajanan ahmadi",
+                "merchant_display": "jajanan ahmadi",
             },
             self.merchant_normalizer.normalize("jajanan ahmadi 000885"),
         )
+
+    def test_merchant_display_removes_blu_reference_codes(self):
+        examples = {
+            "SUPERINDO BCY QR 000885002709750 | 02941272241224928998": "SUPERINDO",
+            "GUARDIAN BASURA MALL 000123456789 | 998877665544332211": "GUARDIAN BASURA MALL",
+            "TDN TEBET SOEPOMO M123456 | abcdef1234567890": "TDN TEBET SOEPOMO",
+            "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120": "Ayam Gepuk Pak Gembus",
+            "WARUNG GULE KLATEN TEBET 42526596 | 282525706316erg67774": "Warung Gule Klaten Tebet",
+        }
+
+        for merchant_name, expected_display in examples.items():
+            with self.subTest(merchant_name=merchant_name):
+                self.assertEqual(
+                    expected_display,
+                    self.merchant_normalizer.normalize(merchant_name)["merchant_display"],
+                )
 
     def test_fingerprint_is_deterministic_for_same_transaction(self):
         fingerprint_a = build_transaction_fingerprint(
@@ -675,8 +694,8 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "id": "draft-1",
                 "transaction_fingerprint": "fp-1",
                 "datetime": "01/06/2026 08:00",
-                "merchant_original": "Fore Coffee 61715",
-                "merchant_normalized": "Fore Coffee",
+                "merchant_original": "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
+                "merchant_normalized": "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
                 "amount": 28000,
                 "direction": "expense",
                 "transaction_type": "DB",
@@ -729,7 +748,15 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         created_row = create_transactions_mock.call_args.kwargs["rows"][0]
         self.assertEqual("sheet-source-1", created_row["sheet_source_id"])
-        self.assertEqual("Fore Coffee", created_row["title"])
+        self.assertEqual("Ayam Gepuk Pak Gembus", created_row["title"])
+        self.assertEqual(
+            "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
+            created_row["raw_payload"]["merchant_original"],
+        )
+        self.assertEqual(
+            "Ayam Gepuk Pak Gembus",
+            created_row["raw_payload"]["merchant_display"],
+        )
         self.assertEqual("Makan", created_row["raw_category"])
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
@@ -847,6 +874,21 @@ class BluPdfParserTestCase(unittest.TestCase):
         append_values_mock.assert_not_called()
         self.assertEqual("needs_reconnect", result["status"])
         self.assertEqual(1, result["sync_failed"])
+
+    def test_spreadsheet_row_uses_merchant_display(self):
+        row = SpreadsheetSyncService()._build_sheet_row(
+            {
+                "datetime": "01/06/2026 08:00",
+                "merchant_display": "Ayam Gepuk Pak Gembus",
+                "merchant_normalized": "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
+                "amount": 52000,
+                "category": "Makan",
+                "notes": "",
+            },
+            current_user={"name": "Reza"},
+        )
+
+        self.assertEqual("Ayam Gepuk Pak Gembus", row[2])
 
     def test_reject_review_transactions_removes_selected_drafts(self):
         service = ImportService()

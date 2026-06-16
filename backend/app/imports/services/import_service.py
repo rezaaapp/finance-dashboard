@@ -457,6 +457,9 @@ class ImportService:
                 "datetime": transaction["datetime"],
                 "merchant_original": transaction["merchant_original"],
                 "merchant_normalized": transaction["merchant_normalized"],
+                "merchant_display": self.merchant_normalizer.normalize(
+                    transaction["merchant_original"]
+                )["merchant_display"],
                 "amount": float(transaction["amount"]),
                 "direction": transaction["direction"],
                 "transaction_type": transaction["transaction_type"],
@@ -810,6 +813,9 @@ class ImportService:
                 "datetime": draft["datetime"],
                 "merchant_original": draft["merchant_original"],
                 "merchant_normalized": draft["merchant_normalized"],
+                "merchant_display": self.merchant_normalizer.normalize(
+                    draft["merchant_original"]
+                )["merchant_display"],
                 "amount": float(draft["amount"]),
                 "direction": draft["direction"],
                 "transaction_type": draft["transaction_type"],

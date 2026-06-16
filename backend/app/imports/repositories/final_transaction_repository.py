@@ -121,6 +121,7 @@ def list_retryable_import_transactions(
                 to_char(transaction_time at time zone 'Asia/Jakarta', 'DD/MM/YYYY HH24:MI') as datetime,
                 coalesce(raw_payload ->> 'merchant_original', title) as merchant_original,
                 title as merchant_normalized,
+                coalesce(raw_payload ->> 'merchant_display', title) as merchant_display,
                 amount::float8 as amount,
                 direction,
                 coalesce(raw_payload ->> 'transaction_type', '') as transaction_type,
@@ -158,7 +159,10 @@ def serialize_import_transaction_row(
         "row_number": None,
         "transaction_date": transaction_time.date(),
         "transaction_time": transaction_time,
-        "title": str(transaction.get("merchant_normalized", "")),
+        "title": str(
+            transaction.get("merchant_display")
+            or transaction.get("merchant_normalized", "")
+        ),
         "raw_category": str(transaction.get("category", "")) or None,
         "amount": transaction.get("amount", 0),
         "source_fund": "Blu",
@@ -167,6 +171,10 @@ def serialize_import_transaction_row(
         "raw_payload": {
             "merchant_original": str(transaction.get("merchant_original", "")),
             "merchant_normalized": str(transaction.get("merchant_normalized", "")),
+            "merchant_display": str(
+                transaction.get("merchant_display")
+                or transaction.get("merchant_normalized", "")
+            ),
             "transaction_type": str(transaction.get("transaction_type", "")),
             "review_group": str(transaction.get("review_group", "")),
             "raw_text": str(transaction.get("raw_text", "")),
