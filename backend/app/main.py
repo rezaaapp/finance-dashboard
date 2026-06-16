@@ -21,6 +21,10 @@ from app.api.workspace_invitations import router as workspace_invitations_router
 from app.api.workspaces import router as workspaces_router
 from app.config import settings
 from app.database import check_database_connection, close_database_pool
+from app.imports.services.cleanup_service import (
+    start_import_cleanup_scheduler,
+    stop_import_cleanup_scheduler,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "apps" / "web" / "dist"
@@ -101,7 +105,13 @@ def database_health_check():
 
 @app.on_event("shutdown")
 def shutdown_database_pool():
+    stop_import_cleanup_scheduler()
     close_database_pool()
+
+
+@app.on_event("startup")
+def startup_import_cleanup_scheduler():
+    start_import_cleanup_scheduler()
 
 # =========================
 # ROUTER

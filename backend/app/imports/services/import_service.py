@@ -1,4 +1,5 @@
 from typing import BinaryIO
+from datetime import datetime, timezone
 
 from app.imports.models.import_models import ImportPreviewItem
 from app.imports.models.import_models import (
@@ -10,6 +11,7 @@ from app.imports.models.import_models import (
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.repositories.final_transaction_repository import (
     create_import_transactions,
+    list_retryable_import_transactions,
     serialize_import_transaction_row,
     update_import_transaction_sync_status,
 )
@@ -19,24 +21,34 @@ from app.imports.repositories.fingerprint_registry_repository import (
 from app.imports.repositories.import_repository import (
     create_import_draft_transactions,
     create_import_job,
+    count_new_import_draft_transactions,
     delete_import_draft_transactions,
+    get_import_history_detail,
+    list_import_history,
     get_existing_transaction_fingerprints,
     get_import_review_summary,
+    increment_import_job_rejected_count,
     list_import_draft_transactions,
     list_import_draft_transactions_by_ids,
     reject_import_draft_transactions,
+    refresh_import_job_aggregates,
+    set_import_job_temp_file,
+    update_import_job_status,
     update_import_job_summary,
 )
+from app.imports.services.cleanup_service import ImportCleanupService
 from app.imports.services.incremental_import_engine import IncrementalImportEngine
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
+from app.imports.utils.temp_storage import delete_temp_import_file, save_temp_import_file
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
 from app.repositories.google_sheet_source_repository import ensure_import_google_sheet_source
 
 
 class ImportService:
     def __init__(self):
+        self.cleanup_service = ImportCleanupService()
         self.incremental_engine = IncrementalImportEngine()
         self.merchant_normalizer = MerchantNormalizer()
         self.spreadsheet_sync_service = SpreadsheetSyncService()
@@ -137,46 +149,67 @@ class ImportService:
 
     def receive_upload(self, connection, *, workspace_id: str, file) -> ImportUploadResult:
         provider = self.detect_provider(file.filename or "")
-        parsed_result = self.enrich_transactions(
-            self.parse(file.file, provider=provider)
-        )
         job = create_import_job(
             connection,
             workspace_id=workspace_id,
-            provider=parsed_result.provider or provider,
+            provider=provider,
             filename=file.filename or "uploaded-file",
             status=ImportJobStatus.UPLOADED.value,
         )
-        parsed_result = self.mark_existing_transactions(
-            connection,
-            workspace_id=workspace_id,
-            parsed_result=parsed_result,
+        temp_file = save_temp_import_file(
+            job_id=str(job["id"]),
+            filename=file.filename or "uploaded-file.pdf",
+            source_file=file.file,
         )
-        self.persist_draft_transactions(
-            connection,
-            import_job_id=str(job["id"]),
-            transactions=parsed_result.transactions,
-        )
-        new_transactions = [
-            transaction for transaction in parsed_result.transactions
-            if not transaction.get("is_existing", False)
-        ]
-        existing_transactions = [
-            transaction for transaction in parsed_result.transactions
-            if transaction.get("is_existing", False)
-        ]
-        update_import_job_summary(
+        set_import_job_temp_file(
             connection,
             job_id=str(job["id"]),
-            transactions_found=len(parsed_result.transactions),
-            new_transactions=len(new_transactions),
-            existing_transactions=len(existing_transactions),
+            temp_file_path=temp_file["path"],
+            expires_at=temp_file["expires_at"],
         )
+        try:
+            update_import_job_status(
+                connection,
+                job_id=str(job["id"]),
+                status=ImportJobStatus.PARSING.value,
+            )
+            parsed_result = self.enrich_transactions(
+                self.parse(file.file, provider=provider)
+            )
+            parsed_result = self.mark_existing_transactions(
+                connection,
+                workspace_id=workspace_id,
+                parsed_result=parsed_result,
+            )
+            self.persist_draft_transactions(
+                connection,
+                import_job_id=str(job["id"]),
+                transactions=parsed_result.transactions,
+            )
+            new_transactions = [
+                transaction for transaction in parsed_result.transactions
+                if not transaction.get("is_existing", False)
+            ]
+            existing_transactions = [
+                transaction for transaction in parsed_result.transactions
+                if transaction.get("is_existing", False)
+            ]
+            update_import_job_summary(
+                connection,
+                job_id=str(job["id"]),
+                transactions_found=len(parsed_result.transactions),
+                new_transactions=len(new_transactions),
+                existing_transactions=len(existing_transactions),
+                status=ImportJobStatus.REVIEW.value,
+            )
+        except Exception:
+            delete_temp_import_file(temp_file["path"])
+            raise
 
         return ImportUploadResult(
             job_id=str(job["id"]),
-            provider=job["provider"],
-            status=job["status"],
+            provider=parsed_result.provider or job["provider"],
+            status=ImportJobStatus.REVIEW,
             transactions_found=len(parsed_result.transactions),
             new_transactions=len(new_transactions),
             existing_transactions=len(existing_transactions),
@@ -341,6 +374,34 @@ class ImportService:
             import_job_id=import_job_id,
             draft_ids=[str(draft["id"]) for draft in merged_drafts],
         )
+        self.cleanup_service.delete_temp_pdf_for_job(
+            connection,
+            workspace_id=workspace_id,
+            job_id=import_job_id,
+        )
+        remaining_draft_count = count_new_import_draft_transactions(
+            connection,
+            import_job_id=import_job_id,
+        )
+        update_import_job_status(
+            connection,
+            job_id=import_job_id,
+            status=(
+                ImportJobStatus.COMPLETED.value
+                if remaining_draft_count == 0
+                else ImportJobStatus.REVIEW.value
+            ),
+            completed_at=(
+                datetime.now(timezone.utc)
+                if remaining_draft_count == 0
+                else None
+            ),
+        )
+        refresh_import_job_aggregates(
+            connection,
+            workspace_id=workspace_id,
+            job_id=import_job_id,
+        )
 
         return {
             "approved_count": len(created_transactions),
@@ -371,10 +432,135 @@ class ImportService:
             import_job_id=import_job_id,
             draft_ids=normalized_ids,
         )
+        increment_import_job_rejected_count(
+            connection,
+            job_id=import_job_id,
+            rejected_count=len(deleted_rows),
+        )
+        remaining_draft_count = count_new_import_draft_transactions(
+            connection,
+            import_job_id=import_job_id,
+        )
+        update_import_job_status(
+            connection,
+            job_id=import_job_id,
+            status=(
+                ImportJobStatus.COMPLETED.value
+                if remaining_draft_count == 0
+                else ImportJobStatus.REVIEW.value
+            ),
+            completed_at=(
+                datetime.now(timezone.utc)
+                if remaining_draft_count == 0
+                else None
+            ),
+        )
 
         return {
             "rejected_count": len(deleted_rows),
             "draft_ids": [str(row["id"]) for row in deleted_rows],
+        }
+
+    def get_history_payload(self, connection, *, workspace_id: str):
+        jobs = list_import_history(
+            connection,
+            workspace_id=workspace_id,
+        )
+
+        return {
+            "jobs": [self._serialize_history_job(job) for job in jobs],
+        }
+
+    def get_history_detail_payload(self, connection, *, workspace_id: str, job_id: str):
+        job = get_import_history_detail(
+            connection,
+            workspace_id=workspace_id,
+            job_id=job_id,
+        )
+
+        if not job:
+            return None
+
+        return self._serialize_history_job(job)
+
+    def retry_sync_transactions(
+        self,
+        connection,
+        *,
+        workspace: dict,
+        current_user: dict,
+        workspace_id: str,
+        import_job_id: str,
+    ):
+        job = get_import_history_detail(
+            connection,
+            workspace_id=workspace_id,
+            job_id=import_job_id,
+        )
+
+        if not job:
+            return None
+
+        retryable_transactions = list_retryable_import_transactions(
+            connection,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
+            sync_statuses=["failed", "needs_reconnect"],
+        )
+
+        if not retryable_transactions:
+            return {
+                "job_id": import_job_id,
+                "retried_count": 0,
+                "sync_success": 0,
+                "sync_failed": 0,
+                "sync_status": "skipped",
+            }
+
+        sync_result = self.spreadsheet_sync_service.sync_import_transactions(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            approved_transactions=retryable_transactions,
+        )
+        transaction_fingerprints = [
+            str(transaction["transaction_fingerprint"])
+            for transaction in retryable_transactions
+        ]
+
+        if sync_result["status"] == "success":
+            update_import_transaction_sync_status(
+                connection,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="success",
+            )
+        elif sync_result["status"] == "needs_reconnect":
+            update_import_transaction_sync_status(
+                connection,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="needs_reconnect",
+                sync_error_message="needs_reconnect",
+            )
+        else:
+            update_import_transaction_sync_status(
+                connection,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="failed",
+                sync_error_message=sync_result.get("error"),
+            )
+
+        refresh_import_job_aggregates(
+            connection,
+            workspace_id=workspace_id,
+            job_id=import_job_id,
+        )
+
+        return {
+            "job_id": import_job_id,
+            "retried_count": len(retryable_transactions),
+            "sync_success": sync_result["sync_success"],
+            "sync_failed": sync_result["sync_failed"],
+            "sync_status": sync_result["status"],
         }
 
     def _normalize_draft_ids(self, draft_ids: list[str], item_updates: list[dict] | None):
@@ -478,3 +664,26 @@ class ImportService:
         })
 
         return filters
+
+    def _serialize_history_job(self, job: dict):
+        return {
+            "job_id": str(job["id"]),
+            "filename": job["filename"],
+            "provider": job["provider"],
+            "status": job["status"],
+            "import_time": job["created_at"],
+            "transactions_found": int(job.get("transactions_found", 0) or 0),
+            "new_transactions": int(job.get("new_transactions", 0) or 0),
+            "existing_transactions": int(job.get("existing_transactions", 0) or 0),
+            "approved_transactions": int(job.get("approved_transactions", 0) or 0),
+            "rejected_transactions": int(job.get("rejected_transactions", 0) or 0),
+            "sync_success": int(job.get("sync_success", 0) or 0),
+            "sync_failed": int(job.get("sync_failed", 0) or 0),
+            "retryable_sync_count": int(job.get("retryable_sync_count", 0) or 0),
+            "needs_reconnect": bool(job.get("needs_reconnect", False)),
+            "pdf_status": (
+                "already_deleted"
+                if job.get("temp_file_deleted_at")
+                else "available"
+            ),
+        }

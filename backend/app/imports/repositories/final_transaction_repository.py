@@ -102,6 +102,45 @@ def update_import_transaction_sync_status(
         return cursor.fetchall()
 
 
+def list_retryable_import_transactions(
+    connection,
+    *,
+    workspace_id: str,
+    import_job_id: str,
+    sync_statuses: list[str],
+):
+    if not sync_statuses:
+        return []
+
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                import_transaction_fingerprint as transaction_fingerprint,
+                to_char(transaction_time at time zone 'Asia/Jakarta', 'DD/MM/YYYY HH24:MI') as datetime,
+                coalesce(raw_payload ->> 'merchant_original', title) as merchant_original,
+                title as merchant_normalized,
+                amount::float8 as amount,
+                direction,
+                coalesce(raw_payload ->> 'transaction_type', '') as transaction_type,
+                coalesce(raw_payload ->> 'review_group', '') as review_group,
+                coalesce(raw_payload ->> 'raw_text', '') as raw_text,
+                coalesce(raw_category, '') as category,
+                coalesce(note, '') as notes,
+                sync_status
+            from transactions
+            where workspace_id = %s
+              and import_job_id = %s
+              and sync_status = any(%s)
+            order by transaction_time asc, created_at asc
+            """,
+            (workspace_id, import_job_id, sync_statuses),
+        )
+
+        return cursor.fetchall()
+
+
 def serialize_import_transaction_row(
     *,
     workspace_id: str,

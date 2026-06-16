@@ -61,3 +61,37 @@ export const rejectImportReview = async (jobId, payload) => {
 
   return response.data;
 };
+
+export const getImportHistory = async () => {
+  const response = await axios.get(
+    `${IMPORT_API_URL}/history`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
+export const getImportHistoryDetail = async (jobId) => {
+  const response = await axios.get(
+    `${IMPORT_API_URL}/history/${jobId}`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
+export const retryImportSync = async (jobId) => {
+  const response = await axios.post(
+    `${IMPORT_API_URL}/retry-sync/${jobId}`,
+    {},
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};

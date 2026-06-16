@@ -20,6 +20,7 @@ fake_psycopg = types.ModuleType("psycopg")
 fake_psycopg_rows = types.ModuleType("psycopg.rows")
 fake_psycopg_types = types.ModuleType("psycopg.types")
 fake_psycopg_types_json = types.ModuleType("psycopg.types.json")
+fake_psycopg_pool = types.ModuleType("psycopg_pool")
 fake_dotenv = types.ModuleType("dotenv")
 fake_httpx = types.ModuleType("httpx")
 fake_psycopg_rows.dict_row = object()
@@ -27,14 +28,17 @@ fake_psycopg_types_json.Jsonb = lambda value: value
 fake_dotenv.dotenv_values = lambda _path: {}
 fake_httpx.HTTPError = Exception
 fake_httpx.HTTPStatusError = Exception
+fake_psycopg_pool.ConnectionPool = object
 sys.modules.setdefault("psycopg", fake_psycopg)
 sys.modules.setdefault("psycopg.rows", fake_psycopg_rows)
 sys.modules.setdefault("psycopg.types", fake_psycopg_types)
 sys.modules.setdefault("psycopg.types.json", fake_psycopg_types_json)
+sys.modules.setdefault("psycopg_pool", fake_psycopg_pool)
 sys.modules.setdefault("dotenv", fake_dotenv)
 sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
+from app.imports.services.cleanup_service import ImportCleanupService
 from app.imports.services.import_service import ImportService
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
@@ -88,6 +92,12 @@ class BluPdfParserTestCase(unittest.TestCase):
         }
 
         with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": "temp/blu-estatement-june.pdf",
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", return_value=set()), \
              patch("app.imports.services.import_service.create_import_draft_transactions"), \
              patch("app.imports.services.import_service.update_import_job_summary"):
@@ -98,7 +108,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             )
 
         self.assertEqual("blu", result.provider)
-        self.assertEqual("uploaded", result.status)
+        self.assertEqual("review", result.status)
         self.assertEqual(4, result.transactions_found)
         self.assertEqual(4, result.new_transactions)
         self.assertEqual(0, result.existing_transactions)
@@ -198,6 +208,12 @@ class BluPdfParserTestCase(unittest.TestCase):
             stored_drafts.append(draft_transactions)
 
         with patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": "temp/blu-estatement-june.pdf",
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
              patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
              patch("app.imports.services.import_service.update_import_job_summary"):
@@ -296,6 +312,12 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch.object(ImportService, "parse", side_effect=fake_parse), \
              patch("app.imports.services.import_service.create_import_job", side_effect=fake_create_import_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": "temp/blu-estatement-june.pdf",
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
              patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
              patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
              patch("app.imports.services.import_service.update_import_job_summary"):
@@ -423,7 +445,11 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "error": None,
              }), \
              patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
-             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock:
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(ImportCleanupService, "delete_temp_pdf_for_job") as cleanup_pdf_mock, \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status") as update_job_status_mock, \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"):
             approve_result = service.approve_review_transactions(
                 connection=object(),
                 workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
@@ -461,6 +487,12 @@ class BluPdfParserTestCase(unittest.TestCase):
             import_job_id="job-1",
             draft_ids=["draft-1"],
         )
+        cleanup_pdf_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            job_id="job-1",
+        )
+        update_job_status_mock.assert_called_once()
         self.assertEqual(1, approve_result["approved_count"])
         self.assertEqual(["draft-1"], approve_result["draft_ids"])
         self.assertEqual(1, approve_result["sync_success"])
@@ -499,7 +531,11 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "error": "append failed",
              }), \
              patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
-             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock:
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(ImportCleanupService, "delete_temp_pdf_for_job"), \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"):
             approve_result = service.approve_review_transactions(
                 connection=object(),
                 workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
@@ -553,7 +589,10 @@ class BluPdfParserTestCase(unittest.TestCase):
         service = ImportService()
 
         with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1"}), \
-             patch("app.imports.services.import_service.reject_import_draft_transactions", return_value=[{"id": "draft-2"}]):
+             patch("app.imports.services.import_service.reject_import_draft_transactions", return_value=[{"id": "draft-2"}]), \
+             patch("app.imports.services.import_service.increment_import_job_rejected_count"), \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status"):
             reject_result = service.reject_review_transactions(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -563,6 +602,116 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         self.assertEqual(1, reject_result["rejected_count"])
         self.assertEqual(["draft-2"], reject_result["draft_ids"])
+
+    def test_retry_sync_only_retries_failed_or_needs_reconnect_transactions(self):
+        service = ImportService()
+        retryable_transactions = [
+            {
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_normalized": "Fore Coffee",
+                "category": "Makan",
+                "amount": 28000,
+                "notes": "",
+            },
+            {
+                "transaction_fingerprint": "fp-2",
+                "datetime": "02/06/2026 08:00",
+                "merchant_normalized": "Superindo",
+                "category": "Belanja",
+                "amount": 150000,
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1"}), \
+             patch("app.imports.services.import_service.list_retryable_import_transactions", return_value=retryable_transactions), \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
+                 "status": "success",
+                 "sync_success": 2,
+                 "sync_failed": 0,
+                 "source_id": "sheet-source-1",
+                 "error": None,
+             }), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"):
+            result = service.retry_sync_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+            )
+
+        update_sync_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            transaction_fingerprints=["fp-1", "fp-2"],
+            sync_status="success",
+        )
+        self.assertEqual(2, result["retried_count"])
+        self.assertEqual("success", result["sync_status"])
+
+    def test_cleanup_service_deletes_expired_pdf_and_drafts_but_preserves_history(self):
+        service = ImportCleanupService()
+        expired_jobs = [
+            {
+                "id": "job-1",
+                "workspace_id": "workspace-1",
+                "status": "review",
+                "temp_file_path": "temp/job-1.pdf",
+                "temp_file_deleted_at": None,
+                "expires_at": "2026-06-17T10:00:00Z",
+            },
+        ]
+
+        with patch("app.imports.services.cleanup_service.list_expired_import_jobs", return_value=expired_jobs), \
+             patch("app.imports.services.cleanup_service.mark_import_job_expired") as mark_expired_mock, \
+             patch.object(ImportCleanupService, "delete_temp_pdf_for_job", return_value=True) as delete_pdf_mock, \
+             patch("app.imports.services.cleanup_service.delete_import_draft_transactions_for_job") as delete_drafts_mock, \
+             patch("app.imports.services.cleanup_service.mark_import_job_cleanup_completed") as cleanup_completed_mock:
+            result = service.cleanup_expired_jobs(connection=object())
+
+        mark_expired_mock.assert_called_once_with(unittest.mock.ANY, job_id="job-1")
+        delete_pdf_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            job_id="job-1",
+        )
+        delete_drafts_mock.assert_called_once_with(unittest.mock.ANY, import_job_id="job-1")
+        cleanup_completed_mock.assert_called_once_with(unittest.mock.ANY, job_id="job-1")
+        self.assertEqual({"cleaned_jobs": 1, "job_ids": ["job-1"]}, result)
+
+    def test_history_payload_remains_available_after_cleanup(self):
+        service = ImportService()
+        history_rows = [
+            {
+                "id": "job-1",
+                "filename": "blu_statement_juni.pdf",
+                "provider": "blu",
+                "status": "cleanup_completed",
+                "created_at": "2026-06-16T10:00:00Z",
+                "transactions_found": 300,
+                "new_transactions": 150,
+                "existing_transactions": 150,
+                "approved_transactions": 120,
+                "rejected_transactions": 30,
+                "sync_success": 110,
+                "sync_failed": 10,
+                "retryable_sync_count": 10,
+                "needs_reconnect": False,
+                "temp_file_deleted_at": "2026-06-16T11:00:00Z",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.list_import_history", return_value=history_rows):
+            payload = service.get_history_payload(
+                connection=object(),
+                workspace_id="workspace-1",
+            )
+
+        self.assertEqual(1, len(payload["jobs"]))
+        self.assertEqual("cleanup_completed", payload["jobs"][0]["status"])
+        self.assertEqual("already_deleted", payload["jobs"][0]["pdf_status"])
 
 
 if __name__ == "__main__":

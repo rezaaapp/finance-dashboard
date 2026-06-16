@@ -67,6 +67,46 @@ def get_import_review(
     return payload
 
 
+@router.get("/history")
+def get_import_history(
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    service = ImportService()
+
+    with get_db_connection() as connection:
+        payload = service.get_history_payload(
+            connection,
+            workspace_id=str(workspace["id"]),
+        )
+
+    return payload
+
+
+@router.get("/history/{job_id}")
+def get_import_history_detail(
+    job_id: str,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    service = ImportService()
+
+    with get_db_connection() as connection:
+        payload = service.get_history_detail_payload(
+            connection,
+            workspace_id=str(workspace["id"]),
+            job_id=job_id,
+        )
+
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Import history not found",
+        )
+
+    return payload
+
+
 @router.post("/review/{job_id}/approve")
 def approve_import_review(
     job_id: str,
@@ -102,6 +142,33 @@ def approve_import_review(
         **result,
         "review": review_payload,
     }
+
+
+@router.post("/retry-sync/{job_id}")
+def retry_import_sync(
+    job_id: str,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    service = ImportService()
+
+    with get_db_connection() as connection:
+        with connection.transaction():
+            result = service.retry_sync_transactions(
+                connection,
+                workspace=workspace,
+                current_user=current_user,
+                workspace_id=str(workspace["id"]),
+                import_job_id=job_id,
+            )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Import history not found",
+        )
+
+    return result
 
 
 @router.post("/review/{job_id}/reject")

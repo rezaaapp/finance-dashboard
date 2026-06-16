@@ -13,6 +13,7 @@ class ImportJobStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     EXPIRED = "expired"
+    CLEANUP_COMPLETED = "cleanup_completed"
 
 
 class ImportJob(BaseModel):
@@ -23,6 +24,12 @@ class ImportJob(BaseModel):
     status: ImportJobStatus = ImportJobStatus.UPLOADED
     created_at: datetime
     completed_at: datetime | None = None
+    transactions_found: int = 0
+    new_transactions: int = 0
+    existing_transactions: int = 0
+    rejected_transactions: int = 0
+    temp_file_deleted_at: datetime | None = None
+    expires_at: datetime | None = None
 
 
 class ParsedImportResult(BaseModel):
