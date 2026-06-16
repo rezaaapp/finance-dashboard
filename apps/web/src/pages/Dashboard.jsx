@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Moon,
+  Upload,
   RefreshCw,
   Settings,
   ShieldCheck,
@@ -38,6 +39,7 @@ import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
+import ImportTransactions from "./ImportTransactions";
 import { PRIVACY_MODES } from "../utils/privacy";
 
 import {
@@ -199,7 +201,9 @@ const Dashboard = ({
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [activeView, setActiveView] = useState(() => (
-    window.location.pathname.startsWith("/settings")
+    window.location.pathname.startsWith("/import")
+      ? "import"
+      : window.location.pathname.startsWith("/settings")
       ? "configuration"
       : "dashboard"
   ));
@@ -1006,7 +1010,7 @@ const Dashboard = ({
                 type="button"
                 onClick={() => setActiveView("configuration")}
                 className={`nav-link flex min-h-11 w-full items-center justify-center rounded-xl border border-transparent text-left transition-colors duration-200 ${
-                  activeView === "configuration" || activeView === "admin"
+                  activeView === "configuration" || activeView === "admin" || activeView === "import"
                     ? "bg-[var(--color-accent-bg)] text-accent"
                     : "bg-transparent"
                 }`}
@@ -1058,6 +1062,14 @@ const Dashboard = ({
                 >
                   Google Sheets
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveView("import")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                >
+                  📥 Import Transaksi
+                </button>
               </div>
             </div>
           ) : (
@@ -1066,7 +1078,7 @@ const Dashboard = ({
                 type="button"
                 onClick={() => setActiveView("configuration")}
                 className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent py-2.5 px-4 text-left transition-colors duration-200 ${
-                  activeView === "configuration" || activeView === "admin"
+                  activeView === "configuration" || activeView === "admin" || activeView === "import"
                     ? "bg-[var(--color-accent-bg)] text-accent"
                     : "bg-transparent"
                 }`}
@@ -1086,7 +1098,7 @@ const Dashboard = ({
               </button>
 
               <div className={`overflow-hidden transition-all duration-300 ease-out ${
-                activeView === "configuration" || activeView === "admin"
+                activeView === "configuration" || activeView === "admin" || activeView === "import"
                   ? "max-h-80 opacity-100"
                   : "max-h-0 opacity-0 group-hover:max-h-80 group-hover:opacity-100"
               }`}>
@@ -1134,6 +1146,18 @@ const Dashboard = ({
                 }`}
               >
                   Google Sheets
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveView("import")}
+                  className={`w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm transition-colors duration-200 ${
+                  activeView === "import"
+                    ? "bg-[var(--color-accent-bg)] text-accent"
+                    : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                }`}
+              >
+                  📥 Import Transaksi
                 </button>
               </div>
             </div>
@@ -1536,6 +1560,8 @@ const Dashboard = ({
             onImpersonate={onImpersonate}
             onUnauthorized={onLogout}
           />
+        ) : activeView === "import" ? (
+          <ImportTransactions />
         ) : (
           <Configuration
             key={activeWorkspaceId || "default-workspace"}
@@ -1552,7 +1578,7 @@ const Dashboard = ({
       </main>
 
       <nav className={`fixed inset-x-0 bottom-0 z-50 grid gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden ${
-        isSuperAdmin ? "grid-cols-5" : "grid-cols-4"
+        isSuperAdmin ? "grid-cols-6" : "grid-cols-5"
       }`}>
         <button
           type="button"
@@ -1614,6 +1640,19 @@ const Dashboard = ({
         >
           <Settings size={18} />
           Configuration
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("import")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
+            activeView === "import"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <Upload size={18} />
+          Import
         </button>
 
         {isSuperAdmin && (
