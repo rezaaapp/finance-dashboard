@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.api.google_connection import get_current_workspace
 from app.auth import require_current_user
 from app.database import get_db_connection
-from app.imports.services.import_service import ImportService
+from app.imports.services.import_service import ImportService, MissingGoogleSheetSourceError
 
 
 router = APIRouter(
@@ -130,27 +131,33 @@ def approve_import_review(
 ):
     service = ImportService()
 
-    with get_db_connection() as connection:
-        with connection.transaction():
-            result = service.approve_review_transactions(
-                connection,
-                workspace=workspace,
-                current_user=current_user,
-                workspace_id=str(workspace["id"]),
-                import_job_id=job_id,
-                draft_ids=request.draft_ids,
-                item_updates=[item.model_dump() for item in request.item_updates],
-            )
-            if result is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Import review not found",
+    try:
+        with get_db_connection() as connection:
+            with connection.transaction():
+                result = service.approve_review_transactions(
+                    connection,
+                    workspace=workspace,
+                    current_user=current_user,
+                    workspace_id=str(workspace["id"]),
+                    import_job_id=job_id,
+                    draft_ids=request.draft_ids,
+                    item_updates=[item.model_dump() for item in request.item_updates],
                 )
-            review_payload = service.get_review_payload(
-                connection,
-                workspace_id=str(workspace["id"]),
-                job_id=job_id,
-            )
+                if result is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Import review not found",
+                    )
+                review_payload = service.get_review_payload(
+                    connection,
+                    workspace_id=str(workspace["id"]),
+                    job_id=job_id,
+                )
+    except MissingGoogleSheetSourceError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=exc.to_response(),
+        )
 
     return {
         **result,

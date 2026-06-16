@@ -39,7 +39,7 @@ sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.services.cleanup_service import ImportCleanupService
-from app.imports.services.import_service import ImportService
+from app.imports.services.import_service import ImportService, MissingGoogleSheetSourceError
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
@@ -787,6 +787,55 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(["draft-1"], approve_result["draft_ids"])
         self.assertEqual(1, approve_result["sync_success"])
         self.assertEqual(0, approve_result["sync_failed"])
+
+    def test_approve_review_transactions_missing_sheet_source_stops_before_persistence(self):
+        service = ImportService()
+        selected_drafts = [
+            {
+                "id": "draft-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "category": "Makan",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions") as sync_mock:
+            with self.assertRaises(MissingGoogleSheetSourceError) as raised:
+                service.approve_review_transactions(
+                    connection=object(),
+                    workspace={"id": "workspace-1", "google_sheet_id": ""},
+                    current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                    workspace_id="workspace-1",
+                    import_job_id="job-1",
+                    draft_ids=["draft-1"],
+                    item_updates=[],
+                )
+
+        self.assertEqual(
+            {
+                "status": "failed",
+                "error_code": "missing_google_sheet_source",
+                "message": "Google Sheet aktif belum dikonfigurasi. Hubungkan Google Sheets dulu di Settings.",
+            },
+            raised.exception.to_response(),
+        )
+        create_transactions_mock.assert_not_called()
+        register_fingerprints_mock.assert_not_called()
+        delete_drafts_mock.assert_not_called()
+        sync_mock.assert_not_called()
 
     def test_approve_review_transactions_keeps_final_transactions_when_sync_fails(self):
         service = ImportService()

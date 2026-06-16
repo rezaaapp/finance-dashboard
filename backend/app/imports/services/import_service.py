@@ -54,6 +54,18 @@ from app.repositories.google_sheet_source_repository import ensure_import_google
 logger = logging.getLogger(__name__)
 
 
+class MissingGoogleSheetSourceError(Exception):
+    error_code = "missing_google_sheet_source"
+    message = "Google Sheet aktif belum dikonfigurasi. Hubungkan Google Sheets dulu di Settings."
+
+    def to_response(self) -> dict:
+        return {
+            "status": "failed",
+            "error_code": self.error_code,
+            "message": self.message,
+        }
+
+
 class ImportService:
     def __init__(self):
         self.cleanup_service = ImportCleanupService()
@@ -837,7 +849,7 @@ class ImportService:
         fallback_sheet_id = str(workspace.get("google_sheet_id") or "").strip()
 
         if not fallback_sheet_id:
-            raise ValueError("Workspace does not have an active Google Sheet source")
+            raise MissingGoogleSheetSourceError()
 
         oauth_connection = get_active_google_oauth_connection(
             connection,
@@ -852,7 +864,7 @@ class ImportService:
         )
 
         if not sheet_source:
-            raise ValueError("Workspace does not have an active Google Sheet source")
+            raise MissingGoogleSheetSourceError()
 
         return str(sheet_source["id"])
 

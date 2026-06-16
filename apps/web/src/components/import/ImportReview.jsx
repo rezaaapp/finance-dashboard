@@ -62,6 +62,7 @@ const ImportReview = ({
   reviewData,
   loading,
   error,
+  actionError,
   onApprove,
   onReject,
   categoryOptions = [],
@@ -324,6 +325,34 @@ const ImportReview = ({
 
         <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
           <div className="flex flex-col gap-4">
+            {actionError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-main">
+                      Approval import belum bisa dilanjutkan
+                    </p>
+                    <p className="mt-1">
+                      {actionError.message}
+                    </p>
+                    {actionError.errorCode === "missing_google_sheet_source" && (
+                      <p className="mt-1">
+                        Hubungkan Google Sheets terlebih dahulu.
+                      </p>
+                    )}
+                  </div>
+                  {actionError.errorCode === "missing_google_sheet_source" && (
+                    <a
+                      href="/settings"
+                      className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                    >
+                      Buka Settings Google Sheets
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
               {filters.map((filter) => (
                 <button

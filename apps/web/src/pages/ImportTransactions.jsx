@@ -29,10 +29,12 @@ const ImportTransactions = () => {
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(false);
   const [categoryOptionsError, setCategoryOptionsError] = useState("");
+  const [reviewActionError, setReviewActionError] = useState(null);
 
   const loadReview = async (jobId) => {
     setLoading(true);
     setError("");
+    setReviewActionError(null);
     setActiveJobId(jobId);
     setCategoryOptionsLoading(true);
     setCategoryOptionsError("");
@@ -122,15 +124,28 @@ const ImportTransactions = () => {
       return;
     }
 
-    const response = await approveImportReview(activeJobId, payload);
-    setReviewData(response.review);
-    await loadHistory();
+    setReviewActionError(null);
+
+    try {
+      const response = await approveImportReview(activeJobId, payload);
+      setReviewData(response.review);
+      await loadHistory();
+    } catch (approveError) {
+      const responsePayload = approveError?.response?.data || {};
+
+      setReviewActionError({
+        errorCode: responsePayload.error_code || "approval_failed",
+        message: responsePayload.message || "Approval import belum bisa diproses.",
+      });
+    }
   };
 
   const handleReject = async (payload) => {
     if (!activeJobId) {
       return;
     }
+
+    setReviewActionError(null);
 
     const response = await rejectImportReview(activeJobId, payload);
     setReviewData(response.review);
@@ -197,6 +212,7 @@ const ImportTransactions = () => {
             reviewData={reviewData}
             loading={loading}
             error={error}
+            actionError={reviewActionError}
             onApprove={handleApprove}
             onReject={handleReject}
             categoryOptions={categoryOptions}
@@ -206,6 +222,7 @@ const ImportTransactions = () => {
               setActiveJobId("");
               setReviewData(null);
               setError("");
+              setReviewActionError(null);
               setCategoryOptions([]);
               setCategoryOptionsError("");
               setActiveTab("upload");
