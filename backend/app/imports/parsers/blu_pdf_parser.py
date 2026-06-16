@@ -16,14 +16,47 @@ class BluPdfParser(BaseParser):
     DATETIME_PATTERN = re.compile(
         r"^(?P<datetime>\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})(?:\s*[-|]\s*|\s+)(?P<body>.+)$"
     )
+    DATE_PATTERN = re.compile(
+        r"^(?P<day>\d{2})\s+(?P<month>Jan|Feb|Mar|Apr|Mei|May|Jun|Jul|Agu|Aug|Sep|Okt|Oct|Nov|Des|Dec)\s+(?P<year>\d{4})$",
+        re.IGNORECASE,
+    )
+    TIME_PATTERN = re.compile(
+        r"^(?P<time>\d{2}:\d{2})\s+(?P<body>.+)$"
+    )
     SECTION_PATTERN = re.compile(
-        r"^(?P<section>bluAccount|bluSpending(?:\s*-\s*.+)?)$",
+        r"^(?P<section>bluAccount(?:\s*-\s*.+)?|bluSpending(?:\s*-\s*.+)?)$",
         re.IGNORECASE,
     )
     AMOUNT_PATTERN = re.compile(
         r"(?P<amount>(?:Rp)?\s*[\d.,]+)(?:\s+|\s*[-|]\s*)(?P<transaction_type>CR|DB|DEBIT|KREDIT|CREDIT)$",
         re.IGNORECASE,
     )
+    STATEMENT_AMOUNT_PATTERN = re.compile(
+        r"^(?P<transaction_type>.+?)\s+(?P<sign>-)?\s*(?P<amount>\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:,\d+)?)\s+(?P<balance>\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:,\d+)?)$",
+        re.IGNORECASE,
+    )
+    SUMMARY_PATTERN = re.compile(
+        r"^(Total\s+(?:Pemasukan|Income|Pengeluaran|Expense)|Saldo\s+(?:Awal|Akhir)|Initial\s+Balance|Ending\s+Balance|Disclaimer|BCA\s+Digital)",
+        re.IGNORECASE,
+    )
+    MONTHS = {
+        "jan": "01",
+        "feb": "02",
+        "mar": "03",
+        "apr": "04",
+        "mei": "05",
+        "may": "05",
+        "jun": "06",
+        "jul": "07",
+        "agu": "08",
+        "aug": "08",
+        "sep": "09",
+        "okt": "10",
+        "oct": "10",
+        "nov": "11",
+        "des": "12",
+        "dec": "12",
+    }
 
     def parse(self, file: BinaryIO) -> ParsedImportResult:
         file.seek(0)
@@ -56,6 +89,7 @@ class BluPdfParser(BaseParser):
         transactions: list[dict] = []
         active_review_group = ""
         current_block: list[str] = []
+        active_statement_date = ""
 
         def flush_current_block():
             nonlocal current_block
@@ -78,11 +112,32 @@ class BluPdfParser(BaseParser):
             if section_match:
                 flush_current_block()
                 active_review_group = self._parse_review_group(section_match.group("section"))
+                active_statement_date = ""
+                continue
+
+            if self._is_ignored_line(line):
+                flush_current_block()
+                active_statement_date = ""
+                continue
+
+            date_match = self.DATE_PATTERN.match(line)
+            if date_match:
+                flush_current_block()
+                active_statement_date = self._normalize_statement_date(date_match)
                 continue
 
             if self.DATETIME_PATTERN.match(line):
                 flush_current_block()
                 current_block = [line]
+                active_statement_date = ""
+                continue
+
+            time_match = self.TIME_PATTERN.match(line)
+            if time_match and active_statement_date:
+                flush_current_block()
+                current_block = [
+                    f"{active_statement_date} {time_match.group('time')} {time_match.group('body')}"
+                ]
                 continue
 
             if current_block:
@@ -100,28 +155,67 @@ class BluPdfParser(BaseParser):
             return None
 
         block_text = " ".join(block_lines)
-        amount_match = self.AMOUNT_PATTERN.search(block_text)
+        amount_fields = self._extract_amount_fields(block_text, block_lines)
 
-        if not amount_match:
+        if not amount_fields:
             return None
 
-        transaction_type = amount_match.group("transaction_type").upper()
-        amount = self._parse_amount(amount_match.group("amount"))
+        transaction_type = amount_fields["transaction_type"]
+        amount = self._parse_amount(amount_fields["amount"])
         merchant_text = self._extract_merchant_text(
             datetime_match.group("body"),
             block_lines[1:],
-            amount_match.group(0),
+            amount_fields["amount_text"],
         )
 
         return {
             "datetime": datetime_match.group("datetime"),
             "merchant_original": merchant_text,
             "amount": amount,
-            "direction": self._resolve_direction(transaction_type),
+            "direction": self._resolve_direction(
+                transaction_type,
+                is_signed_expense=amount_fields["is_signed_expense"],
+                is_statement_format=amount_fields["is_statement_format"],
+            ),
             "transaction_type": transaction_type,
             "review_group": review_group,
             "raw_text": " | ".join(block_lines),
         }
+
+    def _extract_amount_fields(self, block_text: str, block_lines: list[str]) -> dict | None:
+        legacy_match = self.AMOUNT_PATTERN.search(block_text)
+
+        if legacy_match:
+            transaction_type = legacy_match.group("transaction_type").upper()
+
+            return {
+                "amount": legacy_match.group("amount"),
+                "amount_text": legacy_match.group(0),
+                "transaction_type": transaction_type,
+                "is_signed_expense": False,
+                "is_statement_format": False,
+            }
+
+        for line in reversed(block_lines):
+            statement_match = self.STATEMENT_AMOUNT_PATTERN.match(line)
+
+            if not statement_match:
+                continue
+
+            transaction_type = statement_match.group("transaction_type").strip()
+
+            if self.SUMMARY_PATTERN.match(transaction_type):
+                return None
+
+            return {
+                "amount": statement_match.group("amount"),
+                "amount_text": statement_match.group(0),
+                "transaction_type": transaction_type,
+                "is_signed_expense": bool(statement_match.group("sign")),
+                "is_statement_format": True,
+            }
+
+        return None
 
     def _extract_merchant_text(
         self,
@@ -136,7 +230,12 @@ class BluPdfParser(BaseParser):
             cleaned_line = self._normalize_line(line)
 
             if cleaned_line:
-                merchant_parts.append(self._strip_amount_suffix(cleaned_line))
+                stripped_line = self._strip_amount_suffix(cleaned_line)
+
+                if stripped_line != cleaned_line:
+                    continue
+
+                merchant_parts.append(stripped_line)
 
         return " ".join(part for part in merchant_parts if part).strip()
 
@@ -146,7 +245,10 @@ class BluPdfParser(BaseParser):
         if "-" not in normalized_section:
             return normalized_section
 
-        _, review_group = normalized_section.split("-", 1)
+        section_name, review_group = normalized_section.split("-", 1)
+        if section_name.strip().lower() == "bluaccount":
+            return "bluAccount"
+
         return review_group.strip()
 
     def _parse_amount(self, raw_amount: str) -> float:
@@ -164,7 +266,19 @@ class BluPdfParser(BaseParser):
         except InvalidOperation:
             return 0.0
 
-    def _resolve_direction(self, transaction_type: str) -> str:
+    def _resolve_direction(
+        self,
+        transaction_type: str,
+        *,
+        is_signed_expense: bool = False,
+        is_statement_format: bool = False,
+    ) -> str:
+        if is_signed_expense:
+            return "expense"
+
+        if is_statement_format:
+            return "income"
+
         if transaction_type in {"CR", "CREDIT", "KREDIT"}:
             return "income"
 
@@ -172,7 +286,15 @@ class BluPdfParser(BaseParser):
 
     def _strip_amount_suffix(self, value: str) -> str:
         stripped_value = self.AMOUNT_PATTERN.sub("", value).strip()
-        return stripped_value or value
+        stripped_value = self.STATEMENT_AMOUNT_PATTERN.sub("", stripped_value).strip()
+        return stripped_value
+
+    def _normalize_statement_date(self, date_match: re.Match) -> str:
+        month = self.MONTHS[date_match.group("month").lower()]
+        return f"{date_match.group('day')}/{month}/{date_match.group('year')}"
+
+    def _is_ignored_line(self, line: str) -> bool:
+        return bool(self.SUMMARY_PATTERN.match(line))
 
     def _normalize_line(self, value: str) -> str:
         return " ".join(value.replace("\xa0", " ").split())

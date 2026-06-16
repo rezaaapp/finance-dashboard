@@ -83,6 +83,80 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertIn("Fore Coffee", transactions[1]["merchant_original"])
         self.assertEqual(28000.0, transactions[1]["amount"])
 
+    def test_parser_supports_real_june_statement_text_pattern(self):
+        lines = [
+            "01 - 16 Jun 2026 21:15",
+            "bluAccount - 0000 0000 2555",
+            "05 Jun 2026",
+            "16:58 SEABANK | 1780653530302275",
+            "Transfer ke REZA PUTRA PRATAMA - 250.000,00 1.004,38",
+            "06 Jun 2026",
+            "08:00 bluSaving",
+            "Dana Masuk dari bluSaving 250.000,00 251.004,38",
+            "Saldo Awal / Initial Balance 1.004,38",
+            "bluSpending - Belanja Bulanan",
+            "07 Jun 2026",
+            "18:20 SUPERINDO BCY QR 000885002709750 |",
+            "02941272241224928998",
+            "Pembayaran QRIS - 159.750,00 1.840.757,80",
+            "Total Pengeluaran / Total Expense - 159.750,00",
+            "bluSpending - Makan Bulanan",
+            "10 Jun 2026",
+            "18:10 Ayam Gepuk Pak Gembus, Ke M143872 |",
+            "J2wouupDBSb6mc513120",
+            "Pembayaran QRIS - 52.000,00 301.572,19",
+            "bluSpending - Operasional Pacaran",
+            "11 Jun 2026",
+            "20:30 PARKIR QR 001122 |",
+            "ABC123",
+            "Pembayaran QRIS - 5.000,00 296.572,19",
+            "Disclaimer",
+            "BCA Digital",
+        ]
+
+        transactions = self.parser._parse_lines(lines)
+
+        by_merchant = {
+            transaction["merchant_original"]: transaction
+            for transaction in transactions
+        }
+        superindo = next(
+            transaction for transaction in transactions
+            if "SUPERINDO" in transaction["merchant_original"]
+        )
+        ayam_gepuk = next(
+            transaction for transaction in transactions
+            if "Ayam Gepuk" in transaction["merchant_original"]
+        )
+        seabank = next(
+            transaction for transaction in transactions
+            if "SEABANK" in transaction["merchant_original"]
+        )
+        dana_masuk = next(
+            transaction for transaction in transactions
+            if "bluSaving" in transaction["merchant_original"]
+            and transaction["direction"] == "income"
+        )
+
+        self.assertGreater(len(transactions), 0)
+        self.assertEqual(
+            {"bluAccount", "Belanja Bulanan", "Makan Bulanan", "Operasional Pacaran"},
+            {transaction["review_group"] for transaction in transactions},
+        )
+        self.assertNotIn("Total Pengeluaran", " ".join(by_merchant.keys()))
+        self.assertEqual(159750.0, superindo["amount"])
+        self.assertEqual("expense", superindo["direction"])
+        self.assertEqual("Belanja Bulanan", superindo["review_group"])
+        self.assertEqual(52000.0, ayam_gepuk["amount"])
+        self.assertEqual("expense", ayam_gepuk["direction"])
+        self.assertEqual("Makan Bulanan", ayam_gepuk["review_group"])
+        self.assertEqual(250000.0, seabank["amount"])
+        self.assertEqual("expense", seabank["direction"])
+        self.assertEqual("bluAccount", seabank["review_group"])
+        self.assertEqual(250000.0, dana_masuk["amount"])
+        self.assertEqual("income", dana_masuk["direction"])
+        self.assertEqual("bluAccount", dana_masuk["review_group"])
+
     def test_import_service_calls_blu_parser_and_returns_preview(self):
         fake_upload = NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf")
         fake_job = {
