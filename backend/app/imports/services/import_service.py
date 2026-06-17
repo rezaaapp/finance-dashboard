@@ -671,10 +671,15 @@ class ImportService:
             for draft in merged_drafts
         ]
         if sync_result["status"] == "success":
+            success_status_kwargs = {
+                "transaction_fingerprints": transaction_fingerprints,
+                "sync_status": "success",
+            }
+            if sync_result.get("error"):
+                success_status_kwargs["sync_error_message"] = sync_result["error"]
             update_import_transaction_sync_status(
                 connection,
-                transaction_fingerprints=transaction_fingerprints,
-                sync_status="success",
+                **success_status_kwargs,
             )
         elif sync_result["status"] == "needs_reconnect":
             update_import_transaction_sync_status(
@@ -903,10 +908,15 @@ class ImportService:
         ]
 
         if sync_result["status"] == "success":
+            success_status_kwargs = {
+                "transaction_ids": transaction_ids,
+                "sync_status": "success",
+            }
+            if sync_result.get("error"):
+                success_status_kwargs["sync_error_message"] = sync_result["error"]
             update_import_transaction_sync_status_by_ids(
                 connection,
-                transaction_ids=transaction_ids,
-                sync_status="success",
+                **success_status_kwargs,
             )
             self._log_import_event(
                 "smart_import.retry_sync.completed",

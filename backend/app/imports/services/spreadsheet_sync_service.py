@@ -1,3 +1,6 @@
+import logging
+import re
+
 from app.repositories.google_sheet_source_repository import (
     ensure_import_google_sheet_source,
     mark_google_sheet_source_error,
@@ -8,12 +11,16 @@ from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     append_sheet_values,
+    copy_sheet_row_format_and_validation,
+    get_spreadsheet_metadata,
+    read_sheet_values,
 )
 from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 
 
 GOOGLE_SHEETS_WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 GOOGLE_SHEETS_READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
+logger = logging.getLogger(__name__)
 
 
 class SpreadsheetSyncService:
@@ -102,13 +109,47 @@ class SpreadsheetSyncService:
             for transaction in approved_transactions
         ]
 
+        target_sheet_name = target_sheet_name or sheet_source["sheet_name"] or "Sheet1"
+        formatting_warning = None
+
         try:
-            append_sheet_values(
+            append_result = append_sheet_values(
                 access_token=access_token,
                 spreadsheet_id=sheet_source["sheet_id"],
-                range_name=target_sheet_name or sheet_source["sheet_name"] or "Sheet1",
+                range_name=target_sheet_name,
                 rows=rows,
             )
+            try:
+                formatting_result = self._copy_template_formatting(
+                    access_token=access_token,
+                    spreadsheet_id=sheet_source["sheet_id"],
+                    sheet_name=target_sheet_name,
+                    append_result=append_result,
+                    row_count=len(rows),
+                )
+                logger.info(
+                    "smart_import.spreadsheet_formatting.completed",
+                    extra={
+                        "smart_import": {
+                            "sheet_name": target_sheet_name,
+                            "template_row": formatting_result["template_row"],
+                            "appended_row_range": formatting_result["appended_row_range"],
+                            "row_count": len(rows),
+                        },
+                    },
+                )
+            except GoogleSheetsClientError as formatting_error:
+                formatting_warning = str(formatting_error)
+                logger.warning(
+                    "smart_import.spreadsheet_formatting.failed",
+                    extra={
+                        "smart_import": {
+                            "sheet_name": target_sheet_name,
+                            "row_count": len(rows),
+                            "reason": formatting_warning,
+                        },
+                    },
+                )
             update_google_sheet_last_synced(
                 connection,
                 workspace_id=str(workspace["id"]),
@@ -133,7 +174,8 @@ class SpreadsheetSyncService:
             "sync_success": len(approved_transactions),
             "sync_failed": 0,
             "source_id": str(sheet_source["id"]),
-            "error": None,
+            "error": formatting_warning,
+            "formatting_status": "warning" if formatting_warning else "success",
         }
 
     def requires_reconnect(self, scopes: list[str]) -> bool:
@@ -190,3 +232,107 @@ class SpreadsheetSyncService:
             str(source_dana or transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
             str(transaction.get("notes", "")),
         ]
+
+    def _copy_template_formatting(
+        self,
+        *,
+        access_token: str,
+        spreadsheet_id: str,
+        sheet_name: str,
+        append_result: dict,
+        row_count: int,
+    ) -> dict:
+        sheet_id = self._resolve_sheet_id(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+        )
+        template_row = self._resolve_template_row(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+        )
+        destination_start_row, destination_end_row = self._parse_appended_row_range(
+            append_result,
+            expected_row_count=row_count,
+        )
+        copy_sheet_row_format_and_validation(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+            sheet_id=sheet_id,
+            template_row=template_row,
+            destination_start_row=destination_start_row,
+            destination_end_row=destination_end_row,
+            column_count=7,
+        )
+
+        return {
+            "template_row": template_row,
+            "appended_row_range": f"{destination_start_row}:{destination_end_row}",
+        }
+
+    def _resolve_sheet_id(
+        self,
+        *,
+        access_token: str,
+        spreadsheet_id: str,
+        sheet_name: str,
+    ) -> int:
+        metadata = get_spreadsheet_metadata(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+        )
+
+        for sheet in metadata.get("sheets", []):
+            if sheet.get("title") == sheet_name and sheet.get("sheet_id") is not None:
+                return int(sheet["sheet_id"])
+
+        raise GoogleSheetsClientError("Target sheet metadata was not found")
+
+    def _resolve_template_row(
+        self,
+        *,
+        access_token: str,
+        spreadsheet_id: str,
+        sheet_name: str,
+    ) -> int:
+        escaped_sheet_name = str(sheet_name).replace("'", "''")
+        template_values = read_sheet_values(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+            range_name=f"'{escaped_sheet_name}'!A2:G100",
+        )
+
+        for offset, row in enumerate(template_values):
+            if any(str(value or "").strip() for value in row):
+                return offset + 2
+
+        raise GoogleSheetsClientError("Spreadsheet template row was not found")
+
+    def _parse_appended_row_range(
+        self,
+        append_result: dict,
+        *,
+        expected_row_count: int,
+    ) -> tuple[int, int]:
+        updated_range = str(
+            append_result.get("updates", {}).get("updatedRange")
+            or append_result.get("updatedRange")
+            or ""
+        )
+        matched_range = re.search(
+            r"![A-Z]+(?P<start>\d+):[A-Z]+(?P<end>\d+)$",
+            updated_range,
+            flags=re.IGNORECASE,
+        )
+
+        if not matched_range:
+            raise GoogleSheetsClientError("Appended spreadsheet row range was not returned")
+
+        start_row = int(matched_range.group("start"))
+        end_row = int(matched_range.group("end"))
+
+        if end_row - start_row + 1 != expected_row_count:
+            raise GoogleSheetsClientError("Appended spreadsheet row count did not match")
+
+        return start_row, end_row

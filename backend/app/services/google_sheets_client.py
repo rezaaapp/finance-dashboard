@@ -45,7 +45,12 @@ def get_spreadsheet_metadata(access_token: str, spreadsheet_id: str) -> dict:
     try:
         response = httpx.get(
             f"{GOOGLE_SHEETS_API_BASE_URL}/{spreadsheet_id}",
-            params={"fields": "properties.title,sheets.properties.title"},
+            params={
+                "fields": (
+                    "properties.title,"
+                    "sheets.properties(sheetId,title)"
+                ),
+            },
             headers=_authorization_headers(access_token),
             timeout=20,
         )
@@ -54,15 +59,19 @@ def get_spreadsheet_metadata(access_token: str, spreadsheet_id: str) -> dict:
         _raise_safe_google_error(exc)
 
     payload = response.json()
-    sheet_names = [
-        sheet.get("properties", {}).get("title")
+    sheets = [
+        {
+            "sheet_id": sheet.get("properties", {}).get("sheetId"),
+            "title": sheet.get("properties", {}).get("title"),
+        }
         for sheet in payload.get("sheets", [])
         if sheet.get("properties", {}).get("title")
     ]
 
     return {
         "title": payload.get("properties", {}).get("title", ""),
-        "sheet_names": sheet_names,
+        "sheet_names": [sheet["title"] for sheet in sheets],
+        "sheets": sheets,
     }
 
 
@@ -118,6 +127,69 @@ def append_sheet_values(
             json={
                 "values": rows,
             },
+            timeout=20,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        _raise_safe_google_error(exc)
+
+    return response.json()
+
+
+def copy_sheet_row_format_and_validation(
+    access_token: str,
+    spreadsheet_id: str,
+    *,
+    sheet_id: int,
+    template_row: int,
+    destination_start_row: int,
+    destination_end_row: int,
+    column_count: int = 7,
+):
+    if template_row < 1:
+        raise GoogleSheetsClientError("Template row must be positive")
+
+    if destination_start_row < 1 or destination_end_row < destination_start_row:
+        raise GoogleSheetsClientError("Destination row range is invalid")
+
+    source_range = {
+        "sheetId": sheet_id,
+        "startRowIndex": template_row - 1,
+        "endRowIndex": template_row,
+        "startColumnIndex": 0,
+        "endColumnIndex": column_count,
+    }
+    destination_range = {
+        "sheetId": sheet_id,
+        "startRowIndex": destination_start_row - 1,
+        "endRowIndex": destination_end_row,
+        "startColumnIndex": 0,
+        "endColumnIndex": column_count,
+    }
+    requests = [
+        {
+            "copyPaste": {
+                "source": source_range,
+                "destination": destination_range,
+                "pasteType": "PASTE_FORMAT",
+                "pasteOrientation": "NORMAL",
+            },
+        },
+        {
+            "copyPaste": {
+                "source": source_range,
+                "destination": destination_range,
+                "pasteType": "PASTE_DATA_VALIDATION",
+                "pasteOrientation": "NORMAL",
+            },
+        },
+    ]
+
+    try:
+        response = httpx.post(
+            f"{GOOGLE_SHEETS_API_BASE_URL}/{spreadsheet_id}:batchUpdate",
+            headers=_authorization_headers(access_token),
+            json={"requests": requests},
             timeout=20,
         )
         response.raise_for_status()

@@ -4,7 +4,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 os.environ.setdefault("DASHBOARD_USERNAME", "test-user")
@@ -51,6 +51,10 @@ from app.imports.services.import_service import (
 )
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
+from app.services.google_sheets_client import (
+    GoogleSheetsClientError,
+    copy_sheet_row_format_and_validation,
+)
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.utils.provider_detection import detect_import_provider
@@ -1351,7 +1355,28 @@ class BluPdfParserTestCase(unittest.TestCase):
             "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
         }), \
              patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
-             patch("app.imports.services.spreadsheet_sync_service.append_sheet_values") as append_values_mock, \
+             patch("app.imports.services.spreadsheet_sync_service.append_sheet_values", return_value={
+                 "updates": {
+                     "updatedRange": "'Start 1 Juni'!A12:G12",
+                     "updatedRows": 1,
+                 },
+             }) as append_values_mock, \
+             patch("app.imports.services.spreadsheet_sync_service.get_spreadsheet_metadata", return_value={
+                 "sheets": [{
+                     "sheet_id": 321,
+                     "title": "Start 1 Juni",
+                 }],
+             }), \
+             patch("app.imports.services.spreadsheet_sync_service.read_sheet_values", return_value=[[
+                 "Reza",
+                 "06/01/2026 08:00",
+                 "Template Transaction",
+                 "Belanja",
+                 100000,
+                 "Blu",
+                 "",
+             ]]), \
+             patch("app.imports.services.spreadsheet_sync_service.copy_sheet_row_format_and_validation") as copy_format_mock, \
              patch("app.imports.services.spreadsheet_sync_service.update_google_sheet_last_synced") as update_synced_mock:
             result = sync_service.sync_import_transactions(
                 connection=object(),
@@ -1398,8 +1423,128 @@ class BluPdfParserTestCase(unittest.TestCase):
             workspace_id="workspace-1",
             source_id="sheet-source-1",
         )
+        copy_format_mock.assert_called_once_with(
+            access_token="access-token",
+            spreadsheet_id="sheet-123",
+            sheet_id=321,
+            template_row=2,
+            destination_start_row=12,
+            destination_end_row=12,
+            column_count=7,
+        )
         self.assertEqual("success", result["status"])
         self.assertEqual(1, result["sync_success"])
+        self.assertEqual("success", result["formatting_status"])
+
+    def test_spreadsheet_formatting_failure_keeps_append_success_with_warning(self):
+        sync_service = SpreadsheetSyncService()
+
+        with patch("app.imports.services.spreadsheet_sync_service.get_active_google_oauth_connection", return_value={
+            "id": "oauth-1",
+            "access_token_encrypted": "encrypted-token",
+            "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
+        }), \
+             patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.append_sheet_values", return_value={
+                 "updates": {
+                     "updatedRange": "'Start 1 Juni'!A12:G12",
+                     "updatedRows": 1,
+                 },
+             }) as append_values_mock, \
+             patch.object(
+                 SpreadsheetSyncService,
+                 "_copy_template_formatting",
+                 side_effect=GoogleSheetsClientError("Formatting copy failed"),
+             ), \
+             patch("app.imports.services.spreadsheet_sync_service.update_google_sheet_last_synced"):
+            result = sync_service.sync_import_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza"},
+                approved_transactions=[{
+                    "datetime": "2026-06-13 13:26",
+                    "merchant_display": "SUPERINDO",
+                    "amount": 189400,
+                    "category": "Belanja",
+                    "notes": "",
+                }],
+                target_sheet_source={
+                    "id": "sheet-source-1",
+                    "sheet_id": "sheet-123",
+                    "sheet_name": "Default",
+                },
+                target_sheet_name="Start 1 Juni",
+                user_name="Reza",
+                source_dana="Blu",
+            )
+
+        append_values_mock.assert_called_once()
+        self.assertEqual("success", result["status"])
+        self.assertEqual(1, result["sync_success"])
+        self.assertEqual(0, result["sync_failed"])
+        self.assertEqual("warning", result["formatting_status"])
+        self.assertEqual("Formatting copy failed", result["error"])
+
+    def test_template_row_falls_back_to_nearest_non_empty_row(self):
+        sync_service = SpreadsheetSyncService()
+
+        with patch("app.imports.services.spreadsheet_sync_service.read_sheet_values", return_value=[
+            [],
+            ["Reza", "06/02/2026 08:00", "Existing Transaction"],
+        ]):
+            template_row = sync_service._resolve_template_row(
+                access_token="access-token",
+                spreadsheet_id="sheet-123",
+                sheet_name="Start 1 Juni",
+            )
+
+        self.assertEqual(3, template_row)
+
+    def test_google_client_copies_format_and_data_validation_without_values(self):
+        response = MagicMock()
+        response.json.return_value = {"replies": [{}, {}]}
+
+        with patch(
+            "app.services.google_sheets_client.httpx.post",
+            return_value=response,
+            create=True,
+        ) as post_mock:
+            copy_sheet_row_format_and_validation(
+                access_token="access-token",
+                spreadsheet_id="sheet-123",
+                sheet_id=321,
+                template_row=2,
+                destination_start_row=12,
+                destination_end_row=13,
+                column_count=7,
+            )
+
+        response.raise_for_status.assert_called_once()
+        requests = post_mock.call_args.kwargs["json"]["requests"]
+        self.assertEqual(
+            ["PASTE_FORMAT", "PASTE_DATA_VALIDATION"],
+            [request["copyPaste"]["pasteType"] for request in requests],
+        )
+        self.assertEqual(
+            {
+                "sheetId": 321,
+                "startRowIndex": 1,
+                "endRowIndex": 2,
+                "startColumnIndex": 0,
+                "endColumnIndex": 7,
+            },
+            requests[0]["copyPaste"]["source"],
+        )
+        self.assertEqual(
+            {
+                "sheetId": 321,
+                "startRowIndex": 11,
+                "endRowIndex": 13,
+                "startColumnIndex": 0,
+                "endColumnIndex": 7,
+            },
+            requests[0]["copyPaste"]["destination"],
+        )
 
     def test_spreadsheet_row_uses_merchant_display(self):
         row = SpreadsheetSyncService()._build_sheet_row(
