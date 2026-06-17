@@ -45,6 +45,7 @@ from app.imports.repositories.import_repository import (
 from app.imports.services.cleanup_service import ImportCleanupService
 from app.imports.services.incremental_import_engine import IncrementalImportEngine
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
+from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.utils.provider_detection import detect_import_provider
@@ -115,6 +116,7 @@ class ImportService:
         self.incremental_engine = IncrementalImportEngine()
         self.merchant_normalizer = MerchantNormalizer()
         self.spreadsheet_sync_service = SpreadsheetSyncService()
+        self.spreadsheet_value_resolver = SpreadsheetValueResolver()
 
     def detect_provider(self, filename: str) -> str:
         return self.detect_provider_details(filename=filename)["provider"]
@@ -597,8 +599,15 @@ class ImportService:
             sheet_source_id=sheet_source_id,
             sheet_name=sheet_name,
         )
+        resolved_source_dana = self.spreadsheet_value_resolver.resolve_source_dana_for_append(
+            connection,
+            workspace_id=workspace_id,
+            provider="Blu",
+        )
         resolved_user_name = self._resolve_import_user_name(
+            connection,
             current_user=current_user,
+            workspace_id=workspace_id,
             workspace=workspace,
         )
         final_transaction_rows = [
@@ -607,6 +616,7 @@ class ImportService:
                 sheet_source_id=str(target_sheet["source"]["id"]),
                 import_job_id=import_job_id,
                 user_name=resolved_user_name,
+                source_fund=resolved_source_dana,
                 transaction=draft,
             )
             for draft in merged_drafts
@@ -640,6 +650,7 @@ class ImportService:
             target_sheet_source=target_sheet["source"],
             target_sheet_name=target_sheet["sheet_name"],
             user_name=resolved_user_name,
+            source_dana=resolved_source_dana,
         )
         if sync_result["status"] == "success":
             self._log_import_event(
@@ -866,6 +877,11 @@ class ImportService:
             sheet_name=target_sheet["sheet_name"],
             unsynced_count=len(retryable_transactions),
         )
+        resolved_retry_source_dana = self.spreadsheet_value_resolver.resolve_source_dana_for_append(
+            connection,
+            workspace_id=workspace_id,
+            provider="Blu",
+        )
         sync_result = self.spreadsheet_sync_service.sync_import_transactions(
             connection,
             workspace=workspace,
@@ -874,9 +890,12 @@ class ImportService:
             target_sheet_source=target_sheet["source"],
             target_sheet_name=target_sheet["sheet_name"],
             user_name=self._resolve_import_user_name(
+                connection,
                 current_user=current_user,
+                workspace_id=workspace_id,
                 workspace=workspace,
             ),
+            source_dana=resolved_retry_source_dana,
         )
         transaction_ids = [
             str(transaction["id"])
@@ -951,21 +970,29 @@ class ImportService:
 
         return normalized_ids
 
-    def _resolve_import_user_name(self, *, current_user: dict, workspace: dict) -> str:
-        candidates = [
-            current_user.get("name"),
-            current_user.get("display_name"),
-            current_user.get("email"),
-            workspace.get("owner_name"),
-            workspace.get("name"),
-        ]
+    def _resolve_import_user_name(
+        self,
+        connection,
+        *,
+        current_user: dict,
+        workspace_id: str,
+        workspace: dict,
+    ) -> str:
+        resolved_name = self.spreadsheet_value_resolver.resolve_user_name_for_append(
+            connection,
+            workspace_id=workspace_id,
+            current_user=current_user,
+        )
 
-        for candidate in candidates:
+        if resolved_name != "User":
+            return resolved_name
+
+        for candidate in (workspace.get("owner_name"), workspace.get("name")):
             normalized_candidate = str(candidate or "").strip()
             if normalized_candidate:
                 return normalized_candidate
 
-        return "User"
+        return resolved_name
 
     def _merge_review_item_updates(self, draft_transactions: list[dict], *, item_updates: list[dict]):
         updates_by_id = {

@@ -154,7 +154,7 @@ def list_retryable_import_transactions(
                 id,
                 user_name,
                 import_transaction_fingerprint as transaction_fingerprint,
-                to_char(transaction_time, 'DD/MM/YYYY HH24:MI') as datetime,
+                to_char(transaction_time, 'YYYY-MM-DD HH24:MI') as datetime,
                 to_char(transaction_time, 'DD/MM/YYYY') as date,
                 coalesce(raw_payload ->> 'merchant_original', title) as merchant_original,
                 title as merchant_normalized,
@@ -206,12 +206,53 @@ def count_successful_import_transactions(
         return int(row["total"]) if row else 0
 
 
+def list_workspace_transaction_user_names(connection, *, workspace_id: str) -> list[str]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select user_name
+            from (
+                select distinct btrim(user_name) as user_name
+                from transactions
+                where workspace_id = %s
+                  and user_name is not null
+                  and btrim(user_name) <> ''
+            ) names
+            order by user_name asc
+            """,
+            (workspace_id,),
+        )
+
+        return [row["user_name"] for row in cursor.fetchall()]
+
+
+def list_workspace_transaction_source_funds(connection, *, workspace_id: str) -> list[str]:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select source_fund
+            from (
+                select distinct btrim(source_fund) as source_fund
+                from transactions
+                where workspace_id = %s
+                  and source_fund is not null
+                  and btrim(source_fund) <> ''
+            ) sources
+            order by source_fund asc
+            """,
+            (workspace_id,),
+        )
+
+        return [row["source_fund"] for row in cursor.fetchall()]
+
+
 def serialize_import_transaction_row(
     *,
     workspace_id: str,
     sheet_source_id: str,
     import_job_id: str,
     user_name: str,
+    source_fund: str = "Blu",
     transaction: dict,
 ) -> dict:
     transaction_time = _parse_transaction_time(transaction.get("datetime", ""))
@@ -229,7 +270,7 @@ def serialize_import_transaction_row(
         ),
         "raw_category": str(transaction.get("category", "")) or None,
         "amount": transaction.get("amount", 0),
-        "source_fund": "Blu",
+        "source_fund": source_fund,
         "note": str(transaction.get("notes", "")) or None,
         "direction": str(transaction.get("direction", "")) or "expense",
         "raw_payload": {

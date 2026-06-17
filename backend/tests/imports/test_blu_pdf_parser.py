@@ -50,6 +50,7 @@ from app.imports.services.import_service import (
     MissingTargetSheetError,
 )
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
+from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.utils.provider_detection import detect_import_provider
@@ -100,6 +101,18 @@ class FakeReturningConnection:
     def cursor(self, **kwargs):
         self.cursor_calls.append(kwargs)
         return self.cursor_instance
+
+
+class FakeSpreadsheetValueResolver:
+    def __init__(self, user_name: str = "Reza", source_dana: str = "Blu"):
+        self.user_name = user_name
+        self.source_dana = source_dana
+
+    def resolve_user_name_for_append(self, connection, *, workspace_id: str, current_user: dict):
+        return self.user_name
+
+    def resolve_source_dana_for_append(self, connection, *, workspace_id: str, provider: str = "Blu"):
+        return self.source_dana
 
 
 class BluPdfParserTestCase(unittest.TestCase):
@@ -593,7 +606,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             provider="blu",
             transactions=[
                 {
-                    "datetime": "01/06/2026 08:00",
+                    "datetime": "2026-06-13 13:26",
                     "merchant_original": "Fore Coffee 61715",
                     "amount": 28000,
                     "direction": "expense",
@@ -853,6 +866,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
     def test_approve_review_transactions_creates_final_transactions_and_registers_fingerprint(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         selected_drafts = [
             {
                 "id": "draft-1",
@@ -950,6 +964,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
         self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
+        self.assertEqual("Blu", sync_mock.call_args.kwargs["source_dana"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",
@@ -1098,6 +1113,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
     def test_approve_review_transactions_insert_failure_keeps_draft_and_skips_sync(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         selected_drafts = [
             {
                 "id": "draft-1",
@@ -1159,6 +1175,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
     def test_approve_review_transactions_registry_failure_keeps_draft_and_skips_sync(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         selected_drafts = [
             {
                 "id": "draft-1",
@@ -1219,6 +1236,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
     def test_approve_review_transactions_keeps_final_transactions_when_sync_fails(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         selected_drafts = [
             {
                 "id": "draft-1",
@@ -1311,7 +1329,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
                 current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
                 approved_transactions=[{
-                    "datetime": "01/06/2026 08:00",
+                    "datetime": "2026-06-13 13:26",
                     "merchant_normalized": "Fore Coffee",
                     "amount": 28000,
                     "category": "Makan",
@@ -1344,7 +1362,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                     "email": "reza@example.com",
                 },
                 approved_transactions=[{
-                    "datetime": "01/06/2026 08:00",
+                    "datetime": "2026-06-13 13:26",
                     "merchant_display": "SUPERINDO",
                     "merchant_normalized": "SUPERINDO",
                     "amount": 159750,
@@ -1358,6 +1376,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 },
                 target_sheet_name="Start 1 Juni",
                 user_name="Reza",
+                source_dana="Blu",
             )
 
         append_values_mock.assert_called_once_with(
@@ -1366,7 +1385,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             range_name="Start 1 Juni",
             rows=[[
                 "Reza",
-                "01/06/2026 08:00",
+                "06/13/2026 13:26",
                 "SUPERINDO",
                 "Belanja",
                 159750,
@@ -1402,7 +1421,7 @@ class BluPdfParserTestCase(unittest.TestCase):
     def test_spreadsheet_row_formats_blu_datetime_without_timezone_shift(self):
         row = SpreadsheetSyncService()._build_sheet_row(
             {
-                "datetime": "2026-06-10 17:50:00+00:00",
+                "datetime": "2026-06-13 13:26:00+00:00",
                 "merchant_display": "SUPERINDO",
                 "amount": 159750,
                 "category": "Belanja",
@@ -1415,7 +1434,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(
             [
                 "Reza",
-                "10/06/2026 17:50",
+                "06/13/2026 13:26",
                 "SUPERINDO",
                 "Belanja",
                 159750,
@@ -1424,6 +1443,61 @@ class BluPdfParserTestCase(unittest.TestCase):
             ],
             row,
         )
+
+    def test_spreadsheet_value_resolver_uses_single_existing_name(self):
+        resolver = SpreadsheetValueResolver()
+
+        with patch(
+            "app.imports.services.spreadsheet_value_resolver.list_workspace_transaction_user_names",
+            return_value=["Reza Existing"],
+        ):
+            self.assertEqual(
+                "Reza Existing",
+                resolver.resolve_user_name_for_append(
+                    connection=object(),
+                    workspace_id="workspace-1",
+                    current_user={
+                        "name": "Different Reza",
+                        "display_name": "Reza Putra Pratama",
+                    },
+                ),
+            )
+
+    def test_spreadsheet_value_resolver_user_name_fallback(self):
+        resolver = SpreadsheetValueResolver()
+
+        with patch(
+            "app.imports.services.spreadsheet_value_resolver.list_workspace_transaction_user_names",
+            return_value=[],
+        ):
+            self.assertEqual(
+                "Reza",
+                resolver.resolve_user_name_for_append(
+                    connection=object(),
+                    workspace_id="workspace-1",
+                    current_user={
+                        "name": "Reza",
+                        "display_name": "Reza Putra Pratama",
+                        "email": "reza@example.com",
+                    },
+                ),
+            )
+
+    def test_spreadsheet_value_resolver_preserves_source_dana_casing(self):
+        resolver = SpreadsheetValueResolver()
+
+        with patch(
+            "app.imports.services.spreadsheet_value_resolver.list_workspace_transaction_source_funds",
+            return_value=["blu"],
+        ):
+            self.assertEqual(
+                "blu",
+                resolver.resolve_source_dana_for_append(
+                    connection=object(),
+                    workspace_id="workspace-1",
+                    provider="Blu",
+                ),
+            )
 
     def test_reject_review_transactions_removes_selected_drafts(self):
         service = ImportService()
@@ -1445,6 +1519,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
     def test_retry_sync_uses_existing_unsynced_transactions_and_selected_sheet(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         retryable_transactions = [
             {
                 "id": "txn-1",
@@ -1518,6 +1593,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         sync_mock.assert_called_once()
         self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
+        self.assertEqual("Blu", sync_mock.call_args.kwargs["source_dana"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",
@@ -1532,6 +1608,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
     def test_retry_sync_failure_preserves_transactions_and_stores_error(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         retryable_transactions = [
             {
                 "id": "txn-1",

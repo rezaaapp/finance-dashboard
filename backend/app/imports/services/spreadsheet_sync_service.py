@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from app.repositories.google_sheet_source_repository import (
     ensure_import_google_sheet_source,
     mark_google_sheet_source_error,
@@ -11,6 +9,7 @@ from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     append_sheet_values,
 )
+from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 
 
 GOOGLE_SHEETS_WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
@@ -18,6 +17,9 @@ GOOGLE_SHEETS_READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonl
 
 
 class SpreadsheetSyncService:
+    def __init__(self):
+        self.value_resolver = SpreadsheetValueResolver()
+
     def sync_import_transactions(
         self,
         connection,
@@ -28,6 +30,7 @@ class SpreadsheetSyncService:
         target_sheet_source: dict | None = None,
         target_sheet_name: str | None = None,
         user_name: str | None = None,
+        source_dana: str | None = None,
     ) -> dict:
         if not approved_transactions:
             return {
@@ -79,11 +82,22 @@ class SpreadsheetSyncService:
             }
 
         access_token = decrypt_text(oauth_connection["access_token_encrypted"])
+        resolved_user_name = user_name or self.value_resolver.resolve_user_name_for_append(
+            connection,
+            workspace_id=str(workspace["id"]),
+            current_user=current_user,
+        )
+        resolved_source_dana = source_dana or self.value_resolver.resolve_source_dana_for_append(
+            connection,
+            workspace_id=str(workspace["id"]),
+            provider="Blu",
+        )
         rows = [
             self._build_sheet_row(
                 transaction,
                 current_user=current_user,
-                user_name=user_name,
+                user_name=resolved_user_name,
+                source_dana=resolved_source_dana,
             )
             for transaction in approved_transactions
         ]
@@ -155,6 +169,7 @@ class SpreadsheetSyncService:
         *,
         current_user: dict,
         user_name: str | None = None,
+        source_dana: str | None = None,
     ) -> list:
         return [
             str(
@@ -165,41 +180,13 @@ class SpreadsheetSyncService:
                 or current_user.get("email")
                 or "User"
             ),
-            self._format_transaction_datetime(transaction.get("datetime", "")),
+            self.value_resolver.format_datetime_for_append(transaction.get("datetime", "")),
             str(
                 transaction.get("merchant_display")
                 or transaction.get("merchant_normalized", "")
             ),
             str(transaction.get("category", "")),
             transaction.get("amount", 0),
-            str(transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
+            str(source_dana or transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
             str(transaction.get("notes", "")),
         ]
-
-    def _format_transaction_datetime(self, value) -> str:
-        if not value:
-            return ""
-
-        if isinstance(value, datetime):
-            return value.strftime("%d/%m/%Y %H:%M")
-
-        raw_value = str(value or "").strip()
-        if not raw_value:
-            return ""
-
-        for date_format in (
-            "%d/%m/%Y %H:%M",
-            "%d/%m/%Y %H:%M:%S",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d %H:%M",
-        ):
-            try:
-                return datetime.strptime(raw_value, date_format).strftime("%d/%m/%Y %H:%M")
-            except ValueError:
-                pass
-
-        try:
-            normalized_value = raw_value.replace("Z", "+00:00")
-            return datetime.fromisoformat(normalized_value).strftime("%d/%m/%Y %H:%M")
-        except ValueError:
-            return raw_value
