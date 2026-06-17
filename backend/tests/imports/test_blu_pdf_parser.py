@@ -39,6 +39,9 @@ sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.repositories.final_transaction_repository import create_import_transactions
+from app.imports.repositories.fingerprint_registry_repository import (
+    register_transaction_fingerprints,
+)
 from app.imports.services.cleanup_service import ImportCleanupService
 from app.imports.services.import_service import (
     ImportService,
@@ -161,6 +164,70 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         self.assertEqual([], create_import_transactions(connection, rows=[]))
         self.assertEqual([], connection.cursor_calls)
+
+    def test_register_transaction_fingerprints_empty_rows_returns_empty_list(self):
+        cursor = FakeReturningCursor([])
+        connection = FakeReturningConnection(cursor)
+
+        self.assertEqual([], register_transaction_fingerprints(connection, rows=[]))
+        self.assertEqual([], connection.cursor_calls)
+
+    def test_register_transaction_fingerprints_returns_registered_rows(self):
+        cursor = FakeReturningCursor([
+            {
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+                "approved_at": "2026-06-17T08:00:00Z",
+                "created_at": "2026-06-17T08:00:00Z",
+            },
+        ])
+        connection = FakeReturningConnection(cursor)
+
+        registered_rows = register_transaction_fingerprints(
+            connection,
+            rows=[{
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+            }],
+        )
+
+        self.assertEqual(
+            [{
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+                "approved_at": "2026-06-17T08:00:00Z",
+                "created_at": "2026-06-17T08:00:00Z",
+            }],
+            registered_rows,
+        )
+        self.assertEqual(1, len(cursor.executed))
+        self.assertIn("returning transaction_fingerprint, provider, approved_at, created_at", cursor.executed[0][0])
+        self.assertIn("on conflict (transaction_fingerprint)", cursor.executed[0][0])
+        self.assertEqual(1, cursor.fetchone_calls)
+        self.assertEqual(0, cursor.fetchall_calls)
+
+    def test_register_transaction_fingerprints_duplicate_uses_conflict_update(self):
+        cursor = FakeReturningCursor([
+            {
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+                "approved_at": "2026-06-17T08:05:00Z",
+                "created_at": "2026-06-17T08:00:00Z",
+            },
+        ])
+        connection = FakeReturningConnection(cursor)
+
+        register_transaction_fingerprints(
+            connection,
+            rows=[{
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+            }],
+        )
+
+        self.assertIn("do update set", cursor.executed[0][0])
+        self.assertIn("provider = excluded.provider", cursor.executed[0][0])
+        self.assertIn("approved_at = excluded.approved_at", cursor.executed[0][0])
 
     def test_parser_detects_sections_and_review_groups(self):
         transactions = self.parser.parse(io.BytesIO(self.fixture_bytes)).transactions
@@ -1080,6 +1147,66 @@ class BluPdfParserTestCase(unittest.TestCase):
                 )
 
         register_fingerprints_mock.assert_not_called()
+        delete_drafts_mock.assert_not_called()
+        sync_mock.assert_not_called()
+
+    def test_approve_review_transactions_registry_failure_keeps_draft_and_skips_sync(self):
+        service = ImportService()
+        selected_drafts = [
+            {
+                "id": "draft-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "category": "Makan",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Start 1 Juni",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Nama",
+                 "Waktu Transaksi",
+                 "Nama Transaksi",
+                 "Kategori",
+                 "Harga",
+                 "Source Dana",
+                 "Keterangan",
+             ]]), \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]), \
+             patch("app.imports.services.import_service.register_transaction_fingerprints", side_effect=RuntimeError("registry failed")), \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions") as sync_mock:
+            with self.assertRaises(RuntimeError):
+                service.approve_review_transactions(
+                    connection=object(),
+                    workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                    current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                    workspace_id="workspace-1",
+                    import_job_id="job-1",
+                    draft_ids=["draft-1"],
+                    sheet_source_id="sheet-source-1",
+                    sheet_name="Start 1 Juni",
+                    item_updates=[],
+                )
+
         delete_drafts_mock.assert_not_called()
         sync_mock.assert_not_called()
 

@@ -34,24 +34,32 @@ def register_transaction_fingerprints(
         return []
 
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.executemany(
-            """
-            insert into import_transaction_registry (
-                transaction_fingerprint,
-                provider,
-                approved_at
-            )
-            values (
-                %(transaction_fingerprint)s,
-                %(provider)s,
-                now()
-            )
-            on conflict (transaction_fingerprint)
-            do update set
-                approved_at = excluded.approved_at
-            returning transaction_fingerprint, provider, approved_at
-            """,
-            rows,
-        )
+        registered_rows = []
 
-        return cursor.fetchall()
+        for row in rows:
+            cursor.execute(
+                """
+                insert into import_transaction_registry (
+                    transaction_fingerprint,
+                    provider,
+                    approved_at
+                )
+                values (
+                    %(transaction_fingerprint)s,
+                    %(provider)s,
+                    now()
+                )
+                on conflict (transaction_fingerprint)
+                do update set
+                    provider = excluded.provider,
+                    approved_at = excluded.approved_at
+                returning transaction_fingerprint, provider, approved_at, created_at
+                """,
+                row,
+            )
+            registered_row = cursor.fetchone()
+
+            if registered_row:
+                registered_rows.append(registered_row)
+
+        return registered_rows
