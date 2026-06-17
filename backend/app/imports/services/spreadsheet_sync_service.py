@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.repositories.google_sheet_source_repository import (
     ensure_import_google_sheet_source,
     mark_google_sheet_source_error,
@@ -158,12 +160,12 @@ class SpreadsheetSyncService:
             str(
                 user_name
                 or transaction.get("user_name")
-                or current_user.get("display_name")
                 or current_user.get("name")
+                or current_user.get("display_name")
                 or current_user.get("email")
                 or "User"
             ),
-            str(transaction.get("datetime", "")),
+            self._format_transaction_datetime(transaction.get("datetime", "")),
             str(
                 transaction.get("merchant_display")
                 or transaction.get("merchant_normalized", "")
@@ -173,3 +175,31 @@ class SpreadsheetSyncService:
             str(transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
             str(transaction.get("notes", "")),
         ]
+
+    def _format_transaction_datetime(self, value) -> str:
+        if not value:
+            return ""
+
+        if isinstance(value, datetime):
+            return value.strftime("%d/%m/%Y %H:%M")
+
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return ""
+
+        for date_format in (
+            "%d/%m/%Y %H:%M",
+            "%d/%m/%Y %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+        ):
+            try:
+                return datetime.strptime(raw_value, date_format).strftime("%d/%m/%Y %H:%M")
+            except ValueError:
+                pass
+
+        try:
+            normalized_value = raw_value.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized_value).strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            return raw_value

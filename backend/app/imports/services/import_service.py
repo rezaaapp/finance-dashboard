@@ -873,6 +873,10 @@ class ImportService:
             approved_transactions=retryable_transactions,
             target_sheet_source=target_sheet["source"],
             target_sheet_name=target_sheet["sheet_name"],
+            user_name=self._resolve_import_user_name(
+                current_user=current_user,
+                workspace=workspace,
+            ),
         )
         transaction_ids = [
             str(transaction["id"])
@@ -949,8 +953,8 @@ class ImportService:
 
     def _resolve_import_user_name(self, *, current_user: dict, workspace: dict) -> str:
         candidates = [
-            current_user.get("display_name"),
             current_user.get("name"),
+            current_user.get("display_name"),
             current_user.get("email"),
             workspace.get("owner_name"),
             workspace.get("name"),

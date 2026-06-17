@@ -936,7 +936,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         created_row = create_transactions_mock.call_args.kwargs["rows"][0]
         self.assertEqual("sheet-source-1", created_row["sheet_source_id"])
-        self.assertEqual("Reza Display", created_row["user_name"])
+        self.assertEqual("Reza", created_row["user_name"])
         self.assertEqual("Ayam Gepuk Pak Gembus", created_row["title"])
         self.assertEqual(
             "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
@@ -949,7 +949,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Makan", created_row["raw_category"])
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
-        self.assertEqual("Reza Display", sync_mock.call_args.kwargs["user_name"])
+        self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",
@@ -1357,7 +1357,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                     "sheet_name": "Default",
                 },
                 target_sheet_name="Start 1 Juni",
-                user_name="Reza Display",
+                user_name="Reza",
             )
 
         append_values_mock.assert_called_once_with(
@@ -1365,7 +1365,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             spreadsheet_id="sheet-123",
             range_name="Start 1 Juni",
             rows=[[
-                "Reza Display",
+                "Reza",
                 "01/06/2026 08:00",
                 "SUPERINDO",
                 "Belanja",
@@ -1393,11 +1393,37 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "notes": "",
             },
             current_user={"display_name": "Reza Display", "name": "Reza"},
-            user_name="Reza Display",
+            user_name="Reza",
         )
 
-        self.assertEqual("Reza Display", row[0])
+        self.assertEqual("Reza", row[0])
         self.assertEqual("Ayam Gepuk Pak Gembus", row[2])
+
+    def test_spreadsheet_row_formats_blu_datetime_without_timezone_shift(self):
+        row = SpreadsheetSyncService()._build_sheet_row(
+            {
+                "datetime": "2026-06-10 17:50:00+00:00",
+                "merchant_display": "SUPERINDO",
+                "amount": 159750,
+                "category": "Belanja",
+                "notes": "",
+                "source_dana": "Blu",
+            },
+            current_user={"display_name": "Reza Putra Pratama", "name": "Reza"},
+        )
+
+        self.assertEqual(
+            [
+                "Reza",
+                "10/06/2026 17:50",
+                "SUPERINDO",
+                "Belanja",
+                159750,
+                "Blu",
+                "",
+            ],
+            row,
+        )
 
     def test_reject_review_transactions_removes_selected_drafts(self):
         service = ImportService()
@@ -1491,6 +1517,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             sync_status="success",
         )
         sync_mock.assert_called_once()
+        self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",
