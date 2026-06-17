@@ -1417,10 +1417,12 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, reject_result["rejected_count"])
         self.assertEqual(["draft-2"], reject_result["draft_ids"])
 
-    def test_retry_sync_only_retries_failed_or_needs_reconnect_transactions(self):
+    def test_retry_sync_uses_existing_unsynced_transactions_and_selected_sheet(self):
         service = ImportService()
         retryable_transactions = [
             {
+                "id": "txn-1",
+                "user_name": "Reza Display",
                 "transaction_fingerprint": "fp-1",
                 "datetime": "01/06/2026 08:00",
                 "merchant_normalized": "Fore Coffee",
@@ -1429,6 +1431,8 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "notes": "",
             },
             {
+                "id": "txn-2",
+                "user_name": "Reza Display",
                 "transaction_fingerprint": "fp-2",
                 "datetime": "02/06/2026 08:00",
                 "merchant_normalized": "Superindo",
@@ -1440,14 +1444,36 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1"}), \
              patch("app.imports.services.import_service.list_retryable_import_transactions", return_value=retryable_transactions), \
+             patch("app.imports.services.import_service.count_successful_import_transactions", return_value=10), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Default",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Nama",
+                 "Waktu Transaksi",
+                 "Nama Transaksi",
+                 "Kategori",
+                 "Harga",
+                 "Source Dana",
+                 "Keterangan",
+             ]]), \
              patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
                  "status": "success",
                  "sync_success": 2,
                  "sync_failed": 0,
                  "source_id": "sheet-source-1",
                  "error": None,
-             }), \
-             patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
+             }) as sync_mock, \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status_by_ids") as update_sync_mock, \
+             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
              patch("app.imports.services.import_service.refresh_import_job_aggregates"):
             result = service.retry_sync_transactions(
                 connection=object(),
@@ -1455,15 +1481,97 @@ class BluPdfParserTestCase(unittest.TestCase):
                 current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
                 workspace_id="workspace-1",
                 import_job_id="job-1",
+                sheet_source_id="sheet-source-1",
+                sheet_name="Start 1 Juni",
             )
 
         update_sync_mock.assert_called_once_with(
             unittest.mock.ANY,
-            transaction_fingerprints=["fp-1", "fp-2"],
+            transaction_ids=["txn-1", "txn-2"],
             sync_status="success",
         )
+        sync_mock.assert_called_once()
+        self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
+        self.assertEqual(
+            "sheet-source-1",
+            sync_mock.call_args.kwargs["target_sheet_source"]["id"],
+        )
+        create_transactions_mock.assert_not_called()
+        register_fingerprints_mock.assert_not_called()
         self.assertEqual(2, result["retried_count"])
+        self.assertEqual(10, result["skipped_success"])
+        self.assertEqual("completed", result["status"])
         self.assertEqual("success", result["sync_status"])
+
+    def test_retry_sync_failure_preserves_transactions_and_stores_error(self):
+        service = ImportService()
+        retryable_transactions = [
+            {
+                "id": "txn-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_normalized": "Fore Coffee",
+                "category": "Makan",
+                "amount": 28000,
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1"}), \
+             patch("app.imports.services.import_service.list_retryable_import_transactions", return_value=retryable_transactions), \
+             patch("app.imports.services.import_service.count_successful_import_transactions", return_value=0), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Default",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Nama",
+                 "Waktu Transaksi",
+                 "Nama Transaksi",
+                 "Kategori",
+                 "Harga",
+                 "Source Dana",
+                 "Keterangan",
+             ]]), \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
+                 "status": "failed",
+                 "sync_success": 0,
+                 "sync_failed": 1,
+                 "source_id": "sheet-source-1",
+                 "error": "append failed",
+             }), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status_by_ids") as update_sync_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_draft_mock, \
+             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"):
+            result = service.retry_sync_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                sheet_source_id="sheet-source-1",
+                sheet_name="Start 1 Juni",
+            )
+
+        update_sync_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            transaction_ids=["txn-1"],
+            sync_status="failed",
+            sync_error_message="append failed",
+        )
+        delete_draft_mock.assert_not_called()
+        create_transactions_mock.assert_not_called()
+        register_fingerprints_mock.assert_not_called()
+        self.assertEqual("failed", result["sync_status"])
+        self.assertEqual("append failed", result["sync_error_message"])
 
     def test_cleanup_service_deletes_expired_pdf_and_drafts_but_preserves_history(self):
         service = ImportCleanupService()
@@ -1526,6 +1634,64 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, len(payload["jobs"]))
         self.assertEqual("cleanup_completed", payload["jobs"][0]["status"])
         self.assertEqual("already_deleted", payload["jobs"][0]["pdf_status"])
+
+    def test_history_detail_includes_unsynced_transactions(self):
+        service = ImportService()
+        history_job = {
+            "id": "job-1",
+            "filename": "blu_statement_juni.pdf",
+            "provider": "blu",
+            "status": "completed",
+            "created_at": "2026-06-16T10:00:00Z",
+            "transactions_found": 10,
+            "new_transactions": 10,
+            "existing_transactions": 0,
+            "approved_transactions": 10,
+            "rejected_transactions": 0,
+            "sync_success": 8,
+            "sync_failed": 2,
+            "retryable_sync_count": 2,
+            "needs_reconnect": False,
+            "temp_file_deleted_at": "2026-06-16T11:00:00Z",
+        }
+        unsynced_transactions = [
+            {
+                "id": "txn-1",
+                "date": "01/06/2026",
+                "merchant_display": "Fore Coffee",
+                "merchant_normalized": "Fore Coffee",
+                "category": "Makan",
+                "amount": 28000,
+                "source_dana": "Blu",
+                "sync_status": "failed",
+                "sync_error_message": "append failed",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_history_detail", return_value=history_job), \
+             patch("app.imports.services.import_service.list_retryable_import_transactions", return_value=unsynced_transactions):
+            payload = service.get_history_detail_payload(
+                connection=object(),
+                workspace_id="workspace-1",
+                job_id="job-1",
+            )
+
+        self.assertEqual(1, payload["unsynced_count"])
+        self.assertEqual(8, payload["sync_success_count"])
+        self.assertEqual(2, payload["sync_failed_count"])
+        self.assertEqual(
+            {
+                "id": "txn-1",
+                "date": "01/06/2026",
+                "transaction_name": "Fore Coffee",
+                "category": "Makan",
+                "amount": 28000.0,
+                "source_dana": "Blu",
+                "sync_status": "failed",
+                "sync_error_message": "append failed",
+            },
+            payload["unsynced_transactions"][0],
+        )
 
 
 if __name__ == "__main__":

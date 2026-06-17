@@ -32,6 +32,11 @@ class ImportReviewActionRequest(BaseModel):
     sheet_name: str | None = None
 
 
+class ImportRetrySyncRequest(BaseModel):
+    sheet_source_id: str | None = None
+    sheet_name: str | None = None
+
+
 @router.post("/upload")
 def upload_import_file(
     file: UploadFile = File(...),
@@ -187,20 +192,39 @@ def approve_import_review(
 @router.post("/retry-sync/{job_id}")
 def retry_import_sync(
     job_id: str,
+    request: ImportRetrySyncRequest,
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
     service = ImportService()
 
-    with get_db_connection() as connection:
-        with connection.transaction():
-            result = service.retry_sync_transactions(
-                connection,
-                workspace=workspace,
-                current_user=current_user,
-                workspace_id=str(workspace["id"]),
-                import_job_id=job_id,
-            )
+    try:
+        with get_db_connection() as connection:
+            with connection.transaction():
+                result = service.retry_sync_transactions(
+                    connection,
+                    workspace=workspace,
+                    current_user=current_user,
+                    workspace_id=str(workspace["id"]),
+                    import_job_id=job_id,
+                    sheet_source_id=request.sheet_source_id,
+                    sheet_name=request.sheet_name,
+                )
+    except MissingGoogleSheetSourceError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=exc.to_response(),
+        )
+    except MissingTargetSheetError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=exc.to_response(),
+        )
+    except InvalidTargetSheetHeaderError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=exc.to_response(),
+        )
 
     if not result:
         raise HTTPException(

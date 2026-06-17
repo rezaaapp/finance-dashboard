@@ -66,6 +66,7 @@ const ImportTransactions = () => {
   const [worksheetsLoading, setWorksheetsLoading] = useState(false);
   const [worksheetsError, setWorksheetsError] = useState("");
   const [targetSheetName, setTargetSheetName] = useState("");
+  const [historyRetryResult, setHistoryRetryResult] = useState(null);
 
   useEffect(() => {
     if (!targetSourceId) {
@@ -194,10 +195,39 @@ const ImportTransactions = () => {
   const loadHistory = async () => {
     setHistoryLoading(true);
     setHistoryError("");
+    setSheetSourcesLoading(true);
+    setSheetSourcesError("");
 
     try {
-      const response = await getImportHistory();
-      setHistoryRows(response.jobs || []);
+      const [historyResult, sourcesResult] = await Promise.allSettled([
+        getImportHistory(),
+        getGoogleSheetSources(),
+      ]);
+
+      if (historyResult.status === "rejected") {
+        throw historyResult.reason;
+      }
+
+      setHistoryRows(historyResult.value.jobs || []);
+
+      if (sourcesResult.status === "fulfilled") {
+        const sources = sourcesResult.value.sources || [];
+        const defaultSource = (
+          sources.find((source) => source.status === "active")
+          || sources[0]
+          || null
+        );
+
+        setSheetSources(sources);
+        setTargetSourceId((current) => current || defaultSource?.source_id || "");
+      } else {
+        setSheetSources([]);
+        setTargetSourceId("");
+        setSheetSourcesError(
+          sourcesResult.reason?.response?.data?.detail
+          || "Daftar Google Sheets belum bisa dimuat."
+        );
+      }
     } catch (historyLoadError) {
       setHistoryError(
         historyLoadError?.response?.data?.detail
@@ -205,6 +235,7 @@ const ImportTransactions = () => {
       );
     } finally {
       setHistoryLoading(false);
+      setSheetSourcesLoading(false);
     }
   };
 
@@ -282,14 +313,28 @@ const ImportTransactions = () => {
 
   const handleRetrySync = async (jobId) => {
     setActionLoading(`retry:${jobId}`);
+    setHistoryRetryResult(null);
 
     try {
-      await retryImportSync(jobId);
+      const response = await retryImportSync(jobId, {
+        sheet_source_id: targetSourceId,
+        sheet_name: targetSheetName,
+      });
+      setHistoryRetryResult(response);
       await loadHistory();
 
       if (historyDetail?.job_id === jobId) {
         await loadHistoryDetail(jobId);
       }
+    } catch (retryError) {
+      const responsePayload = retryError?.response?.data || {};
+
+      setHistoryRetryResult({
+        status: "failed",
+        sync_status: "failed",
+        message: responsePayload.message || responsePayload.detail || "Retry sync belum berhasil.",
+        sync_error_message: responsePayload.message || responsePayload.detail || "Retry sync belum berhasil.",
+      });
     } finally {
       setActionLoading("");
     }
@@ -400,6 +445,24 @@ const ImportTransactions = () => {
           onRetrySync={handleRetrySync}
           onViewDetail={loadHistoryDetail}
           onReconnectGoogle={handleReconnectGoogle}
+          sheetSources={sheetSources}
+          sheetSourcesLoading={sheetSourcesLoading}
+          sheetSourcesError={sheetSourcesError}
+          targetSourceId={targetSourceId}
+          targetSheetName={targetSheetName}
+          worksheets={worksheets}
+          worksheetsLoading={worksheetsLoading}
+          worksheetsError={worksheetsError}
+          retryResult={historyRetryResult}
+          onTargetSourceChange={(nextSourceId) => {
+            setTargetSourceId(nextSourceId);
+            setTargetSheetName("");
+            setHistoryRetryResult(null);
+          }}
+          onTargetSheetChange={(nextSheetName) => {
+            setTargetSheetName(nextSheetName);
+            setHistoryRetryResult(null);
+          }}
         />
       )}
     </div>

@@ -12,10 +12,12 @@ from app.imports.models.import_models import (
 )
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.repositories.final_transaction_repository import (
+    count_successful_import_transactions,
     create_import_transactions,
     list_retryable_import_transactions,
     serialize_import_transaction_row,
     update_import_transaction_sync_status,
+    update_import_transaction_sync_status_by_ids,
 )
 from app.imports.repositories.fingerprint_registry_repository import (
     register_transaction_fingerprints,
@@ -790,7 +792,21 @@ class ImportService:
         if not job:
             return None
 
-        return self._serialize_history_job(job)
+        unsynced_transactions = list_retryable_import_transactions(
+            connection,
+            workspace_id=workspace_id,
+            import_job_id=job_id,
+        )
+        payload = self._serialize_history_job(job)
+        payload["sync_success_count"] = payload["sync_success"]
+        payload["sync_failed_count"] = payload["sync_failed"]
+        payload["unsynced_count"] = len(unsynced_transactions)
+        payload["unsynced_transactions"] = [
+            self._serialize_unsynced_transaction(transaction)
+            for transaction in unsynced_transactions[:50]
+        ]
+
+        return payload
 
     def retry_sync_transactions(
         self,
@@ -800,6 +816,8 @@ class ImportService:
         current_user: dict,
         workspace_id: str,
         import_job_id: str,
+        sheet_source_id: str | None = None,
+        sheet_name: str | None = None,
     ):
         job = get_import_history_detail(
             connection,
@@ -814,7 +832,11 @@ class ImportService:
             connection,
             workspace_id=workspace_id,
             import_job_id=import_job_id,
-            sync_statuses=["failed", "needs_reconnect"],
+        )
+        skipped_success = count_successful_import_transactions(
+            connection,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
         )
 
         if not retryable_transactions:
@@ -823,39 +845,75 @@ class ImportService:
                 "retried_count": 0,
                 "sync_success": 0,
                 "sync_failed": 0,
+                "skipped_success": skipped_success,
+                "status": "skipped",
                 "sync_status": "skipped",
+                "message": "Tidak ada transaksi yang perlu disinkronkan ulang.",
             }
 
+        target_sheet = self._resolve_import_target_sheet(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            workspace_id=workspace_id,
+            sheet_source_id=sheet_source_id,
+            sheet_name=sheet_name,
+        )
+        self._log_import_event(
+            "smart_import.retry_sync.started",
+            job_id=import_job_id,
+            sheet_source_id=str(target_sheet["source"]["id"]),
+            sheet_name=target_sheet["sheet_name"],
+            unsynced_count=len(retryable_transactions),
+        )
         sync_result = self.spreadsheet_sync_service.sync_import_transactions(
             connection,
             workspace=workspace,
             current_user=current_user,
             approved_transactions=retryable_transactions,
+            target_sheet_source=target_sheet["source"],
+            target_sheet_name=target_sheet["sheet_name"],
         )
-        transaction_fingerprints = [
-            str(transaction["transaction_fingerprint"])
+        transaction_ids = [
+            str(transaction["id"])
             for transaction in retryable_transactions
         ]
 
         if sync_result["status"] == "success":
-            update_import_transaction_sync_status(
+            update_import_transaction_sync_status_by_ids(
                 connection,
-                transaction_fingerprints=transaction_fingerprints,
+                transaction_ids=transaction_ids,
                 sync_status="success",
             )
+            self._log_import_event(
+                "smart_import.retry_sync.completed",
+                job_id=import_job_id,
+                sync_success=sync_result["sync_success"],
+                sync_failed=sync_result["sync_failed"],
+            )
         elif sync_result["status"] == "needs_reconnect":
-            update_import_transaction_sync_status(
+            update_import_transaction_sync_status_by_ids(
                 connection,
-                transaction_fingerprints=transaction_fingerprints,
+                transaction_ids=transaction_ids,
                 sync_status="needs_reconnect",
                 sync_error_message="needs_reconnect",
             )
+            self._log_import_event(
+                "smart_import.retry_sync.failed",
+                job_id=import_job_id,
+                reason="needs_reconnect",
+            )
         else:
-            update_import_transaction_sync_status(
+            update_import_transaction_sync_status_by_ids(
                 connection,
-                transaction_fingerprints=transaction_fingerprints,
+                transaction_ids=transaction_ids,
                 sync_status="failed",
                 sync_error_message=sync_result.get("error"),
+            )
+            self._log_import_event(
+                "smart_import.retry_sync.failed",
+                job_id=import_job_id,
+                reason=sync_result.get("error") or sync_result["status"],
             )
 
         refresh_import_job_aggregates(
@@ -869,7 +927,14 @@ class ImportService:
             "retried_count": len(retryable_transactions),
             "sync_success": sync_result["sync_success"],
             "sync_failed": sync_result["sync_failed"],
+            "skipped_success": skipped_success,
+            "status": (
+                "completed"
+                if sync_result["status"] == "success"
+                else sync_result["status"]
+            ),
             "sync_status": sync_result["status"],
+            "sync_error_message": sync_result.get("error"),
         }
 
     def _normalize_draft_ids(self, draft_ids: list[str], item_updates: list[dict] | None):
@@ -1077,6 +1142,9 @@ class ImportService:
             "rejected_transactions": int(job.get("rejected_transactions", 0) or 0),
             "sync_success": int(job.get("sync_success", 0) or 0),
             "sync_failed": int(job.get("sync_failed", 0) or 0),
+            "sync_success_count": int(job.get("sync_success", 0) or 0),
+            "sync_failed_count": int(job.get("sync_failed", 0) or 0),
+            "unsynced_count": int(job.get("retryable_sync_count", 0) or 0),
             "retryable_sync_count": int(job.get("retryable_sync_count", 0) or 0),
             "needs_reconnect": bool(job.get("needs_reconnect", False)),
             "pdf_status": (
@@ -1084,4 +1152,20 @@ class ImportService:
                 if job.get("temp_file_deleted_at")
                 else "available"
             ),
+        }
+
+    def _serialize_unsynced_transaction(self, transaction: dict):
+        return {
+            "id": str(transaction["id"]),
+            "date": transaction.get("date") or "",
+            "transaction_name": (
+                transaction.get("merchant_display")
+                or transaction.get("merchant_normalized")
+                or ""
+            ),
+            "category": transaction.get("category") or "",
+            "amount": float(transaction.get("amount", 0) or 0),
+            "source_dana": transaction.get("source_dana") or "Blu",
+            "sync_status": transaction.get("sync_status") or "pending",
+            "sync_error_message": transaction.get("sync_error_message"),
         }

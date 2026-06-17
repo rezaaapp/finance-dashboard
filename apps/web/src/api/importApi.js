@@ -95,10 +95,10 @@ export const getImportHistoryDetail = async (jobId) => {
   return response.data;
 };
 
-export const retryImportSync = async (jobId) => {
+export const retryImportSync = async (jobId, payload = {}) => {
   const response = await axios.post(
     `${IMPORT_API_URL}/retry-sync/${jobId}`,
-    {},
+    payload,
     {
       headers: getAuthHeaders(),
     }

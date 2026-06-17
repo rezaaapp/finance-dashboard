@@ -37,6 +37,12 @@ const StatusBadge = ({ children, tone = "default" }) => (
   </span>
 );
 
+const formatAmount = (amount) => new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0,
+}).format(Number(amount || 0));
+
 const ImportHistory = ({
   historyRows,
   selectedDetail,
@@ -48,7 +54,20 @@ const ImportHistory = ({
   onRetrySync,
   onViewDetail,
   onReconnectGoogle,
+  sheetSources = [],
+  sheetSourcesLoading = false,
+  sheetSourcesError = "",
+  targetSourceId = "",
+  targetSheetName = "",
+  worksheets = [],
+  worksheetsLoading = false,
+  worksheetsError = "",
+  retryResult = null,
+  onTargetSourceChange,
+  onTargetSheetChange,
 }) => {
+  const hasRetryTarget = Boolean(targetSourceId && targetSheetName);
+
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="grid grid-cols-1 gap-6">
@@ -170,16 +189,13 @@ const ImportHistory = ({
                             {canRetry && (
                               <button
                                 type="button"
-                                onClick={() => onRetrySync(job.job_id)}
-                                disabled={actionLoading === `retry:${job.job_id}`}
+                                onClick={() => {
+                                  onViewDetail(job.job_id);
+                                }}
                                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-950/20"
                               >
-                                {actionLoading === `retry:${job.job_id}` ? (
-                                  <LoaderCircle size={14} className="animate-spin" />
-                                ) : (
-                                  <RefreshCw size={14} />
-                                )}
-                                Retry Sync
+                                <RefreshCw size={14} />
+                                Retry
                               </button>
                             )}
                           </div>
@@ -257,23 +273,135 @@ const ImportHistory = ({
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              {selectedDetail.retryable_sync_count > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onRetrySync(selectedDetail.job_id)}
-                  disabled={actionLoading === `retry:${selectedDetail.job_id}`}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-950/20"
-                >
-                  {actionLoading === `retry:${selectedDetail.job_id}` ? (
-                    <LoaderCircle size={16} className="animate-spin" />
-                  ) : (
-                    <RefreshCw size={16} />
-                  )}
-                  Retry Sync
-                </button>
-              )}
+            {selectedDetail.unsynced_count > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                <p className="font-semibold text-main">
+                  Ada transaksi yang sudah tercatat di web tetapi belum masuk Google Spreadsheet.
+                </p>
+                <p className="mt-1">
+                  {selectedDetail.unsynced_count} transaksi perlu disinkronkan ulang.
+                </p>
+              </div>
+            )}
 
+            {selectedDetail.unsynced_transactions?.length > 0 && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
+                  Transaksi Belum Sync
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  {selectedDetail.unsynced_transactions.slice(0, 5).map((transaction) => (
+                    <div
+                      key={transaction.id}
+                      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-3 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-main">
+                            {transaction.transaction_name}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">
+                            {transaction.date} · {transaction.category || "Tanpa kategori"}
+                          </p>
+                        </div>
+                        <p className="shrink-0 font-semibold text-main">
+                          {formatAmount(transaction.amount)}
+                        </p>
+                      </div>
+                      <p className="mt-2 text-xs text-muted">
+                        {transaction.sync_status}
+                        {transaction.sync_error_message ? ` · ${transaction.sync_error_message}` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedDetail.unsynced_count > 0 && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
+                  Retry Sync
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <label className="block">
+                    <span className="text-sm font-semibold text-muted">
+                      Spreadsheet
+                    </span>
+                    <select
+                      value={targetSourceId}
+                      onChange={(event) => onTargetSourceChange?.(event.target.value)}
+                      disabled={sheetSourcesLoading}
+                      className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="">
+                        {sheetSourcesLoading ? "Memuat spreadsheet..." : "Pilih spreadsheet"}
+                      </option>
+                      {sheetSources.map((source) => (
+                        <option key={source.source_id} value={source.source_id}>
+                          {source.spreadsheet_title || source.sheet_id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-muted">
+                      Tab Tujuan
+                    </span>
+                    <select
+                      value={targetSheetName}
+                      onChange={(event) => onTargetSheetChange?.(event.target.value)}
+                      disabled={!targetSourceId || worksheetsLoading}
+                      className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="">
+                        {worksheetsLoading ? "Memuat tab..." : "Pilih tab tujuan"}
+                      </option>
+                      {worksheets.map((worksheet) => (
+                        <option key={worksheet} value={worksheet}>
+                          {worksheet}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {(sheetSourcesError || worksheetsError || !hasRetryTarget) && (
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-4 py-3 text-sm text-muted">
+                      {sheetSourcesError || worksheetsError || "Pilih target spreadsheet dan tab tujuan sebelum Retry Sync."}
+                    </div>
+                  )}
+
+                  {retryResult && (
+                    <div className={`rounded-lg border px-4 py-3 text-sm ${
+                      retryResult.status === "completed"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+                        : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+                    }`}>
+                      {retryResult.message || (
+                        `${retryResult.sync_success || 0} berhasil, ${retryResult.sync_failed || 0} gagal.`
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => onRetrySync(selectedDetail.job_id)}
+                    disabled={!hasRetryTarget || actionLoading === `retry:${selectedDetail.job_id}`}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-950/20"
+                  >
+                    {actionLoading === `retry:${selectedDetail.job_id}` ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <RefreshCw size={16} />
+                    )}
+                    Retry Sync
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3">
               {selectedDetail.needs_reconnect && (
                 <button
                   type="button"

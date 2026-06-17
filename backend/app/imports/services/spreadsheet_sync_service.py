@@ -157,6 +157,7 @@ class SpreadsheetSyncService:
         return [
             str(
                 user_name
+                or transaction.get("user_name")
                 or current_user.get("display_name")
                 or current_user.get("name")
                 or current_user.get("email")
@@ -169,6 +170,6 @@ class SpreadsheetSyncService:
             ),
             str(transaction.get("category", "")),
             transaction.get("amount", 0),
-            "Blu",
+            str(transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
             str(transaction.get("notes", "")),
         ]

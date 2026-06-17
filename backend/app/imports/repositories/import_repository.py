@@ -476,7 +476,10 @@ def refresh_import_job_aggregates(connection, *, workspace_id: str, job_id: str)
                 select
                     count(*)::int as approved_transactions,
                     count(*) filter (where sync_status = 'success')::int as sync_success,
-                    count(*) filter (where sync_status in ('failed', 'needs_reconnect'))::int as sync_failed
+                    count(*) filter (
+                        where sync_status is null
+                           or sync_status in ('failed', 'needs_reconnect', 'pending')
+                    )::int as sync_failed
                 from transactions
                 where workspace_id = %s
                   and import_job_id = %s
@@ -520,7 +523,10 @@ def list_import_history(connection, *, workspace_id: str):
                     import_job_id,
                     count(*)::int as approved_transactions,
                     count(*) filter (where sync_status = 'success')::int as sync_success,
-                    count(*) filter (where sync_status in ('failed', 'needs_reconnect'))::int as sync_failed,
+                    count(*) filter (
+                        where sync_status is null
+                           or sync_status in ('failed', 'needs_reconnect', 'pending')
+                    )::int as sync_failed,
                     count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count
                 from transactions
                 where workspace_id = %s
@@ -534,7 +540,10 @@ def list_import_history(connection, *, workspace_id: str):
                 from transactions
                 where workspace_id = %s
                   and import_job_id is not null
-                  and sync_status in ('failed', 'needs_reconnect')
+                  and (
+                    sync_status is null
+                    or sync_status in ('failed', 'needs_reconnect', 'pending')
+                  )
                 group by import_job_id
             )
             select
@@ -577,7 +586,10 @@ def get_import_history_detail(connection, *, workspace_id: str, job_id: str):
                     import_job_id,
                     count(*)::int as approved_transactions,
                     count(*) filter (where sync_status = 'success')::int as sync_success,
-                    count(*) filter (where sync_status in ('failed', 'needs_reconnect'))::int as sync_failed,
+                    count(*) filter (
+                        where sync_status is null
+                           or sync_status in ('failed', 'needs_reconnect', 'pending')
+                    )::int as sync_failed,
                     count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count
                 from transactions
                 where workspace_id = %s
@@ -591,7 +603,10 @@ def get_import_history_detail(connection, *, workspace_id: str, job_id: str):
                 from transactions
                 where workspace_id = %s
                   and import_job_id = %s
-                  and sync_status in ('failed', 'needs_reconnect')
+                  and (
+                    sync_status is null
+                    or sync_status in ('failed', 'needs_reconnect', 'pending')
+                  )
                 group by import_job_id
             )
             select

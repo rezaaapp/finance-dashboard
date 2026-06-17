@@ -110,23 +110,52 @@ def update_import_transaction_sync_status(
         return cursor.fetchall()
 
 
-def list_retryable_import_transactions(
+def update_import_transaction_sync_status_by_ids(
     connection,
     *,
-    workspace_id: str,
-    import_job_id: str,
-    sync_statuses: list[str],
+    transaction_ids: list[str],
+    sync_status: str,
+    sync_error_message: str | None = None,
 ):
-    if not sync_statuses:
+    if not transaction_ids:
         return []
 
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
+            update transactions
+            set
+                sync_status = %s,
+                sync_error_message = %s,
+                updated_at = now()
+            where id = any(%s)
+            returning id, import_transaction_fingerprint, sync_status
+            """,
+            (
+                sync_status,
+                sync_error_message,
+                transaction_ids,
+            ),
+        )
+
+        return cursor.fetchall()
+
+
+def list_retryable_import_transactions(
+    connection,
+    *,
+    workspace_id: str,
+    import_job_id: str,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
             select
                 id,
+                user_name,
                 import_transaction_fingerprint as transaction_fingerprint,
                 to_char(transaction_time at time zone 'Asia/Jakarta', 'DD/MM/YYYY HH24:MI') as datetime,
+                to_char(transaction_time at time zone 'Asia/Jakarta', 'DD/MM/YYYY') as date,
                 coalesce(raw_payload ->> 'merchant_original', title) as merchant_original,
                 title as merchant_normalized,
                 coalesce(raw_payload ->> 'merchant_display', title) as merchant_display,
@@ -137,17 +166,44 @@ def list_retryable_import_transactions(
                 coalesce(raw_payload ->> 'raw_text', '') as raw_text,
                 coalesce(raw_category, '') as category,
                 coalesce(note, '') as notes,
-                sync_status
+                source_fund as source_dana,
+                coalesce(sync_status, 'pending') as sync_status,
+                sync_error_message
             from transactions
             where workspace_id = %s
               and import_job_id = %s
-              and sync_status = any(%s)
+              and (
+                sync_status is null
+                or sync_status in ('failed', 'needs_reconnect', 'pending')
+              )
             order by transaction_time asc, created_at asc
             """,
-            (workspace_id, import_job_id, sync_statuses),
+            (workspace_id, import_job_id),
         )
 
         return cursor.fetchall()
+
+
+def count_successful_import_transactions(
+    connection,
+    *,
+    workspace_id: str,
+    import_job_id: str,
+) -> int:
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select count(*)::int as total
+            from transactions
+            where workspace_id = %s
+              and import_job_id = %s
+              and sync_status = 'success'
+            """,
+            (workspace_id, import_job_id),
+        )
+
+        row = cursor.fetchone()
+        return int(row["total"]) if row else 0
 
 
 def serialize_import_transaction_row(
