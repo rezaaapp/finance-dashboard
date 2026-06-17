@@ -50,6 +50,17 @@ export const getGoogleSheetSources = async () => {
   return response.data;
 };
 
+export const getGoogleSheetSourceWorksheets = async (sourceId) => {
+  const response = await axios.get(
+    `${DATA_SOURCES_API_URL}/${sourceId}/worksheets`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return response.data;
+};
+
 export const syncGoogleSheetSource = async (sourceId) => {
   const response = await axios.post(
     `${DATA_SOURCES_API_URL}/${sourceId}/sync`,

@@ -39,7 +39,12 @@ sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.services.cleanup_service import ImportCleanupService
-from app.imports.services.import_service import ImportService, MissingGoogleSheetSourceError
+from app.imports.services.import_service import (
+    ImportService,
+    InvalidTargetSheetHeaderError,
+    MissingGoogleSheetSourceError,
+    MissingTargetSheetError,
+)
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
@@ -715,8 +720,25 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
              patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
-             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={"id": "oauth-1"}), \
-             patch("app.imports.services.import_service.ensure_import_google_sheet_source", return_value={"id": "sheet-source-1"}), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Start 1 Juni",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Nama",
+                 "Waktu Transaksi",
+                 "Nama Transaksi",
+                 "Kategori",
+                 "Harga",
+                 "Source Dana",
+                 "Keterangan",
+             ]]), \
              patch("app.imports.services.import_service.create_import_transactions", return_value=created_transactions) as create_transactions_mock, \
              patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
              patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
@@ -725,7 +747,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "sync_failed": 0,
                  "source_id": "sheet-source-1",
                  "error": None,
-             }), \
+             }) as sync_mock, \
              patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
              patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
              patch.object(ImportCleanupService, "delete_temp_pdf_for_job") as cleanup_pdf_mock, \
@@ -739,6 +761,8 @@ class BluPdfParserTestCase(unittest.TestCase):
                 workspace_id="workspace-1",
                 import_job_id="job-1",
                 draft_ids=["draft-1"],
+                sheet_source_id="sheet-source-1",
+                sheet_name="Start 1 Juni",
                 item_updates=[{
                     "draft_id": "draft-1",
                     "category": "Makan",
@@ -760,6 +784,11 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Makan", created_row["raw_category"])
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
+        self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
+        self.assertEqual(
+            "sheet-source-1",
+            sync_mock.call_args.kwargs["target_sheet_source"]["id"],
+        )
         register_fingerprints_mock.assert_called_once_with(
             unittest.mock.ANY,
             rows=[{
@@ -788,7 +817,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, approve_result["sync_success"])
         self.assertEqual(0, approve_result["sync_failed"])
 
-    def test_approve_review_transactions_missing_sheet_source_stops_before_persistence(self):
+    def test_approve_review_transactions_missing_target_stops_before_persistence(self):
         service = ImportService()
         selected_drafts = [
             {
@@ -813,7 +842,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
              patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
              patch.object(SpreadsheetSyncService, "sync_import_transactions") as sync_mock:
-            with self.assertRaises(MissingGoogleSheetSourceError) as raised:
+            with self.assertRaises(MissingTargetSheetError) as raised:
                 service.approve_review_transactions(
                     connection=object(),
                     workspace={"id": "workspace-1", "google_sheet_id": ""},
@@ -827,8 +856,8 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(
             {
                 "status": "failed",
-                "error_code": "missing_google_sheet_source",
-                "message": "Google Sheet aktif belum dikonfigurasi. Hubungkan Google Sheets dulu di Settings.",
+                "error_code": "missing_target_sheet",
+                "message": "Pilih target spreadsheet dan tab tujuan sebelum approve.",
             },
             raised.exception.to_response(),
         )
@@ -836,6 +865,70 @@ class BluPdfParserTestCase(unittest.TestCase):
         register_fingerprints_mock.assert_not_called()
         delete_drafts_mock.assert_not_called()
         sync_mock.assert_not_called()
+
+    def test_approve_review_transactions_invalid_target_header_stops_before_persistence(self):
+        service = ImportService()
+        selected_drafts = [
+            {
+                "id": "draft-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "category": "Makan",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Start 1 Juni",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Tanggal",
+                 "Deskripsi",
+                 "Nominal",
+             ]]), \
+             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock:
+            with self.assertRaises(InvalidTargetSheetHeaderError) as raised:
+                service.approve_review_transactions(
+                    connection=object(),
+                    workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                    current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                    workspace_id="workspace-1",
+                    import_job_id="job-1",
+                    draft_ids=["draft-1"],
+                    sheet_source_id="sheet-source-1",
+                    sheet_name="Start 1 Juni",
+                    item_updates=[],
+                )
+
+        self.assertEqual(
+            {
+                "status": "failed",
+                "error_code": "invalid_target_sheet_header",
+                "message": "Tab tujuan belum memiliki format kolom transaksi yang sesuai.",
+            },
+            raised.exception.to_response(),
+        )
+        create_transactions_mock.assert_not_called()
+        register_fingerprints_mock.assert_not_called()
+        delete_drafts_mock.assert_not_called()
 
     def test_approve_review_transactions_keeps_final_transactions_when_sync_fails(self):
         service = ImportService()
@@ -858,8 +951,25 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
              patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
-             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={"id": "oauth-1"}), \
-             patch("app.imports.services.import_service.ensure_import_google_sheet_source", return_value={"id": "sheet-source-1"}), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Start 1 Juni",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Nama",
+                 "Waktu Transaksi",
+                 "Nama Transaksi",
+                 "Kategori",
+                 "Harga",
+                 "Source Dana",
+                 "Keterangan",
+             ]]), \
              patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]), \
              patch("app.imports.services.import_service.register_transaction_fingerprints"), \
              patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
@@ -882,6 +992,8 @@ class BluPdfParserTestCase(unittest.TestCase):
                 workspace_id="workspace-1",
                 import_job_id="job-1",
                 draft_ids=["draft-1"],
+                sheet_source_id="sheet-source-1",
+                sheet_name="Start 1 Juni",
                 item_updates=[],
             )
 

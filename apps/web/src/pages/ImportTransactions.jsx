@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { startGoogleOAuth } from "../api/googleOAuthApi";
+import {
+  getGoogleSheetSources,
+  getGoogleSheetSourceWorksheets,
+} from "../api/googleSheetSourcesApi";
 import {
   approveImportReview,
   getImportCategoryOptions,
@@ -13,6 +17,30 @@ import {
 import ImportLanding from "../components/import/ImportLanding";
 import ImportHistory from "../components/import/ImportHistory";
 import ImportReview from "../components/import/ImportReview";
+
+const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null }) => {
+  const normalizedFilename = String(filename || "").toLowerCase();
+
+  if (/(juni|jun)/i.test(normalizedFilename)) {
+    const juneMatch = worksheets.find((worksheet) => (
+      /(juni|jun)/i.test(String(worksheet || ""))
+    ));
+
+    if (juneMatch) {
+      return juneMatch;
+    }
+  }
+
+  if (source?.sheet_name && worksheets.includes(source.sheet_name)) {
+    return source.sheet_name;
+  }
+
+  if (worksheets.length === 1) {
+    return worksheets[0];
+  }
+
+  return "";
+};
 
 const ImportTransactions = () => {
   const [activeTab, setActiveTab] = useState("upload");
@@ -30,6 +58,71 @@ const ImportTransactions = () => {
   const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(false);
   const [categoryOptionsError, setCategoryOptionsError] = useState("");
   const [reviewActionError, setReviewActionError] = useState(null);
+  const [sheetSources, setSheetSources] = useState([]);
+  const [sheetSourcesLoading, setSheetSourcesLoading] = useState(false);
+  const [sheetSourcesError, setSheetSourcesError] = useState("");
+  const [targetSourceId, setTargetSourceId] = useState("");
+  const [worksheets, setWorksheets] = useState([]);
+  const [worksheetsLoading, setWorksheetsLoading] = useState(false);
+  const [worksheetsError, setWorksheetsError] = useState("");
+  const [targetSheetName, setTargetSheetName] = useState("");
+
+  useEffect(() => {
+    if (!targetSourceId) {
+      setWorksheets([]);
+      setTargetSheetName("");
+      return;
+    }
+
+    let ignore = false;
+    const selectedSource = sheetSources.find((source) => source.source_id === targetSourceId) || null;
+
+    const loadWorksheets = async () => {
+      setWorksheetsLoading(true);
+      setWorksheetsError("");
+
+      try {
+        const response = await getGoogleSheetSourceWorksheets(targetSourceId);
+        const nextWorksheets = response.worksheets || [];
+
+        if (ignore) {
+          return;
+        }
+
+        setWorksheets(nextWorksheets);
+        setTargetSheetName((current) => (
+          current && nextWorksheets.includes(current)
+            ? current
+            : suggestTargetSheetName({
+              filename: reviewData?.summary?.filename,
+              worksheets: nextWorksheets,
+              source: selectedSource,
+            })
+        ));
+      } catch (worksheetError) {
+        if (ignore) {
+          return;
+        }
+
+        setWorksheets([]);
+        setTargetSheetName("");
+        setWorksheetsError(
+          worksheetError?.response?.data?.detail
+          || "Daftar tab Google Sheets belum bisa dimuat."
+        );
+      } finally {
+        if (!ignore) {
+          setWorksheetsLoading(false);
+        }
+      }
+    };
+
+    loadWorksheets();
+
+    return () => {
+      ignore = true;
+    };
+  }, [targetSourceId, sheetSources, reviewData?.summary?.filename]);
 
   const loadReview = async (jobId) => {
     setLoading(true);
@@ -38,11 +131,17 @@ const ImportTransactions = () => {
     setActiveJobId(jobId);
     setCategoryOptionsLoading(true);
     setCategoryOptionsError("");
+    setSheetSourcesLoading(true);
+    setSheetSourcesError("");
+    setWorksheets([]);
+    setWorksheetsError("");
+    setTargetSheetName("");
 
     try {
-      const [reviewResult, categoryResult] = await Promise.allSettled([
+      const [reviewResult, categoryResult, sourcesResult] = await Promise.allSettled([
         getImportReview(jobId),
         getImportCategoryOptions(),
+        getGoogleSheetSources(),
       ]);
 
       if (categoryResult.status === "fulfilled") {
@@ -60,6 +159,25 @@ const ImportTransactions = () => {
       }
 
       setReviewData(reviewResult.value);
+
+      if (sourcesResult.status === "fulfilled") {
+        const sources = sourcesResult.value.sources || [];
+        const defaultSource = (
+          sources.find((source) => source.status === "active")
+          || sources[0]
+          || null
+        );
+
+        setSheetSources(sources);
+        setTargetSourceId(defaultSource?.source_id || "");
+      } else {
+        setSheetSources([]);
+        setTargetSourceId("");
+        setSheetSourcesError(
+          sourcesResult.reason?.response?.data?.detail
+          || "Daftar Google Sheets belum bisa dimuat."
+        );
+      }
     } catch (reviewError) {
       setError(
         reviewError?.response?.data?.detail
@@ -69,6 +187,7 @@ const ImportTransactions = () => {
     } finally {
       setLoading(false);
       setCategoryOptionsLoading(false);
+      setSheetSourcesLoading(false);
     }
   };
 
@@ -215,6 +334,23 @@ const ImportTransactions = () => {
             actionError={reviewActionError}
             onApprove={handleApprove}
             onReject={handleReject}
+            sheetSources={sheetSources}
+            sheetSourcesLoading={sheetSourcesLoading}
+            sheetSourcesError={sheetSourcesError}
+            targetSourceId={targetSourceId}
+            targetSheetName={targetSheetName}
+            worksheets={worksheets}
+            worksheetsLoading={worksheetsLoading}
+            worksheetsError={worksheetsError}
+            onTargetSourceChange={(nextSourceId) => {
+              setTargetSourceId(nextSourceId);
+              setTargetSheetName("");
+              setReviewActionError(null);
+            }}
+            onTargetSheetChange={(nextSheetName) => {
+              setTargetSheetName(nextSheetName);
+              setReviewActionError(null);
+            }}
             categoryOptions={categoryOptions}
             categoryOptionsLoading={categoryOptionsLoading}
             categoryOptionsError={categoryOptionsError}
@@ -223,6 +359,12 @@ const ImportTransactions = () => {
               setReviewData(null);
               setError("");
               setReviewActionError(null);
+              setSheetSources([]);
+              setTargetSourceId("");
+              setWorksheets([]);
+              setTargetSheetName("");
+              setSheetSourcesError("");
+              setWorksheetsError("");
               setCategoryOptions([]);
               setCategoryOptionsError("");
               setActiveTab("upload");

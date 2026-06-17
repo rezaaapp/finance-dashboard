@@ -23,6 +23,8 @@ class SpreadsheetSyncService:
         workspace: dict,
         current_user: dict,
         approved_transactions: list[dict],
+        target_sheet_source: dict | None = None,
+        target_sheet_name: str | None = None,
     ) -> dict:
         if not approved_transactions:
             return {
@@ -57,7 +59,7 @@ class SpreadsheetSyncService:
                 "error": "needs_reconnect",
             }
 
-        sheet_source = self._resolve_sheet_source(
+        sheet_source = target_sheet_source or self._resolve_sheet_source(
             connection,
             workspace_id=str(workspace["id"]),
             oauth_connection_id=str(oauth_connection["id"]),
@@ -83,7 +85,7 @@ class SpreadsheetSyncService:
             append_sheet_values(
                 access_token=access_token,
                 spreadsheet_id=sheet_source["sheet_id"],
-                range_name=sheet_source["sheet_name"] or "Sheet1",
+                range_name=target_sheet_name or sheet_source["sheet_name"] or "Sheet1",
                 rows=rows,
             )
             update_google_sheet_last_synced(

@@ -65,6 +65,16 @@ const ImportReview = ({
   actionError,
   onApprove,
   onReject,
+  sheetSources = [],
+  sheetSourcesLoading = false,
+  sheetSourcesError = "",
+  targetSourceId = "",
+  targetSheetName = "",
+  worksheets = [],
+  worksheetsLoading = false,
+  worksheetsError = "",
+  onTargetSourceChange,
+  onTargetSheetChange,
   categoryOptions = [],
   categoryOptionsLoading = false,
   categoryOptionsError = "",
@@ -158,6 +168,7 @@ const ImportReview = ({
 
   const visibleSelectedCount = filteredRows.filter((row) => selectedIds.includes(row.id)).length;
   const allFilteredSelected = filteredRows.length > 0 && visibleSelectedCount === filteredRows.length;
+  const hasTargetSheet = Boolean(targetSourceId && targetSheetName);
 
   const handleToggleRow = (draftId) => {
     setSelectedIds((current) => (
@@ -197,6 +208,8 @@ const ImportReview = ({
     try {
       await onApprove({
         draft_ids: selectedIds,
+        sheet_source_id: targetSourceId,
+        sheet_name: targetSheetName,
         item_updates: draftRows
           .filter((row) => selectedIds.includes(row.id))
           .map((row) => ({
@@ -324,6 +337,69 @@ const ImportReview = ({
         </section>
 
         <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">
+                Target Tujuan Spreadsheet
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                Transaksi yang di-approve akan ditambahkan ke tab ini.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-semibold text-muted">
+                  Spreadsheet
+                </span>
+                <select
+                  value={targetSourceId}
+                  onChange={(event) => onTargetSourceChange?.(event.target.value)}
+                  disabled={sheetSourcesLoading}
+                  className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {sheetSourcesLoading ? "Memuat spreadsheet..." : "Pilih spreadsheet"}
+                  </option>
+                  {sheetSources.map((source) => (
+                    <option key={source.source_id} value={source.source_id}>
+                      {source.spreadsheet_title || source.sheet_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-semibold text-muted">
+                  Tab Tujuan
+                </span>
+                <select
+                  value={targetSheetName}
+                  onChange={(event) => onTargetSheetChange?.(event.target.value)}
+                  disabled={!targetSourceId || worksheetsLoading}
+                  className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {worksheetsLoading ? "Memuat tab..." : "Pilih tab tujuan"}
+                  </option>
+                  {worksheets.map((worksheet) => (
+                    <option key={worksheet} value={worksheet}>
+                      {worksheet}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {(sheetSourcesError || worksheetsError || !hasTargetSheet) && (
+            <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
+              {sheetSourcesError || worksheetsError || "Pilih tab tujuan sebelum approve."}
+            </div>
+          )}
+        </section>
+
+        <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
           <div className="flex flex-col gap-4">
             {actionError && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
@@ -338,6 +414,11 @@ const ImportReview = ({
                     {actionError.errorCode === "missing_google_sheet_source" && (
                       <p className="mt-1">
                         Hubungkan Google Sheets terlebih dahulu.
+                      </p>
+                    )}
+                    {actionError.errorCode === "missing_target_sheet" && (
+                      <p className="mt-1">
+                        Google Sheets sudah terhubung, tapi tab tujuan transaksi belum dipilih.
                       </p>
                     )}
                   </div>
@@ -400,7 +481,7 @@ const ImportReview = ({
                 <button
                   type="button"
                   onClick={handleApproveSelected}
-                  disabled={selectedIds.length === 0 || actionLoading !== ""}
+                  disabled={selectedIds.length === 0 || actionLoading !== "" || !hasTargetSheet}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {actionLoading === "approve-selected" ? "Menyetujui..." : "Setujui Pilihan"}

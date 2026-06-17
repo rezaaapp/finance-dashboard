@@ -48,7 +48,13 @@ from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.utils.temp_storage import delete_temp_import_file, save_temp_import_file
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
-from app.repositories.google_sheet_source_repository import ensure_import_google_sheet_source
+from app.repositories.google_sheet_source_repository import (
+    ensure_import_google_sheet_source,
+    get_google_sheet_source,
+)
+from app.security.encryption import decrypt_text
+from app.services.google_sheets_client import GoogleSheetsClientError, read_sheet_values
+from app.services.sheet_header_validator import canonicalize_header
 
 
 logger = logging.getLogger(__name__)
@@ -64,6 +70,41 @@ class MissingGoogleSheetSourceError(Exception):
             "error_code": self.error_code,
             "message": self.message,
         }
+
+
+class MissingTargetSheetError(Exception):
+    error_code = "missing_target_sheet"
+    message = "Pilih target spreadsheet dan tab tujuan sebelum approve."
+
+    def to_response(self) -> dict:
+        return {
+            "status": "failed",
+            "error_code": self.error_code,
+            "message": self.message,
+        }
+
+
+class InvalidTargetSheetHeaderError(Exception):
+    error_code = "invalid_target_sheet_header"
+    message = "Tab tujuan belum memiliki format kolom transaksi yang sesuai."
+
+    def to_response(self) -> dict:
+        return {
+            "status": "failed",
+            "error_code": self.error_code,
+            "message": self.message,
+        }
+
+
+REQUIRED_IMPORT_TARGET_COLUMNS = [
+    "Nama",
+    "Waktu Transaksi",
+    "Nama Transaksi",
+    "Kategori",
+    "Harga",
+    "Source Dana",
+    "Keterangan",
+]
 
 
 class ImportService:
@@ -516,6 +557,8 @@ class ImportService:
         import_job_id: str,
         draft_ids: list[str],
         item_updates: list[dict] | None = None,
+        sheet_source_id: str | None = None,
+        sheet_name: str | None = None,
     ):
         review_summary = get_import_review_summary(
             connection,
@@ -544,15 +587,18 @@ class ImportService:
                 "draft_ids": [],
             }
 
-        final_sheet_source_id = self._resolve_final_sheet_source_id(
+        target_sheet = self._resolve_import_target_sheet(
             connection,
             workspace=workspace,
             current_user=current_user,
+            workspace_id=workspace_id,
+            sheet_source_id=sheet_source_id,
+            sheet_name=sheet_name,
         )
         final_transaction_rows = [
             serialize_import_transaction_row(
                 workspace_id=workspace_id,
-                sheet_source_id=final_sheet_source_id,
+                sheet_source_id=str(target_sheet["source"]["id"]),
                 import_job_id=import_job_id,
                 user_name=current_user.get("name") or current_user.get("email") or "User",
                 transaction=draft,
@@ -578,6 +624,8 @@ class ImportService:
             workspace=workspace,
             current_user=current_user,
             approved_transactions=merged_drafts,
+            target_sheet_source=target_sheet["source"],
+            target_sheet_name=target_sheet["sheet_name"],
         )
         transaction_fingerprints = [
             draft["transaction_fingerprint"]
@@ -867,6 +915,76 @@ class ImportService:
             raise MissingGoogleSheetSourceError()
 
         return str(sheet_source["id"])
+
+    def _resolve_import_target_sheet(
+        self,
+        connection,
+        *,
+        workspace: dict,
+        current_user: dict,
+        workspace_id: str,
+        sheet_source_id: str | None,
+        sheet_name: str | None,
+    ) -> dict:
+        normalized_source_id = str(sheet_source_id or "").strip()
+        normalized_sheet_name = str(sheet_name or "").strip()
+
+        if not normalized_source_id or not normalized_sheet_name:
+            raise MissingTargetSheetError()
+
+        sheet_source = get_google_sheet_source(
+            connection,
+            workspace_id=workspace_id,
+            source_id=normalized_source_id,
+        )
+
+        if not sheet_source:
+            raise MissingTargetSheetError()
+
+        oauth_connection = get_active_google_oauth_connection(
+            connection,
+            workspace_id=str(workspace["id"]),
+            user_id=current_user["sub"],
+        )
+
+        if not oauth_connection or not oauth_connection.get("access_token_encrypted"):
+            raise MissingGoogleSheetSourceError()
+
+        try:
+            access_token = decrypt_text(oauth_connection["access_token_encrypted"])
+            header_rows = read_sheet_values(
+                access_token=access_token,
+                spreadsheet_id=sheet_source["sheet_id"],
+                range_name=self._build_header_range(normalized_sheet_name),
+            )
+        except (GoogleSheetsClientError, ValueError) as exc:
+            raise InvalidTargetSheetHeaderError() from exc
+
+        self._validate_import_target_header(header_rows[0] if header_rows else [])
+
+        return {
+            "source": sheet_source,
+            "sheet_name": normalized_sheet_name,
+        }
+
+    def _validate_import_target_header(self, header: list[str]):
+        canonical_header = {
+            canonicalize_header(column)
+            for column in header
+            if str(column or "").strip()
+        }
+        missing_columns = [
+            column
+            for column in REQUIRED_IMPORT_TARGET_COLUMNS
+            if column not in canonical_header
+        ]
+
+        if missing_columns:
+            raise InvalidTargetSheetHeaderError()
+
+    def _build_header_range(self, sheet_name: str) -> str:
+        escaped_sheet_name = str(sheet_name or "").strip().replace("'", "''")
+        return f"'{escaped_sheet_name}'!1:1"
 
     def _build_review_filters(self, draft_transactions: list[dict]):
         review_group_counts: dict[str, int] = {}

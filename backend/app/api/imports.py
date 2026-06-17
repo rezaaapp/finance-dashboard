@@ -5,7 +5,12 @@ from pydantic import BaseModel, Field
 from app.api.google_connection import get_current_workspace
 from app.auth import require_current_user
 from app.database import get_db_connection
-from app.imports.services.import_service import ImportService, MissingGoogleSheetSourceError
+from app.imports.services.import_service import (
+    ImportService,
+    InvalidTargetSheetHeaderError,
+    MissingGoogleSheetSourceError,
+    MissingTargetSheetError,
+)
 
 
 router = APIRouter(
@@ -23,6 +28,8 @@ class ImportReviewItemUpdateRequest(BaseModel):
 class ImportReviewActionRequest(BaseModel):
     draft_ids: list[str] = Field(default_factory=list)
     item_updates: list[ImportReviewItemUpdateRequest] = Field(default_factory=list)
+    sheet_source_id: str | None = None
+    sheet_name: str | None = None
 
 
 @router.post("/upload")
@@ -142,6 +149,8 @@ def approve_import_review(
                     import_job_id=job_id,
                     draft_ids=request.draft_ids,
                     item_updates=[item.model_dump() for item in request.item_updates],
+                    sheet_source_id=request.sheet_source_id,
+                    sheet_name=request.sheet_name,
                 )
                 if result is None:
                     raise HTTPException(
@@ -154,6 +163,16 @@ def approve_import_review(
                     job_id=job_id,
                 )
     except MissingGoogleSheetSourceError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=exc.to_response(),
+        )
+    except MissingTargetSheetError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=exc.to_response(),
+        )
+    except InvalidTargetSheetHeaderError as exc:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content=exc.to_response(),
