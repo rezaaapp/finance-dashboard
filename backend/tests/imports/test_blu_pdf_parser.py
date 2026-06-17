@@ -38,6 +38,7 @@ sys.modules.setdefault("dotenv", fake_dotenv)
 sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
+from app.imports.repositories.final_transaction_repository import create_import_transactions
 from app.imports.services.cleanup_service import ImportCleanupService
 from app.imports.services.import_service import (
     ImportService,
@@ -63,12 +64,103 @@ class NamedBytesIO(io.BytesIO):
         self.file = self
 
 
+class FakeReturningCursor:
+    def __init__(self, returned_rows: list[dict]):
+        self.returned_rows = list(returned_rows)
+        self.executed = []
+        self.fetchone_calls = 0
+        self.fetchall_calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def execute(self, query, params=None):
+        self.executed.append((query, params))
+
+    def fetchone(self):
+        self.fetchone_calls += 1
+        return self.returned_rows.pop(0)
+
+    def fetchall(self):
+        self.fetchall_calls += 1
+        raise AssertionError("create_import_transactions should not call fetchall")
+
+
+class FakeReturningConnection:
+    def __init__(self, cursor: FakeReturningCursor):
+        self.cursor_instance = cursor
+        self.cursor_calls = []
+
+    def cursor(self, **kwargs):
+        self.cursor_calls.append(kwargs)
+        return self.cursor_instance
+
+
 class BluPdfParserTestCase(unittest.TestCase):
     def setUp(self):
         self.parser = BluPdfParser()
         self.merchant_normalizer = MerchantNormalizer()
         self.fixture_bytes = FIXTURE_PATH.read_bytes()
         self.real_june_fixture_bytes = REAL_JUNE_FIXTURE_PATH.read_bytes()
+
+    def test_create_import_transactions_returns_inserted_rows(self):
+        cursor = FakeReturningCursor([
+            {
+                "id": "txn-1",
+                "import_transaction_fingerprint": "fp-1",
+                "sync_status": "pending",
+            },
+        ])
+        connection = FakeReturningConnection(cursor)
+
+        inserted_rows = create_import_transactions(
+            connection,
+            rows=[{
+                "workspace_id": "workspace-1",
+                "sheet_source_id": "sheet-source-1",
+                "external_row_key": "fp-1",
+                "row_number": None,
+                "transaction_date": "2026-06-01",
+                "transaction_time": "2026-06-01T08:00:00",
+                "title": "Fore Coffee",
+                "raw_category": "Makan",
+                "amount": 28000,
+                "source_fund": "Blu",
+                "note": None,
+                "direction": "expense",
+                "raw_payload": {"merchant_original": "Fore Coffee 61715"},
+                "normalized_hash": "fp-1",
+                "user_name": "Reza",
+                "import_job_id": "job-1",
+                "import_transaction_fingerprint": "fp-1",
+                "sync_status": "pending",
+                "sync_error_message": None,
+            }],
+        )
+
+        self.assertEqual(
+            [{
+                "id": "txn-1",
+                "import_transaction_fingerprint": "fp-1",
+                "sync_status": "pending",
+            }],
+            inserted_rows,
+        )
+        self.assertEqual(1, len(cursor.executed))
+        self.assertIn("returning id, import_transaction_fingerprint, sync_status", cursor.executed[0][0])
+        self.assertIn("on conflict (import_transaction_fingerprint)", cursor.executed[0][0])
+        self.assertEqual(1, cursor.fetchone_calls)
+        self.assertEqual(0, cursor.fetchall_calls)
+
+    def test_create_import_transactions_empty_rows_returns_empty_list(self):
+        cursor = FakeReturningCursor([])
+        connection = FakeReturningConnection(cursor)
+
+        self.assertEqual([], create_import_transactions(connection, rows=[]))
+        self.assertEqual([], connection.cursor_calls)
 
     def test_parser_detects_sections_and_review_groups(self):
         transactions = self.parser.parse(io.BytesIO(self.fixture_bytes)).transactions
@@ -929,6 +1021,67 @@ class BluPdfParserTestCase(unittest.TestCase):
         create_transactions_mock.assert_not_called()
         register_fingerprints_mock.assert_not_called()
         delete_drafts_mock.assert_not_called()
+
+    def test_approve_review_transactions_insert_failure_keeps_draft_and_skips_sync(self):
+        service = ImportService()
+        selected_drafts = [
+            {
+                "id": "draft-1",
+                "transaction_fingerprint": "fp-1",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Fore Coffee 61715",
+                "merchant_normalized": "Fore Coffee",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-1",
+                "category": "Makan",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_google_sheet_source", return_value={
+                 "id": "sheet-source-1",
+                 "sheet_id": "sheet-123",
+                 "sheet_name": "Start 1 Juni",
+             }), \
+             patch("app.imports.services.import_service.get_active_google_oauth_connection", return_value={
+                 "id": "oauth-1",
+                 "access_token_encrypted": "encrypted-token",
+             }), \
+             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.read_sheet_values", return_value=[[
+                 "Nama",
+                 "Waktu Transaksi",
+                 "Nama Transaksi",
+                 "Kategori",
+                 "Harga",
+                 "Source Dana",
+                 "Keterangan",
+             ]]), \
+             patch("app.imports.services.import_service.create_import_transactions", side_effect=RuntimeError("insert failed")), \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(SpreadsheetSyncService, "sync_import_transactions") as sync_mock:
+            with self.assertRaises(RuntimeError):
+                service.approve_review_transactions(
+                    connection=object(),
+                    workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                    current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                    workspace_id="workspace-1",
+                    import_job_id="job-1",
+                    draft_ids=["draft-1"],
+                    sheet_source_id="sheet-source-1",
+                    sheet_name="Start 1 Juni",
+                    item_updates=[],
+                )
+
+        register_fingerprints_mock.assert_not_called()
+        delete_drafts_mock.assert_not_called()
+        sync_mock.assert_not_called()
 
     def test_approve_review_transactions_keeps_final_transactions_when_sync_fails(self):
         service = ImportService()

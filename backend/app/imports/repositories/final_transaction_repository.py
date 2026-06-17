@@ -13,62 +13,70 @@ def create_import_transactions(
         return []
 
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.executemany(
-            """
-            insert into transactions (
-                workspace_id,
-                sheet_source_id,
-                external_row_key,
-                row_number,
-                transaction_date,
-                transaction_time,
-                title,
-                raw_category,
-                amount,
-                source_fund,
-                note,
-                direction,
-                raw_payload,
-                normalized_hash,
-                user_name,
-                import_job_id,
-                import_transaction_fingerprint,
-                sync_status,
-                sync_error_message
-            )
-            values (
-                %(workspace_id)s,
-                %(sheet_source_id)s,
-                %(external_row_key)s,
-                %(row_number)s,
-                %(transaction_date)s,
-                %(transaction_time)s,
-                %(title)s,
-                %(raw_category)s,
-                %(amount)s,
-                %(source_fund)s,
-                %(note)s,
-                %(direction)s,
-                %(raw_payload)s,
-                %(normalized_hash)s,
-                %(user_name)s,
-                %(import_job_id)s,
-                %(import_transaction_fingerprint)s,
-                %(sync_status)s,
-                %(sync_error_message)s
-            )
-            returning id, import_transaction_fingerprint, sync_status
-            """,
-            [
+        inserted_rows = []
+
+        for row in rows:
+            cursor.execute(
+                """
+                insert into transactions (
+                    workspace_id,
+                    sheet_source_id,
+                    external_row_key,
+                    row_number,
+                    transaction_date,
+                    transaction_time,
+                    title,
+                    raw_category,
+                    amount,
+                    source_fund,
+                    note,
+                    direction,
+                    raw_payload,
+                    normalized_hash,
+                    user_name,
+                    import_job_id,
+                    import_transaction_fingerprint,
+                    sync_status,
+                    sync_error_message
+                )
+                values (
+                    %(workspace_id)s,
+                    %(sheet_source_id)s,
+                    %(external_row_key)s,
+                    %(row_number)s,
+                    %(transaction_date)s,
+                    %(transaction_time)s,
+                    %(title)s,
+                    %(raw_category)s,
+                    %(amount)s,
+                    %(source_fund)s,
+                    %(note)s,
+                    %(direction)s,
+                    %(raw_payload)s,
+                    %(normalized_hash)s,
+                    %(user_name)s,
+                    %(import_job_id)s,
+                    %(import_transaction_fingerprint)s,
+                    %(sync_status)s,
+                    %(sync_error_message)s
+                )
+                on conflict (import_transaction_fingerprint)
+                where import_transaction_fingerprint is not null
+                do update set
+                    import_transaction_fingerprint = excluded.import_transaction_fingerprint
+                returning id, import_transaction_fingerprint, sync_status
+                """,
                 {
                     **row,
                     "raw_payload": Jsonb(row["raw_payload"]),
-                }
-                for row in rows
-            ],
-        )
+                },
+            )
+            inserted_row = cursor.fetchone()
 
-        return cursor.fetchall()
+            if inserted_row:
+                inserted_rows.append(inserted_row)
+
+        return inserted_rows
 
 
 def update_import_transaction_sync_status(
