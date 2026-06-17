@@ -248,6 +248,15 @@ const ImportTransactions = () => {
     try {
       const response = await approveImportReview(activeJobId, payload);
       setReviewData(response.review);
+
+      if (response.sync_status && response.sync_status !== "success" && response.sync_status !== "skipped") {
+        setReviewActionError({
+          errorCode: response.sync_status === "needs_reconnect" ? "needs_reconnect" : "sync_failed",
+          message: response.sync_error_message || "Transaksi berhasil disimpan, tapi sinkronisasi Google Sheets belum berhasil.",
+          syncStatus: response.sync_status,
+        });
+      }
+
       await loadHistory();
     } catch (approveError) {
       const responsePayload = approveError?.response?.data || {};

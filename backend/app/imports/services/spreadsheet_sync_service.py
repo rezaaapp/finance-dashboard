@@ -25,6 +25,7 @@ class SpreadsheetSyncService:
         approved_transactions: list[dict],
         target_sheet_source: dict | None = None,
         target_sheet_name: str | None = None,
+        user_name: str | None = None,
     ) -> dict:
         if not approved_transactions:
             return {
@@ -77,7 +78,11 @@ class SpreadsheetSyncService:
 
         access_token = decrypt_text(oauth_connection["access_token_encrypted"])
         rows = [
-            self._build_sheet_row(transaction, current_user=current_user)
+            self._build_sheet_row(
+                transaction,
+                current_user=current_user,
+                user_name=user_name,
+            )
             for transaction in approved_transactions
         ]
 
@@ -142,9 +147,21 @@ class SpreadsheetSyncService:
             sheet_id=fallback_sheet_id,
         )
 
-    def _build_sheet_row(self, transaction: dict, *, current_user: dict) -> list:
+    def _build_sheet_row(
+        self,
+        transaction: dict,
+        *,
+        current_user: dict,
+        user_name: str | None = None,
+    ) -> list:
         return [
-            current_user.get("name") or current_user.get("email") or "User",
+            str(
+                user_name
+                or current_user.get("display_name")
+                or current_user.get("name")
+                or current_user.get("email")
+                or "User"
+            ),
             str(transaction.get("datetime", "")),
             str(
                 transaction.get("merchant_display")

@@ -595,12 +595,16 @@ class ImportService:
             sheet_source_id=sheet_source_id,
             sheet_name=sheet_name,
         )
+        resolved_user_name = self._resolve_import_user_name(
+            current_user=current_user,
+            workspace=workspace,
+        )
         final_transaction_rows = [
             serialize_import_transaction_row(
                 workspace_id=workspace_id,
                 sheet_source_id=str(target_sheet["source"]["id"]),
                 import_job_id=import_job_id,
-                user_name=current_user.get("name") or current_user.get("email") or "User",
+                user_name=resolved_user_name,
                 transaction=draft,
             )
             for draft in merged_drafts
@@ -619,6 +623,13 @@ class ImportService:
                 for draft in merged_drafts
             ],
         )
+        self._log_import_event(
+            "smart_import.spreadsheet_sync.started",
+            job_id=import_job_id,
+            sheet_source_id=str(target_sheet["source"]["id"]),
+            sheet_name=target_sheet["sheet_name"],
+            row_count=len(merged_drafts),
+        )
         sync_result = self.spreadsheet_sync_service.sync_import_transactions(
             connection,
             workspace=workspace,
@@ -626,7 +637,22 @@ class ImportService:
             approved_transactions=merged_drafts,
             target_sheet_source=target_sheet["source"],
             target_sheet_name=target_sheet["sheet_name"],
+            user_name=resolved_user_name,
         )
+        if sync_result["status"] == "success":
+            self._log_import_event(
+                "smart_import.spreadsheet_sync.completed",
+                job_id=import_job_id,
+                success_count=sync_result["sync_success"],
+                failed_count=sync_result["sync_failed"],
+            )
+        else:
+            self._log_import_event(
+                "smart_import.spreadsheet_sync.failed",
+                job_id=import_job_id,
+                sheet_name=target_sheet["sheet_name"],
+                reason=sync_result.get("error") or sync_result["status"],
+            )
         transaction_fingerprints = [
             draft["transaction_fingerprint"]
             for draft in merged_drafts
@@ -690,6 +716,7 @@ class ImportService:
             "sync_success": sync_result["sync_success"],
             "sync_failed": sync_result["sync_failed"],
             "sync_status": sync_result["status"],
+            "sync_error_message": sync_result.get("error"),
             "draft_ids": [str(draft["id"]) for draft in merged_drafts],
         }
 
@@ -854,6 +881,22 @@ class ImportService:
                 normalized_ids.append(draft_id)
 
         return normalized_ids
+
+    def _resolve_import_user_name(self, *, current_user: dict, workspace: dict) -> str:
+        candidates = [
+            current_user.get("display_name"),
+            current_user.get("name"),
+            current_user.get("email"),
+            workspace.get("owner_name"),
+            workspace.get("name"),
+        ]
+
+        for candidate in candidates:
+            normalized_candidate = str(candidate or "").strip()
+            if normalized_candidate:
+                return normalized_candidate
+
+        return "User"
 
     def _merge_review_item_updates(self, draft_transactions: list[dict], *, item_updates: list[dict]):
         updates_by_id = {

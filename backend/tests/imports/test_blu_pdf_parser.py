@@ -916,7 +916,12 @@ class BluPdfParserTestCase(unittest.TestCase):
             approve_result = service.approve_review_transactions(
                 connection=object(),
                 workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
-                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                current_user={
+                    "sub": "user-1",
+                    "display_name": "Reza Display",
+                    "name": "Reza",
+                    "email": "reza@example.com",
+                },
                 workspace_id="workspace-1",
                 import_job_id="job-1",
                 draft_ids=["draft-1"],
@@ -931,6 +936,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         created_row = create_transactions_mock.call_args.kwargs["rows"][0]
         self.assertEqual("sheet-source-1", created_row["sheet_source_id"])
+        self.assertEqual("Reza Display", created_row["user_name"])
         self.assertEqual("Ayam Gepuk Pak Gembus", created_row["title"])
         self.assertEqual(
             "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
@@ -943,6 +949,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Makan", created_row["raw_category"])
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
+        self.assertEqual("Reza Display", sync_mock.call_args.kwargs["user_name"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",
@@ -1285,6 +1292,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         delete_drafts_mock.assert_called_once()
         self.assertEqual("failed", approve_result["sync_status"])
+        self.assertEqual("append failed", approve_result["sync_error_message"])
         self.assertEqual(0, approve_result["sync_success"])
         self.assertEqual(1, approve_result["sync_failed"])
 
@@ -1316,6 +1324,64 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("needs_reconnect", result["status"])
         self.assertEqual(1, result["sync_failed"])
 
+    def test_spreadsheet_sync_appends_to_selected_sheet_with_user_name(self):
+        sync_service = SpreadsheetSyncService()
+
+        with patch("app.imports.services.spreadsheet_sync_service.get_active_google_oauth_connection", return_value={
+            "id": "oauth-1",
+            "access_token_encrypted": "encrypted-token",
+            "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
+        }), \
+             patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.append_sheet_values") as append_values_mock, \
+             patch("app.imports.services.spreadsheet_sync_service.update_google_sheet_last_synced") as update_synced_mock:
+            result = sync_service.sync_import_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={
+                    "sub": "user-1",
+                    "display_name": "Reza Display",
+                    "email": "reza@example.com",
+                },
+                approved_transactions=[{
+                    "datetime": "01/06/2026 08:00",
+                    "merchant_display": "SUPERINDO",
+                    "merchant_normalized": "SUPERINDO",
+                    "amount": 159750,
+                    "category": "Belanja",
+                    "notes": "Approved manually",
+                }],
+                target_sheet_source={
+                    "id": "sheet-source-1",
+                    "sheet_id": "sheet-123",
+                    "sheet_name": "Default",
+                },
+                target_sheet_name="Start 1 Juni",
+                user_name="Reza Display",
+            )
+
+        append_values_mock.assert_called_once_with(
+            access_token="access-token",
+            spreadsheet_id="sheet-123",
+            range_name="Start 1 Juni",
+            rows=[[
+                "Reza Display",
+                "01/06/2026 08:00",
+                "SUPERINDO",
+                "Belanja",
+                159750,
+                "Blu",
+                "Approved manually",
+            ]],
+        )
+        update_synced_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            source_id="sheet-source-1",
+        )
+        self.assertEqual("success", result["status"])
+        self.assertEqual(1, result["sync_success"])
+
     def test_spreadsheet_row_uses_merchant_display(self):
         row = SpreadsheetSyncService()._build_sheet_row(
             {
@@ -1326,9 +1392,11 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "category": "Makan",
                 "notes": "",
             },
-            current_user={"name": "Reza"},
+            current_user={"display_name": "Reza Display", "name": "Reza"},
+            user_name="Reza Display",
         )
 
+        self.assertEqual("Reza Display", row[0])
         self.assertEqual("Ayam Gepuk Pak Gembus", row[2])
 
     def test_reject_review_transactions_removes_selected_drafts(self):

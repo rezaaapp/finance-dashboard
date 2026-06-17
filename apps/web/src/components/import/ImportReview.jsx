@@ -277,6 +277,7 @@ const ImportReview = ({
 
   const summary = reviewData?.summary || {};
   const filters = reviewData?.filters || [];
+  const isSyncWarning = Boolean(actionError?.syncStatus);
 
   return (
     <div className="grid grid-cols-1 gap-6">
@@ -406,7 +407,9 @@ const ImportReview = ({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-semibold text-main">
-                      Approval import belum bisa dilanjutkan
+                      {isSyncWarning
+                        ? "Transaksi tersimpan, sinkronisasi Google Sheets perlu dicek"
+                        : "Approval import belum bisa dilanjutkan"}
                     </p>
                     <p className="mt-1">
                       {actionError.message}
@@ -421,8 +424,18 @@ const ImportReview = ({
                         Google Sheets sudah terhubung, tapi tab tujuan transaksi belum dipilih.
                       </p>
                     )}
+                    {actionError.errorCode === "needs_reconnect" && (
+                      <p className="mt-1">
+                        Hubungkan ulang Google Sheets terlebih dahulu.
+                      </p>
+                    )}
+                    {actionError.errorCode === "sync_failed" && (
+                      <p className="mt-1">
+                        Cek tab tujuan atau koneksi Google Sheets, lalu gunakan Retry Sync dari History.
+                      </p>
+                    )}
                   </div>
-                  {actionError.errorCode === "missing_google_sheet_source" && (
+                  {["missing_google_sheet_source", "needs_reconnect"].includes(actionError.errorCode) && (
                     <a
                       href="/settings"
                       className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
