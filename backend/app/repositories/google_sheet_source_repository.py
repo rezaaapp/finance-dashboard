@@ -5,7 +5,7 @@ def create_google_sheet_source(
     connection,
     *,
     workspace_id: str,
-    oauth_connection_id: str,
+    oauth_connection_id: str | None,
     sheet_id: str,
     sheet_url: str,
     spreadsheet_title: str | None,
@@ -116,7 +116,7 @@ def reactivate_google_sheet_source(
     *,
     workspace_id: str,
     source_id: str,
-    oauth_connection_id: str,
+    oauth_connection_id: str | None,
     sheet_url: str,
     spreadsheet_title: str | None,
     sheet_name: str | None,
@@ -220,6 +220,66 @@ def get_google_sheet_source(
         )
 
         return cursor.fetchone()
+
+
+def get_primary_google_sheet_source(connection, *, workspace_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                workspace_id,
+                oauth_connection_id,
+                sheet_id,
+                sheet_url,
+                spreadsheet_title,
+                sheet_name,
+                year,
+                status,
+                last_synced_at,
+                created_at,
+                updated_at
+            from google_sheet_sources
+            where workspace_id = %s
+              and status != 'disabled'
+            order by year desc nulls last, created_at asc
+            limit 1
+            """,
+            (workspace_id,),
+        )
+
+        return cursor.fetchone()
+
+
+def ensure_import_google_sheet_source(
+    connection,
+    *,
+    workspace_id: str,
+    oauth_connection_id: str | None,
+    sheet_id: str,
+):
+    existing_source = get_primary_google_sheet_source(
+        connection,
+        workspace_id=workspace_id,
+    )
+
+    if existing_source:
+        return existing_source
+
+    if not str(sheet_id or "").strip():
+        return None
+
+    return create_google_sheet_source(
+        connection,
+        workspace_id=workspace_id,
+        oauth_connection_id=oauth_connection_id,
+        sheet_id=sheet_id,
+        sheet_url=f"https://docs.google.com/spreadsheets/d/{sheet_id}",
+        spreadsheet_title="Smart Import Sheet",
+        sheet_name="Sheet1",
+        year=None,
+        status="active",
+    )
 
 
 def update_google_sheet_last_synced(connection, *, workspace_id: str, source_id: str):

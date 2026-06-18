@@ -8,9 +8,35 @@ from psycopg.rows import dict_row
 from app.repositories.budget_repository import (
     get_budgets_by_period,
 )
+from app.imports.utils.fingerprint import normalize_owner_name
 
 
 FINANCIAL_TYPES = ("need", "want", "saving", "income", "uncategorized")
+
+
+def _owner_name_expr(table_alias: str | None = None):
+    prefix = f"{table_alias}." if table_alias else ""
+    user_name_expr = f"{prefix}user_name"
+    raw_name_expr = f"{prefix}raw_payload->>'Nama'"
+
+    return f"""
+        case
+            when lower(
+                btrim(
+                    coalesce(
+                        nullif({user_name_expr}, ''),
+                        nullif({raw_name_expr}, ''),
+                        ''
+                    )
+                )
+            ) in ('reza putra pratama', 'reza') then 'Reza'
+            else coalesce(
+                nullif({user_name_expr}, ''),
+                nullif({raw_name_expr}, ''),
+                'Unknown'
+            )
+        end
+    """
 
 
 def _month_expr():
@@ -143,8 +169,8 @@ def _filters(year=None, month=None, direction=None, name=None):
             params.append(direction)
 
     if name:
-        clauses.append("coalesce(raw_payload->>'Nama', '') = %s")
-        params.append(name)
+        clauses.append(f"{_owner_name_expr()} = %s")
+        params.append(normalize_owner_name(name))
 
     return " and ".join(clauses), params
 
@@ -347,7 +373,7 @@ def _personal_period_totals(
             ), 0) as spending
         from (
             select
-                coalesce(nullif(t.raw_payload->>'Nama', ''), 'Unknown') as name,
+                {_owner_name_expr("t")} as name,
                 t.amount,
                 {financial_type_expr} as financial_type
             from transactions t
@@ -981,7 +1007,7 @@ def get_top_spending(connection, *, workspace_id: str, year=None, month=None, li
             transaction_date,
             title,
             {_category_label_expr()} as category,
-            coalesce(raw_payload->>'Nama', '') as name,
+            {_owner_name_expr()} as name,
             coalesce(source_fund, '') as source_fund,
             coalesce(note, '') as note,
             amount
@@ -1019,7 +1045,7 @@ def get_transactions(connection, *, workspace_id: str, year=None, month=None, na
             transaction_date,
             title,
             {_category_label_expr()} as category,
-            coalesce(raw_payload->>'Nama', '') as name,
+            {_owner_name_expr()} as name,
             amount
         from transactions
         where {where_clause}
@@ -1256,7 +1282,7 @@ def _get_personal_monthly_comparison(connection, *, workspace_id: str, year=None
         f"""
         select
             {_month_expr()} as month,
-            coalesce(nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
+            {_owner_name_expr()} as name,
             coalesce(sum(amount), 0) as total
         from transactions
         where {where_clause}
@@ -1283,7 +1309,7 @@ def _get_personal_top_categories(connection, *, workspace_id: str, year=None, mo
         connection,
         f"""
         select
-            coalesce(nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
+            {_owner_name_expr()} as name,
             {_category_label_expr()} as category,
             coalesce(sum(amount), 0) as total
         from transactions

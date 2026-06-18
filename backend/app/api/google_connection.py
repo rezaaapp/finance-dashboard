@@ -4,8 +4,10 @@ from app.auth import require_current_user
 from app.database import get_db_connection
 from app.repositories.google_oauth_repository import (
     disconnect_google_oauth_connection,
+    get_active_google_oauth_connection,
     get_google_oauth_connection_status,
 )
+from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
@@ -68,8 +70,15 @@ def get_connection_status(
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
+    sync_service = SpreadsheetSyncService()
+
     with get_db_connection() as connection:
         connection_status = get_google_oauth_connection_status(
+            connection,
+            workspace_id=str(workspace["id"]),
+            user_id=current_user["sub"],
+        )
+        active_connection = get_active_google_oauth_connection(
             connection,
             workspace_id=str(workspace["id"]),
             user_id=current_user["sub"],
@@ -82,6 +91,9 @@ def get_connection_status(
         "connected": True,
         "google_email": connection_status["google_email"],
         "status": connection_status["status"],
+        "needs_reconnect": sync_service.requires_reconnect(
+            (active_connection or {}).get("scopes") or []
+        ),
     }
 
 

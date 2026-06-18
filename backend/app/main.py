@@ -15,6 +15,7 @@ from app.api.data_sources import router as data_sources_router
 from app.api.dashboard import router as dashboard_router
 from app.api.google_connection import router as google_connection_router
 from app.api.google_oauth import router as google_oauth_router
+from app.api.imports import router as imports_router
 from app.api.inquiry import router as inquiry_router
 from app.api.settings import router as settings_router
 from app.api.sync_jobs import router as sync_jobs_router
@@ -22,6 +23,10 @@ from app.api.workspace_invitations import router as workspace_invitations_router
 from app.api.workspaces import router as workspaces_router
 from app.config import settings
 from app.database import check_database_connection, close_database_pool
+from app.imports.services.cleanup_service import (
+    start_import_cleanup_scheduler,
+    stop_import_cleanup_scheduler,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "apps" / "web" / "dist"
@@ -102,7 +107,13 @@ def database_health_check():
 
 @app.on_event("shutdown")
 def shutdown_database_pool():
+    stop_import_cleanup_scheduler()
     close_database_pool()
+
+
+@app.on_event("startup")
+def startup_import_cleanup_scheduler():
+    start_import_cleanup_scheduler()
 
 # =========================
 # ROUTER
@@ -131,6 +142,7 @@ app.include_router(google_oauth_router)
 app.include_router(data_sources_router)
 app.include_router(sync_jobs_router)
 app.include_router(classifications_router)
+app.include_router(imports_router)
 app.include_router(inquiry_router)
 app.include_router(settings_router)
 app.include_router(budgets_router)

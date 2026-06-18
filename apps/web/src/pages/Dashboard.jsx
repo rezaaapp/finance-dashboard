@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Moon,
+  Upload,
   RefreshCw,
   Search as SearchIcon,
   Settings,
@@ -39,6 +40,7 @@ import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
+import ImportTransactions from "./ImportTransactions";
 import SearchPage from "./Search";
 import { PRIVACY_MODES } from "../utils/privacy";
 
@@ -105,6 +107,10 @@ const hasSummaryData = (summary = {}) => (
 );
 
 const getInitialView = () => {
+  if (window.location.pathname.startsWith("/import")) {
+    return "import";
+  }
+
   if (window.location.pathname.startsWith("/search")) {
     return "search";
   }
@@ -256,9 +262,7 @@ const Dashboard = ({
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [activeView, setActiveView] = useState(() => (
-    getInitialView()
-  ));
+  const [activeView, setActiveView] = useState(() => getInitialView());
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1111,6 +1115,31 @@ const Dashboard = ({
             )}
           </button>
 
+          <button
+            type="button"
+            onClick={() => setActiveView("import")}
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "import"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
+            }`}
+            aria-label="Import Transaksi"
+            title="Import Transaksi"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <Upload size={18} />
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Import Transaksi
+              </span>
+            )}
+          </button>
+
           {isSidebarCollapsed ? (
             <div className="group relative">
               <button
@@ -1169,6 +1198,7 @@ const Dashboard = ({
                 >
                   Google Sheets
                 </button>
+
               </div>
             </div>
           ) : (
@@ -1246,6 +1276,7 @@ const Dashboard = ({
               >
                   Google Sheets
                 </button>
+
               </div>
             </div>
           )}
@@ -1656,6 +1687,8 @@ const Dashboard = ({
             onImpersonate={onImpersonate}
             onUnauthorized={onLogout}
           />
+        ) : activeView === "import" ? (
+          <ImportTransactions />
         ) : (
           <Configuration
             key={activeWorkspaceId || "default-workspace"}
@@ -1672,7 +1705,7 @@ const Dashboard = ({
       </main>
 
       <nav className={`fixed inset-x-0 bottom-0 z-50 grid gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden ${
-        isSuperAdmin ? "grid-cols-6" : "grid-cols-5"
+        isSuperAdmin ? "grid-cols-7" : "grid-cols-6"
       }`}>
         <button
           type="button"
@@ -1738,6 +1771,19 @@ const Dashboard = ({
 
         <button
           type="button"
+          onClick={() => setActiveView("import")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
+            activeView === "import"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <Upload size={18} />
+          Import
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveView("configuration")}
           className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
             activeView === "configuration"
@@ -1746,7 +1792,7 @@ const Dashboard = ({
           }`}
         >
           <Settings size={18} />
-          Configuration
+          Settings
         </button>
 
         {isSuperAdmin && (

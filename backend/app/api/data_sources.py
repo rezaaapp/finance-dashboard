@@ -305,6 +305,46 @@ def list_data_sources(
     }
 
 
+@router.get("/{source_id}/worksheets")
+def list_google_sheet_source_worksheets(
+    source_id: str,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    workspace_id = str(workspace["id"])
+
+    with get_db_connection() as connection:
+        source = get_google_sheet_source(
+            connection,
+            workspace_id=workspace_id,
+            source_id=source_id,
+        )
+
+        if not source:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Google Sheet source not found",
+            )
+
+        _oauth_connection, access_token = _get_access_context(
+            connection,
+            workspace_id=workspace_id,
+            user_id=current_user["sub"],
+        )
+
+    metadata = _fetch_spreadsheet_metadata(
+        access_token=access_token,
+        spreadsheet_id=source["sheet_id"],
+    )
+
+    return {
+        "source_id": str(source["id"]),
+        "spreadsheet_id": source["sheet_id"],
+        "spreadsheet_title": source.get("spreadsheet_title") or metadata.get("title"),
+        "worksheets": metadata.get("sheet_names", []),
+    }
+
+
 @router.post("/google-sheet/test")
 def test_google_sheet_access(
     payload: GoogleSheetTestRequest,
@@ -622,6 +662,14 @@ def sync_google_sheet_source(
                         updated_rows += batch_result["updated"]
                         skipped_rows += batch_result["skipped"]
                         failed_rows += batch_result["failed"]
+                        if batch_result.get("skipped_duplicates", 0):
+                            _record_sync_diagnostic(
+                                skipped_reasons,
+                                skipped_samples,
+                                reason="skipped_duplicate",
+                                sheet_name=tab_name,
+                                count=batch_result["skipped_duplicates"],
+                            )
                         synced_transaction_ids.extend(
                             batch_result.get("inserted_transaction_ids", [])
                         )
