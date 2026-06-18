@@ -14,6 +14,7 @@ No large logic changes were introduced. This task is limited to copy/UX semantic
 - `docs/smart-import/SPREADSHEET_SYNC.md`
 - `docs/smart-import/IMPORT_HISTORY.md`
 - `docs/smart-import/REVIEW_TABLE.md`
+- `docs/project-audit/solving-reports/TASK_03_POSTGRES_SOURCE_OF_TRUTH.md`
 
 ## Copy And Documentation Clarified
 
@@ -41,7 +42,6 @@ No large logic changes were introduced. This task is limited to copy/UX semantic
 
 ## Validation Run
 
-- `npm run lint -- --run apps/web/src/pages/ImportTransactions.jsx apps/web/src/components/import/ImportReview.jsx apps/web/src/components/import/ImportHistory.jsx`
 - `npm --prefix apps/web run lint -- src/pages/ImportTransactions.jsx src/components/import/ImportReview.jsx src/components/import/ImportHistory.jsx`
 - `python -m unittest discover -s backend/tests -t .`
 - `python -m unittest discover -s backend/tests/imports -t .`
