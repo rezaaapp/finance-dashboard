@@ -20,6 +20,7 @@ from app.imports.repositories.final_transaction_repository import (
     update_import_transaction_sync_status_by_ids,
 )
 from app.imports.repositories.fingerprint_registry_repository import (
+    register_rejected_transaction_fingerprints,
     register_transaction_fingerprints,
 )
 from app.imports.repositories.import_repository import (
@@ -276,11 +277,30 @@ class ImportService:
                     extracted_text_length=0,
                     stage="temp_storage",
                     reason="Temporary PDF file was not found before parsing",
+                    error_code="temp_file_missing",
                     user_error="File import sementara tidak ditemukan.",
                 )
 
-            with temp_path.open("rb") as temp_pdf:
-                extraction = BluPdfParser().extract_pdf_metadata(temp_pdf)
+            try:
+                with temp_path.open("rb") as temp_pdf:
+                    extraction = BluPdfParser().extract_pdf_metadata(temp_pdf)
+            except Exception:
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=filename_provider,
+                    detection_source=(
+                        "filename"
+                        if filename_provider != "unknown"
+                        else "unknown"
+                    ),
+                    page_count=0,
+                    extracted_text_length=0,
+                    stage="pdf_extraction",
+                    reason="PDF extraction raised an error",
+                    error_code="invalid_pdf",
+                    user_error="PDF tidak valid atau gagal dibaca.",
+                )
 
             provider_detection = self.detect_provider_details(
                 filename=filename,
@@ -318,7 +338,25 @@ class ImportService:
                     extracted_text_length=extraction["extracted_text_length"],
                     stage="pdf_extraction",
                     reason="PDF text layer is empty",
+                    error_code="unreadable_pdf",
                     user_error="PDF tidak memiliki text layer atau gagal dibaca.",
+                )
+
+            if provider != "blu":
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=provider,
+                    detection_source=detection_source,
+                    page_count=extraction["page_count"],
+                    extracted_text_length=extraction["extracted_text_length"],
+                    stage="provider_detection",
+                    reason="Uploaded PDF provider is not supported",
+                    error_code="unsupported_provider",
+                    user_error=(
+                        "File belum didukung. Saat ini Import Transaksi hanya "
+                        "mendukung PDF e-Statement Blu."
+                    ),
                 )
 
             update_import_job_status(
@@ -357,6 +395,7 @@ class ImportService:
                     extracted_text_length=extraction["extracted_text_length"],
                     stage="parser",
                     reason="Blu PDF text was extracted but no transactions were parsed",
+                    error_code="no_parseable_transactions",
                     user_error="PDF Blu terbaca, tapi transaksi tidak berhasil diparse.",
                 )
 
@@ -441,6 +480,7 @@ class ImportService:
         extracted_text_length: int,
         stage: str,
         reason: str,
+        error_code: str,
         user_error: str,
     ) -> ImportUploadResult:
         update_import_job_summary(
@@ -474,6 +514,8 @@ class ImportService:
             existing_transactions=0,
             page_count=page_count,
             extracted_text_length=extracted_text_length,
+            error_code=error_code,
+            message=user_error,
             error=user_error,
             preview=[],
         )
@@ -747,14 +789,30 @@ class ImportService:
         import_job_id: str,
         draft_ids: list[str],
     ):
-        if not get_import_review_summary(
+        review_summary = get_import_review_summary(
             connection,
             workspace_id=workspace_id,
             job_id=import_job_id,
-        ):
+        )
+        if not review_summary:
             return None
 
         normalized_ids = self._normalize_draft_ids(draft_ids, None)
+        selected_drafts = list_import_draft_transactions_by_ids(
+            connection,
+            import_job_id=import_job_id,
+            draft_ids=normalized_ids,
+        )
+        register_rejected_transaction_fingerprints(
+            connection,
+            rows=[
+                {
+                    "transaction_fingerprint": draft["transaction_fingerprint"],
+                    "provider": review_summary["provider"],
+                }
+                for draft in selected_drafts
+            ],
+        )
         deleted_rows = reject_import_draft_transactions(
             connection,
             import_job_id=import_job_id,

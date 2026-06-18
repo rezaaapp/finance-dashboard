@@ -23,6 +23,7 @@ const ProviderBadge = ({ children, variant = "default" }) => (
 const ImportLanding = ({ onReviewReady }) => {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("idle");
   const [error, setError] = useState("");
 
   const openFilePicker = () => {
@@ -37,17 +38,33 @@ const ImportLanding = ({ onReviewReady }) => {
     }
 
     setUploading(true);
+    setUploadStatus("uploading");
     setError("");
 
     try {
       const response = await uploadImportFile(selectedFile);
+
+      if (response.status === "failed") {
+        setUploadStatus("upload_error");
+        setError(
+          response.message
+          || response.error
+          || "Upload import belum berhasil. Coba lagi."
+        );
+        return;
+      }
+
+      setUploadStatus("upload_success");
       onReviewReady({
         ...response,
         filename: selectedFile.name,
       });
     } catch (uploadError) {
+      const responsePayload = uploadError?.response?.data || {};
+      setUploadStatus("upload_error");
       setError(
-        uploadError?.response?.data?.detail
+        responsePayload.message
+        || responsePayload.detail
         || "Upload import belum berhasil. Coba lagi."
       );
     } finally {
@@ -150,6 +167,12 @@ const ImportLanding = ({ onReviewReady }) => {
             <CircleAlert size={18} className="mt-0.5 shrink-0" />
             <p>{error}</p>
           </div>
+        </section>
+      )}
+
+      {uploadStatus === "upload_success" && (
+        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+          PDF berhasil dibaca. Menyiapkan halaman review...
         </section>
       )}
 

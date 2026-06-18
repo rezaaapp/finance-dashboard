@@ -12,9 +12,10 @@ def get_registered_transaction_fingerprints(
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            select transaction_fingerprint
-            from import_transaction_registry
+            update import_transaction_registry
+            set last_seen_at = now()
             where transaction_fingerprint = any(%s)
+            returning transaction_fingerprint
             """,
             (transaction_fingerprints,),
         )
@@ -42,18 +43,76 @@ def register_transaction_fingerprints(
                 insert into import_transaction_registry (
                     transaction_fingerprint,
                     provider,
-                    approved_at
+                    status,
+                    approved_at,
+                    rejected_at,
+                    last_seen_at
                 )
                 values (
                     %(transaction_fingerprint)s,
                     %(provider)s,
+                    'approved',
+                    now(),
+                    null,
                     now()
                 )
                 on conflict (transaction_fingerprint)
                 do update set
                     provider = excluded.provider,
-                    approved_at = excluded.approved_at
-                returning transaction_fingerprint, provider, approved_at, created_at
+                    status = 'approved',
+                    approved_at = excluded.approved_at,
+                    rejected_at = null,
+                    last_seen_at = excluded.last_seen_at
+                returning transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at
+                """,
+                row,
+            )
+            registered_row = cursor.fetchone()
+
+            if registered_row:
+                registered_rows.append(registered_row)
+
+        return registered_rows
+
+
+def register_rejected_transaction_fingerprints(
+    connection,
+    *,
+    rows: list[dict],
+):
+    if not rows:
+        return []
+
+    with connection.cursor(row_factory=dict_row) as cursor:
+        registered_rows = []
+
+        for row in rows:
+            cursor.execute(
+                """
+                insert into import_transaction_registry (
+                    transaction_fingerprint,
+                    provider,
+                    status,
+                    approved_at,
+                    rejected_at,
+                    last_seen_at
+                )
+                values (
+                    %(transaction_fingerprint)s,
+                    %(provider)s,
+                    'rejected',
+                    null,
+                    now(),
+                    now()
+                )
+                on conflict (transaction_fingerprint)
+                do update set
+                    provider = excluded.provider,
+                    status = 'rejected',
+                    approved_at = null,
+                    rejected_at = excluded.rejected_at,
+                    last_seen_at = excluded.last_seen_at
+                returning transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at
                 """,
                 row,
             )

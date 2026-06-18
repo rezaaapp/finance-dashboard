@@ -58,6 +58,7 @@ const ImportTransactions = () => {
   const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(false);
   const [categoryOptionsError, setCategoryOptionsError] = useState("");
   const [reviewActionError, setReviewActionError] = useState(null);
+  const [reviewActionFeedback, setReviewActionFeedback] = useState(null);
   const [sheetSources, setSheetSources] = useState([]);
   const [sheetSourcesLoading, setSheetSourcesLoading] = useState(false);
   const [sheetSourcesError, setSheetSourcesError] = useState("");
@@ -129,6 +130,7 @@ const ImportTransactions = () => {
     setLoading(true);
     setError("");
     setReviewActionError(null);
+    setReviewActionFeedback(null);
     setActiveJobId(jobId);
     setCategoryOptionsLoading(true);
     setCategoryOptionsError("");
@@ -275,20 +277,32 @@ const ImportTransactions = () => {
     }
 
     setReviewActionError(null);
+    setReviewActionFeedback(null);
 
     try {
       const response = await approveImportReview(activeJobId, payload);
       setReviewData(response.review);
 
-      if (response.sync_status && response.sync_status !== "success" && response.sync_status !== "skipped") {
-        setReviewActionError({
-          errorCode: response.sync_status === "needs_reconnect" ? "needs_reconnect" : "sync_failed",
-          message: response.sync_error_message || "Transaksi berhasil disimpan, tapi sinkronisasi Google Sheets belum berhasil.",
-          syncStatus: response.sync_status,
+      if (response.sync_status === "success" && response.sync_failed === 0) {
+        setReviewActionFeedback({
+          tone: "success",
+          message: response.sync_success > 0
+            ? "Transaksi berhasil masuk ke database dan Google Spreadsheet."
+            : "Transaksi berhasil disimpan.",
+        });
+      } else {
+        setReviewActionFeedback({
+          tone: "warning",
+          message: (
+            "Transaksi tersimpan di database, tetapi belum masuk Google Spreadsheet. "
+            + "Gunakan Retry Sync di Riwayat Import."
+          ),
+          detail: response.sync_error_message || "",
         });
       }
 
       await loadHistory();
+      return response;
     } catch (approveError) {
       const responsePayload = approveError?.response?.data || {};
 
@@ -296,6 +310,7 @@ const ImportTransactions = () => {
         errorCode: responsePayload.error_code || "approval_failed",
         message: responsePayload.message || "Approval import belum bisa diproses.",
       });
+      return null;
     }
   };
 
@@ -305,6 +320,7 @@ const ImportTransactions = () => {
     }
 
     setReviewActionError(null);
+    setReviewActionFeedback(null);
 
     const response = await rejectImportReview(activeJobId, payload);
     setReviewData(response.review);
@@ -386,6 +402,7 @@ const ImportTransactions = () => {
             loading={loading}
             error={error}
             actionError={reviewActionError}
+            actionFeedback={reviewActionFeedback}
             onApprove={handleApprove}
             onReject={handleReject}
             sheetSources={sheetSources}
@@ -400,10 +417,12 @@ const ImportTransactions = () => {
               setTargetSourceId(nextSourceId);
               setTargetSheetName("");
               setReviewActionError(null);
+              setReviewActionFeedback(null);
             }}
             onTargetSheetChange={(nextSheetName) => {
               setTargetSheetName(nextSheetName);
               setReviewActionError(null);
+              setReviewActionFeedback(null);
             }}
             categoryOptions={categoryOptions}
             categoryOptionsLoading={categoryOptionsLoading}

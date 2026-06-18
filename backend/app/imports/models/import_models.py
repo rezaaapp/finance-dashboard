@@ -74,5 +74,7 @@ class ImportUploadResult(BaseModel):
     existing_transactions: int = 0
     page_count: int = 0
     extracted_text_length: int = 0
+    error_code: str | None = None
+    message: str | None = None
     error: str | None = None
     preview: list[ImportPreviewItem] = Field(default_factory=list)

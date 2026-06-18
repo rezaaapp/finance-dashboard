@@ -63,6 +63,7 @@ const ImportReview = ({
   loading,
   error,
   actionError,
+  actionFeedback,
   onApprove,
   onReject,
   sheetSources = [],
@@ -169,6 +170,7 @@ const ImportReview = ({
   const visibleSelectedCount = filteredRows.filter((row) => selectedIds.includes(row.id)).length;
   const allFilteredSelected = filteredRows.length > 0 && visibleSelectedCount === filteredRows.length;
   const hasTargetSheet = Boolean(targetSourceId && targetSheetName);
+  const isActionLoading = actionLoading !== "";
 
   const handleToggleRow = (draftId) => {
     setSelectedIds((current) => (
@@ -325,7 +327,7 @@ const ImportReview = ({
             <ReviewMetricCard
               icon={CheckCheck}
               label="New Transactions"
-              value={`🟢 ${summary.new_transactions || 0} Baru`}
+              value={`${draftRows.length} Baru Tersisa`}
               tone="success"
             />
             <ReviewMetricCard
@@ -447,6 +449,30 @@ const ImportReview = ({
               </div>
             )}
 
+            {actionFeedback && (
+              <div className={`rounded-lg border px-4 py-3 text-sm ${
+                actionFeedback.tone === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+                  : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+              }`}>
+                <p className="font-semibold text-main">
+                  {actionFeedback.tone === "success"
+                    ? "Transaksi berhasil disimpan."
+                    : "Sinkronisasi Google Spreadsheet perlu ditindaklanjuti."}
+                </p>
+                <p className="mt-1">{actionFeedback.message}</p>
+                {actionFeedback.detail && (
+                  <p className="mt-1 text-xs">{actionFeedback.detail}</p>
+                )}
+              </div>
+            )}
+
+            {actionLoading === "approve-selected" && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
+                Sedang menyimpan ke database dan Google Sheets...
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
               {filters.map((filter) => (
                 <button
@@ -487,6 +513,7 @@ const ImportReview = ({
                 <button
                   type="button"
                   onClick={handleToggleSelectAll}
+                  disabled={isActionLoading}
                   className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)]"
                 >
                   {allFilteredSelected ? "Hapus Pilihan" : "Pilih Semua"}
@@ -497,7 +524,7 @@ const ImportReview = ({
                   disabled={selectedIds.length === 0 || actionLoading !== "" || !hasTargetSheet}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {actionLoading === "approve-selected" ? "Menyetujui..." : "Setujui Pilihan"}
+                  {actionLoading === "approve-selected" ? "Menyimpan transaksi..." : "Setujui Pilihan"}
                 </button>
                 <button
                   type="button"
@@ -523,7 +550,14 @@ const ImportReview = ({
         </section>
 
         <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
-          {filteredRows.length === 0 ? (
+          {draftRows.length === 0 ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+              <div className="flex items-center gap-3">
+                <CheckCheck size={20} className="shrink-0" />
+                <p className="font-semibold">Semua transaksi baru sudah diproses.</p>
+              </div>
+            </div>
+          ) : filteredRows.length === 0 ? (
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-5 text-sm text-muted">
               Tidak ada transaksi baru yang perlu direview untuk filter ini.
             </div>
@@ -580,6 +614,7 @@ const ImportReview = ({
                         <td className="px-4 py-3">
                           <select
                             value={row.category}
+                            disabled={isActionLoading && isSelected}
                             onChange={(event) => handleDraftFieldChange(
                               row.id,
                               "category",
