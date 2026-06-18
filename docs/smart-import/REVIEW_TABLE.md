@@ -2,7 +2,7 @@
 
 ## Review Lifecycle
 
-The Smart Import review lifecycle in Sprint 5 is:
+The current Smart Import review lifecycle is:
 
 1. Upload statement
 2. Parse and normalize transactions
@@ -12,7 +12,8 @@ The Smart Import review lifecycle in Sprint 5 is:
 6. Show those new draft rows in the review table
 7. Approve or reject draft rows
 
-Approved rows stay in the draft table with status `approved`.
+Approved rows are promoted into final `transactions`, registered in
+`import_transaction_registry`, and then removed from the draft table.
 
 Rejected rows are removed from the draft table.
 
@@ -32,15 +33,14 @@ It is never used for duplicate detection.
 
 ## Approval Concept
 
-Approval in Sprint 5 does not insert anything into the final transaction table.
+Approval inserts the reviewed result into the final PostgreSQL ledger.
 
-Approval only updates the draft row:
+Approval also keeps spreadsheet delivery as a separate downstream concern:
 
-- `status` -> `approved`
-- `category` -> saved from the review UI
-- `notes` -> saved from the review UI
-
-This keeps the review step separate from later spreadsheet sync or final persistence work.
+- `transactions` is the final ledger
+- `import_transaction_registry` is the duplicate-prevention registry
+- Google Sheets receives a copy after approval when delivery succeeds
+- spreadsheet delivery failure does not undo final ledger approval
 
 ## Draft Lifecycle
 
@@ -50,7 +50,8 @@ Important rules:
 
 - existing transactions are skipped before draft insert
 - only new transactions appear in review
-- approved rows remain as proof of previously reviewed fingerprints
+- approved rows do not remain in draft storage after final persistence
+- proof of prior approval lives in final `transactions` and `import_transaction_registry`
 - rejected rows are deleted from draft storage
 
 This makes overlap imports deterministic while keeping the review surface focused only on genuinely new transactions.

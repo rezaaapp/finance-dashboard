@@ -16,10 +16,10 @@ Each import job exposes:
 - transactions found
 - new transactions
 - existing transactions
-- approved transactions
+- approved transactions in PostgreSQL
 - rejected transactions
-- sync success
-- sync failed
+- spreadsheet copies delivered
+- spreadsheet copies pending or failed
 - import status
 
 History also exposes whether the PDF is still available or already deleted.
@@ -45,8 +45,15 @@ History detail is designed as an operational summary for one import job:
 
 - import metadata
 - review summary
-- sync outcome
+- PostgreSQL approval outcome
+- spreadsheet delivery outcome
 - PDF lifecycle state
 - retryable sync state
 
 If any final transactions still have `sync_status = failed` or `needs_reconnect`, the job remains retryable from history without recreating transactions.
+
+History should be read with these semantics:
+
+- approval counts represent rows already saved into PostgreSQL
+- sync counts represent spreadsheet delivery only
+- a non-zero sync failure count does not mean approval was rolled back

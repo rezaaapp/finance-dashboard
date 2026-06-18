@@ -249,7 +249,7 @@ const ImportHistory = ({
                 <p className="mt-2 font-semibold text-main">{selectedDetail.existing_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Approved</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Approved in Omon</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.approved_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
@@ -257,11 +257,11 @@ const ImportHistory = ({
                 <p className="mt-2 font-semibold text-main">{selectedDetail.rejected_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Sync Success</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Spreadsheet Sent</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.sync_success}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Sync Failed</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Spreadsheet Pending</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.sync_failed}</p>
               </div>
             </div>
@@ -276,10 +276,10 @@ const ImportHistory = ({
             {selectedDetail.unsynced_count > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
                 <p className="font-semibold text-main">
-                  Ada transaksi yang sudah tercatat di web tetapi belum masuk Google Spreadsheet.
+                  Ada transaksi yang sudah disetujui dan menjadi data utama di Omon, tetapi salinannya belum terkirim ke Google Spreadsheet.
                 </p>
                 <p className="mt-1">
-                  {selectedDetail.unsynced_count} transaksi perlu disinkronkan ulang.
+                  {selectedDetail.unsynced_count} transaksi perlu retry pengiriman spreadsheet tanpa membuat ulang transaksi final.
                 </p>
               </div>
             )}
@@ -287,7 +287,7 @@ const ImportHistory = ({
             {selectedDetail.unsynced_transactions?.length > 0 && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Transaksi Belum Sync
+                  Pengiriman Spreadsheet Tertunda
                 </p>
                 <div className="mt-3 grid grid-cols-1 gap-2">
                   {selectedDetail.unsynced_transactions.slice(0, 5).map((transaction) => (

@@ -287,14 +287,15 @@ const ImportTransactions = () => {
         setReviewActionFeedback({
           tone: "success",
           message: response.sync_success > 0
-            ? "Transaksi berhasil masuk ke database dan Google Spreadsheet."
-            : "Transaksi berhasil disimpan.",
+            ? "Transaksi berhasil disetujui dan tersimpan di Omon. Salinannya juga berhasil dikirim ke Google Spreadsheet."
+            : "Transaksi berhasil disetujui dan tersimpan di Omon.",
         });
       } else {
         setReviewActionFeedback({
           tone: "warning",
           message: (
-            "Transaksi tersimpan di database, tetapi belum masuk Google Spreadsheet. "
+            "Transaksi sudah disetujui dan tersimpan di Omon sebagai data utama, "
+            + "tetapi pengiriman salinannya ke Google Spreadsheet belum berhasil. "
             + "Gunakan Retry Sync di Riwayat Import."
           ),
           detail: response.sync_error_message || "",

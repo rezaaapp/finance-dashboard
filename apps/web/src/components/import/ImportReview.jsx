@@ -354,7 +354,13 @@ const ImportReview = ({
                 Target Tujuan Spreadsheet
               </p>
               <p className="mt-2 text-sm text-muted">
-                Transaksi yang di-approve akan ditambahkan ke tab ini.
+                Setelah transaksi disetujui dan tersimpan di Omon, sistem akan mencoba
+                mengirim salinannya ke tab ini.
+              </p>
+              <p className="mt-2 text-xs text-muted">
+                PostgreSQL di Omon adalah source of truth. Google Spreadsheet dipakai
+                sebagai input dan projection/export layer, jadi status approval dan
+                status pengiriman spreadsheet dipantau terpisah.
               </p>
             </div>
 
@@ -405,7 +411,7 @@ const ImportReview = ({
 
           {(sheetSourcesError || worksheetsError || !hasTargetSheet) && (
             <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-              {sheetSourcesError || worksheetsError || "Pilih tab tujuan sebelum approve."}
+              {sheetSourcesError || worksheetsError || "Pilih tab tujuan untuk pengiriman salinan setelah approve."}
             </div>
           )}
         </section>
@@ -418,7 +424,7 @@ const ImportReview = ({
                   <div>
                     <p className="font-semibold text-main">
                       {isSyncWarning
-                        ? "Transaksi tersimpan, sinkronisasi Google Sheets perlu dicek"
+                        ? "Transaksi sudah tersimpan di Omon, pengiriman ke Google Sheets perlu dicek"
                         : "Approval import belum bisa dilanjutkan"}
                     </p>
                     <p className="mt-1">
@@ -465,8 +471,8 @@ const ImportReview = ({
               }`}>
                 <p className="font-semibold text-main">
                   {actionFeedback.tone === "success"
-                    ? "Transaksi berhasil disimpan."
-                    : "Sinkronisasi Google Spreadsheet perlu ditindaklanjuti."}
+                    ? "Approval berhasil dicatat di Omon."
+                    : "Pengiriman salinan ke Google Spreadsheet perlu ditindaklanjuti."}
                 </p>
                 <p className="mt-1">{actionFeedback.message}</p>
                 {actionFeedback.detail && (
@@ -477,7 +483,7 @@ const ImportReview = ({
 
             {actionLoading === "approve-selected" && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-                Sedang menyimpan ke database dan Google Sheets...
+                Sedang menyetujui transaksi di Omon, lalu mencoba mengirim salinannya ke Google Sheets...
               </div>
             )}
 

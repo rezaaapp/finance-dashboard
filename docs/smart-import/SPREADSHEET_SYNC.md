@@ -2,16 +2,19 @@
 
 ## Overview
 
-Sprint 6 completes the Smart Import approval pipeline for Blu imports:
+Smart Import approval has two related but separate outcomes:
 
-1. reviewer approves draft transactions
-2. approved drafts become final `transactions` rows
-3. transaction fingerprints are registered in `import_transaction_registry`
-4. approved rows are appended to Google Spreadsheet
-5. sync status is recorded on final transactions
-6. draft rows are removed after approval
+1. reviewer approves draft transactions into final PostgreSQL ledger rows
+2. the system attempts to deliver a spreadsheet copy for operational visibility/export
 
-This keeps import review separate from the final ledger while still making spreadsheet sync part of the approval flow.
+PostgreSQL is the system of record and source of truth for approved transactions.
+
+Google Sheets has two roles only:
+
+- input layer for import/parsing configuration and source connectivity
+- export/projection layer for spreadsheet copies after approval
+
+Approval success must never be interpreted as an atomic guarantee that PostgreSQL and Google Sheets both succeeded in the same commit.
 
 ## Approval Lifecycle
 
@@ -25,7 +28,35 @@ The approval pipeline is:
 6. update `sync_status`
 7. delete approved draft rows
 
-Spreadsheet sync is intentionally downstream from final persistence. If spreadsheet sync fails, the final transaction still exists in the database.
+The important semantic boundary is:
+
+- approval writes the final ledger state into PostgreSQL
+- spreadsheet delivery records whether a copy was successfully sent afterward
+
+If spreadsheet sync fails, the final transaction still exists in PostgreSQL and remains the authoritative record.
+
+## Source Of Truth Rules
+
+Use these rules consistently in code, docs, and UI copy:
+
+- Final approved financial data lives in PostgreSQL `transactions`
+- Duplicate prevention lives in `import_transaction_registry`
+- Google Sheets does not define approval truth
+- Google Sheets does not replace the final ledger
+- Retry sync resends spreadsheet copies only; it does not recreate approved transactions
+
+## State Model
+
+Approval state and spreadsheet delivery state are intentionally tracked separately.
+
+Typical interpretation:
+
+- Approved in PostgreSQL + `sync_status = success`: ledger saved and spreadsheet copy delivered
+- Approved in PostgreSQL + `sync_status = failed`: ledger saved, spreadsheet copy failed
+- Approved in PostgreSQL + `sync_status = needs_reconnect`: ledger saved, spreadsheet write blocked by OAuth scope or reconnect issue
+- Approved in PostgreSQL + `sync_status = pending`: ledger saved, spreadsheet delivery not yet confirmed
+
+This separation is what prevents the UI from implying a false all-or-nothing outcome.
 
 ## Fingerprint Registry
 
@@ -72,4 +103,11 @@ Spreadsheet sync failure does not roll back:
 - final transaction persistence
 - fingerprint registry insertion
 
-This is deliberate. The database remains the source of truth, and a future sprint can add explicit retry actions for rows with `sync_status = failed`.
+This is deliberate. PostgreSQL remains the source of truth even when spreadsheet delivery is behind.
+
+Retry sync should be described as:
+
+- retrying spreadsheet delivery for already-approved transactions
+- not reopening approval
+- not recreating final ledger rows
+- not promising atomic recovery across PostgreSQL and Google Sheets
