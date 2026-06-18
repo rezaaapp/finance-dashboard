@@ -75,10 +75,19 @@ if not FIXTURE_PATH.exists():
 
 
 class NamedBytesIO(io.BytesIO):
-    def __init__(self, content: bytes, name: str):
+    def __init__(
+        self,
+        content: bytes,
+        name: str,
+        *,
+        content_type: str | None = None,
+        size: int | None = None,
+    ):
         super().__init__(content)
         self.filename = name
         self.file = self
+        self.content_type = content_type
+        self.size = len(content) if size is None else size
 
 
 class FakeReturningCursor:
@@ -1032,7 +1041,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             first_result = service.receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
-                file=NamedBytesIO(b"first-half", "blu-first-half.pdf"),
+                file=NamedBytesIO(b"%PDF-first-half", "blu-first-half.pdf"),
                 statement_owner="Reza",
             )
             stored_fingerprints.update(
@@ -1041,7 +1050,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             second_result = service.receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
-                file=NamedBytesIO(b"full-month", "blu-full-month.pdf"),
+                file=NamedBytesIO(b"%PDF-full-month", "blu-full-month.pdf"),
                 statement_owner="Reza",
             )
 
@@ -1121,8 +1130,121 @@ class BluPdfParserTestCase(unittest.TestCase):
             )
 
         self.assertEqual("failed", result.status)
-        self.assertEqual("invalid_pdf", result.error_code)
-        self.assertEqual("PDF tidak valid atau gagal dibaca.", result.message)
+        self.assertEqual("invalid_pdf_signature", result.error_code)
+        self.assertEqual("File PDF tidak valid atau isinya bukan PDF.", result.message)
+
+    def test_import_service_rejects_non_pdf_extension_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"%PDF-fake",
+            "blu-invalid.png",
+            content_type="application/pdf",
+        )
+        fake_job = {
+            "id": "job-extension",
+            "provider": "unknown",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("invalid_file_extension", result.error_code)
+        self.assertEqual("File harus berformat PDF (.pdf).", result.message)
+        save_temp_mock.assert_not_called()
+
+    def test_import_service_rejects_non_pdf_content_type_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"%PDF-fake",
+            "blu-invalid.pdf",
+            content_type="image/png",
+        )
+        fake_job = {
+            "id": "job-content-type",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("invalid_content_type", result.error_code)
+        self.assertEqual("File yang diupload bukan PDF yang valid.", result.message)
+        save_temp_mock.assert_not_called()
+
+    def test_import_service_rejects_invalid_pdf_magic_bytes_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"not-a-pdf",
+            "blu-invalid.pdf",
+            content_type="application/pdf",
+        )
+        fake_job = {
+            "id": "job-signature",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("invalid_pdf_signature", result.error_code)
+        self.assertEqual("File PDF tidak valid atau isinya bukan PDF.", result.message)
+        save_temp_mock.assert_not_called()
+
+    def test_import_service_rejects_pdf_over_max_size_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"%PDF-small",
+            "blu-large.pdf",
+            content_type="application/pdf",
+            size=(10 * 1024 * 1024) + 1,
+        )
+        fake_job = {
+            "id": "job-too-large",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("file_too_large", result.error_code)
+        self.assertEqual("Ukuran PDF terlalu besar. Maksimal upload adalah 10 MB.", result.message)
+        save_temp_mock.assert_not_called()
 
     def test_import_service_fails_blu_pdf_when_text_exists_but_parser_returns_zero(self):
         fake_upload = NamedBytesIO(b"%PDF-no-transactions", "statement.pdf")

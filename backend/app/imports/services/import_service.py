@@ -71,6 +71,20 @@ from app.services.sheet_header_validator import canonicalize_header
 
 logger = logging.getLogger(__name__)
 
+MAX_IMPORT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+ALLOWED_IMPORT_EXTENSIONS = {".pdf"}
+ALLOWED_IMPORT_CONTENT_TYPES = {
+    "application/pdf",
+    "application/x-pdf",
+    "application/acrobat",
+    "applications/vnd.pdf",
+    "text/pdf",
+}
+GENERIC_IMPORT_CONTENT_TYPES = {
+    "application/octet-stream",
+    "binary/octet-stream",
+}
+
 
 class MissingGoogleSheetSourceError(Exception):
     error_code = "missing_google_sheet_source"
@@ -358,6 +372,15 @@ class ImportService:
             filename=filename,
             file_size=self._get_upload_file_size(file),
         )
+        upload_validation_error = self._validate_upload_file(
+            connection,
+            job_id=job_id,
+            provider=filename_provider,
+            file=file,
+        )
+        if upload_validation_error:
+            return upload_validation_error
+
         temp_file = save_temp_import_file(
             job_id=job_id,
             filename=filename,
@@ -656,7 +679,111 @@ class ImportService:
         if isinstance(size, int):
             return size
 
+        file_object = getattr(file, "file", None)
+
+        if file_object is None:
+            return None
+
+        try:
+            current_position = file_object.tell()
+            file_object.seek(0, 2)
+            size = file_object.tell()
+            file_object.seek(current_position)
+        except (AttributeError, OSError, ValueError):
+            return None
+
+        return size
+
+    def _validate_upload_file(
+        self,
+        connection,
+        *,
+        job_id: str,
+        provider: str,
+        file,
+    ) -> ImportUploadResult | None:
+        filename = str(getattr(file, "filename", "") or "").strip()
+        extension = Path(filename).suffix.lower()
+        content_type = str(getattr(file, "content_type", "") or "").strip().lower()
+        file_size = self._get_upload_file_size(file)
+
+        if extension not in ALLOWED_IMPORT_EXTENSIONS:
+            return self._fail_upload(
+                connection,
+                job_id=job_id,
+                provider=provider,
+                detection_source="filename" if provider != "unknown" else "unknown",
+                page_count=0,
+                extracted_text_length=0,
+                stage="upload_validation",
+                reason="Uploaded file extension is not supported",
+                error_code="invalid_file_extension",
+                user_error="File harus berformat PDF (.pdf).",
+            )
+
+        if file_size is not None and file_size > MAX_IMPORT_UPLOAD_SIZE_BYTES:
+            return self._fail_upload(
+                connection,
+                job_id=job_id,
+                provider=provider,
+                detection_source="filename" if provider != "unknown" else "unknown",
+                page_count=0,
+                extracted_text_length=0,
+                stage="upload_validation",
+                reason="Uploaded PDF exceeds the maximum allowed size",
+                error_code="file_too_large",
+                user_error="Ukuran PDF terlalu besar. Maksimal upload adalah 10 MB.",
+            )
+
+        if (
+            content_type
+            and content_type not in ALLOWED_IMPORT_CONTENT_TYPES
+            and content_type not in GENERIC_IMPORT_CONTENT_TYPES
+        ):
+            return self._fail_upload(
+                connection,
+                job_id=job_id,
+                provider=provider,
+                detection_source="filename" if provider != "unknown" else "unknown",
+                page_count=0,
+                extracted_text_length=0,
+                stage="upload_validation",
+                reason="Uploaded file content-type is not a supported PDF content-type",
+                error_code="invalid_content_type",
+                user_error="File yang diupload bukan PDF yang valid.",
+            )
+
+        if not self._has_pdf_magic_bytes(file):
+            return self._fail_upload(
+                connection,
+                job_id=job_id,
+                provider=provider,
+                detection_source="filename" if provider != "unknown" else "unknown",
+                page_count=0,
+                extracted_text_length=0,
+                stage="upload_validation",
+                reason="Uploaded file does not start with PDF magic bytes",
+                error_code="invalid_pdf_signature",
+                user_error="File PDF tidak valid atau isinya bukan PDF.",
+            )
+
         return None
+
+    def _has_pdf_magic_bytes(self, file) -> bool:
+        file_object = getattr(file, "file", None)
+
+        if file_object is None:
+            return False
+
+        try:
+            current_position = file_object.tell()
+            file_object.seek(0)
+            file_header = file_object.read(4)
+            file_object.seek(current_position)
+        except (AttributeError, OSError, ValueError):
+            return False
+
+        return file_header == b"%PDF"
 
     def _log_import_event(self, event_name: str, **fields):
         logger.info(
