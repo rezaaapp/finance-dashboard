@@ -4,6 +4,7 @@ from app.imports.repositories.final_transaction_repository import (
     list_workspace_transaction_source_funds,
     list_workspace_transaction_user_names,
 )
+from app.imports.utils.fingerprint import normalize_owner_name
 
 
 class SpreadsheetValueResolver:
@@ -97,7 +98,7 @@ class SpreadsheetValueResolver:
         for candidate in user_candidates:
             matched_name = self._find_case_insensitive_match(
                 existing_names,
-                str(candidate or "").strip(),
+                normalize_owner_name(candidate),
             )
             if matched_name:
                 return matched_name
@@ -106,7 +107,7 @@ class SpreadsheetValueResolver:
             return existing_names[0]
 
         for candidate in user_candidates:
-            normalized_candidate = str(candidate or "").strip()
+            normalized_candidate = normalize_owner_name(candidate)
             if normalized_candidate:
                 return normalized_candidate
 

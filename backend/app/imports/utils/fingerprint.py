@@ -40,8 +40,19 @@ def _normalize_spaces(value: str) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+OWNER_NAME_ALIASES = {
+    "reza putra pratama": "Reza",
+    "reza": "Reza",
+}
+
+
 def normalize_owner_name(owner_name: str) -> str:
-    return _normalize_spaces(owner_name)
+    normalized_owner = _normalize_spaces(owner_name)
+
+    if not normalized_owner:
+        return ""
+
+    return OWNER_NAME_ALIASES.get(normalized_owner.casefold(), normalized_owner)
 
 
 def normalize_source_fund_name(source_fund: str) -> str:

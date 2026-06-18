@@ -3,6 +3,8 @@ from datetime import datetime
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.imports.utils.fingerprint import normalize_owner_name
+
 
 def create_import_transactions(
     connection,
@@ -231,7 +233,16 @@ def list_workspace_transaction_user_names(connection, *, workspace_id: str) -> l
             (workspace_id,),
         )
 
-        return [row["user_name"] for row in cursor.fetchall()]
+        normalized_names: list[str] = []
+        seen_names: set[str] = set()
+
+        for row in cursor.fetchall():
+            normalized_name = normalize_owner_name(row["user_name"])
+            if normalized_name and normalized_name not in seen_names:
+                normalized_names.append(normalized_name)
+                seen_names.add(normalized_name)
+
+        return normalized_names
 
 
 def list_workspace_transaction_source_funds(connection, *, workspace_id: str) -> list[str]:

@@ -726,6 +726,25 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertTrue(payload["canonical_fingerprint"])
         self.assertTrue(payload["canonical_fingerprint_date"])
 
+    def test_normalize_transaction_row_maps_reza_putra_pratama_to_reza(self):
+        payload = normalize_transaction_row(
+            {
+                "Nama": "  reza putra pratama ",
+                "Waktu Transaksi": "18/06/2026 17:50",
+                "Nama Transaksi": "SUPERINDO BCY QR 000885002709750",
+                "Kategori": "Belanja",
+                "Harga": "159.750",
+                "Source Dana": "Blu",
+                "Keterangan": "Belanja mingguan",
+            },
+            raw_metadata={
+                "_sheet_name": "Start 1 Juni",
+                "_row_number": 3,
+            },
+        )
+
+        self.assertEqual("Reza", payload["user_name"])
+
     def test_fingerprint_is_deterministic_for_same_transaction(self):
         fingerprint_a = build_transaction_fingerprint(
             owner_name="Reza",
@@ -2063,6 +2082,26 @@ class BluPdfParserTestCase(unittest.TestCase):
                     workspace_id="workspace-1",
                     current_user={
                         "name": "Reza",
+                        "display_name": "Reza Putra Pratama",
+                        "email": "reza@example.com",
+                    },
+                ),
+            )
+
+    def test_spreadsheet_value_resolver_normalizes_reza_owner_alias(self):
+        resolver = SpreadsheetValueResolver()
+
+        with patch(
+            "app.imports.services.spreadsheet_value_resolver.list_workspace_transaction_user_names",
+            return_value=["Reza"],
+        ):
+            self.assertEqual(
+                "Reza",
+                resolver.resolve_user_name_for_append(
+                    connection=object(),
+                    workspace_id="workspace-1",
+                    current_user={
+                        "name": "Different Reza",
                         "display_name": "Reza Putra Pratama",
                         "email": "reza@example.com",
                     },
