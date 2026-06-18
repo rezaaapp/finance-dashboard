@@ -9,6 +9,7 @@ const comingSoonProviders = [
   "GoPay PDF",
   "OVO PDF",
 ];
+const ownerOptions = ["Reza", "Divya"];
 
 const ProviderBadge = ({ children, variant = "default" }) => (
   <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${
@@ -26,6 +27,7 @@ const ImportLanding = ({ onReviewReady }) => {
   const [uploadStatus, setUploadStatus] = useState("idle");
   const [error, setError] = useState("");
   const [emptyResult, setEmptyResult] = useState(null);
+  const [statementOwner, setStatementOwner] = useState("Reza");
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -44,7 +46,7 @@ const ImportLanding = ({ onReviewReady }) => {
     setEmptyResult(null);
 
     try {
-      const response = await uploadImportFile(selectedFile);
+      const response = await uploadImportFile(selectedFile, statementOwner);
 
       if (response.status === "failed") {
         setUploadStatus("upload_error");
@@ -63,6 +65,7 @@ const ImportLanding = ({ onReviewReady }) => {
         setUploadStatus("upload_no_new");
         setEmptyResult({
           filename: selectedFile.name,
+          statementOwner,
           transactionsFound: Number(response.transactions_found || 0),
           newTransactions: Number(response.new_transactions || 0),
           existingTransactions: Number(response.existing_transactions || 0),
@@ -76,6 +79,7 @@ const ImportLanding = ({ onReviewReady }) => {
       onReviewReady({
         ...response,
         filename: selectedFile.name,
+        statement_owner: response.statement_owner || statementOwner,
       });
     } catch (uploadError) {
       const responsePayload = uploadError?.response?.data || {};
@@ -121,6 +125,24 @@ const ImportLanding = ({ onReviewReady }) => {
 
             <ProviderBadge variant="success">Beta</ProviderBadge>
           </div>
+
+          <label className="mt-5 block">
+            <span className="text-sm font-semibold text-muted">
+              Pemilik Statement
+            </span>
+            <select
+              value={statementOwner}
+              onChange={(event) => setStatementOwner(event.target.value)}
+              disabled={uploading}
+              className="form-control mt-2 w-full rounded-xl px-4 py-3 text-sm"
+            >
+              {ownerOptions.map((ownerOption) => (
+                <option key={ownerOption} value={ownerOption}>
+                  {ownerOption}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <button
             type="button"
@@ -204,6 +226,10 @@ const ImportLanding = ({ onReviewReady }) => {
                 {emptyResult.message}
               </p>
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Pemilik</p>
+                  <p className="mt-1 font-semibold text-main">{emptyResult.statementOwner}</p>
+                </div>
                 <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Dibaca</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.transactionsFound}</p>

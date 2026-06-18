@@ -9,6 +9,11 @@ from app.services.transaction_classifier import (
     normalize_category,
 )
 from app.services.sheet_header_validator import canonicalize_header
+from app.imports.utils.fingerprint import (
+    build_canonical_fingerprint,
+    build_canonical_fingerprint_date,
+    normalize_owner_name,
+)
 
 
 REQUIRED_ROW_FIELDS = [
@@ -312,7 +317,9 @@ def normalize_transaction_row(row: dict, *, raw_metadata: dict | None = None) ->
     raw_amount = _get_value(row, "Harga")
     source_fund = _get_value(row, "Source Dana")
     note = _get_value(row, "Keterangan")
+    user_name = _get_value(row, "Nama")
     sheet_name = str((raw_metadata or {}).get("_sheet_name") or "").strip()
+    row_number = (raw_metadata or {}).get("_row_number")
 
     if _is_repeated_header(title, raw_category, raw_amount):
         raise RowNormalizationError("repeated_header", skipped=True, category=raw_category)
@@ -376,7 +383,30 @@ def normalize_transaction_row(row: dict, *, raw_metadata: dict | None = None) ->
         "direction": direction,
         "raw_payload": raw_payload,
         "currency": "IDR",
+        "user_name": normalize_owner_name(user_name) or None,
+        "source_origin": "google_sheet",
+        "source_reference": (
+            f"sheet:{sheet_name}|row:{row_number}"
+            if sheet_name and row_number
+            else (f"sheet:{sheet_name}" if sheet_name else None)
+        ),
     }
+    payload["canonical_fingerprint"] = build_canonical_fingerprint(
+        owner_name=payload["user_name"] or "",
+        datetime_value=transaction_time,
+        merchant_name=title,
+        amount=amount,
+        direction=direction,
+        source_fund=source_fund or "",
+    )
+    payload["canonical_fingerprint_date"] = build_canonical_fingerprint_date(
+        owner_name=payload["user_name"] or "",
+        datetime_value=transaction_time,
+        merchant_name=title,
+        amount=amount,
+        direction=direction,
+        source_fund=source_fund or "",
+    )
     payload["normalized_hash"] = _build_normalized_hash(payload)
 
     return payload

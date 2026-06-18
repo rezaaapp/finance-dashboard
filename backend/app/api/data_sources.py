@@ -662,6 +662,14 @@ def sync_google_sheet_source(
                         updated_rows += batch_result["updated"]
                         skipped_rows += batch_result["skipped"]
                         failed_rows += batch_result["failed"]
+                        if batch_result.get("skipped_duplicates", 0):
+                            _record_sync_diagnostic(
+                                skipped_reasons,
+                                skipped_samples,
+                                reason="skipped_duplicate",
+                                sheet_name=tab_name,
+                                count=batch_result["skipped_duplicates"],
+                            )
                         synced_transaction_ids.extend(
                             batch_result.get("inserted_transaction_ids", [])
                         )

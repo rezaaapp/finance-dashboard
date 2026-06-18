@@ -11,6 +11,7 @@ def create_import_job(
     workspace_id: str,
     provider: str,
     filename: str,
+    statement_owner: str,
     status: str = "uploaded",
 ):
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -20,12 +21,13 @@ def create_import_job(
                 workspace_id,
                 provider,
                 filename,
+                statement_owner,
                 status
             )
-            values (%s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s)
             returning *
             """,
-            (workspace_id, provider, filename, status),
+            (workspace_id, provider, filename, statement_owner, status),
         )
 
         return cursor.fetchone()
@@ -212,6 +214,10 @@ def create_import_draft_transactions(
             insert into import_draft_transactions (
                 import_job_id,
                 transaction_fingerprint,
+                canonical_fingerprint,
+                canonical_fingerprint_date,
+                statement_owner,
+                source_fund,
                 datetime,
                 merchant_original,
                 merchant_normalized,
@@ -228,6 +234,10 @@ def create_import_draft_transactions(
             values (
                 %(import_job_id)s,
                 %(transaction_fingerprint)s,
+                %(canonical_fingerprint)s,
+                %(canonical_fingerprint_date)s,
+                %(statement_owner)s,
+                %(source_fund)s,
                 %(datetime)s,
                 %(merchant_original)s,
                 %(merchant_normalized)s,
@@ -254,6 +264,7 @@ def get_import_review_summary(connection, *, workspace_id: str, job_id: str):
                 id,
                 provider,
                 filename,
+                coalesce(statement_owner, '') as statement_owner,
                 status,
                 transactions_found,
                 new_transactions,
@@ -279,6 +290,10 @@ def list_import_draft_transactions(connection, *, import_job_id: str, status: st
                 id,
                 import_job_id,
                 transaction_fingerprint,
+                canonical_fingerprint,
+                canonical_fingerprint_date,
+                statement_owner,
+                source_fund,
                 datetime,
                 merchant_original,
                 merchant_normalized,
@@ -319,6 +334,10 @@ def list_import_draft_transactions_by_ids(
                 id,
                 import_job_id,
                 transaction_fingerprint,
+                canonical_fingerprint,
+                canonical_fingerprint_date,
+                statement_owner,
+                source_fund,
                 datetime,
                 merchant_original,
                 merchant_normalized,
@@ -550,6 +569,7 @@ def list_import_history(connection, *, workspace_id: str):
                 j.id,
                 j.filename,
                 j.provider,
+                j.statement_owner,
                 j.status,
                 j.created_at,
                 j.completed_at,
@@ -613,6 +633,7 @@ def get_import_history_detail(connection, *, workspace_id: str, job_id: str):
                 j.id,
                 j.filename,
                 j.provider,
+                j.statement_owner,
                 j.status,
                 j.created_at,
                 j.completed_at,

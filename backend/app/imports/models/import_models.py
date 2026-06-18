@@ -21,6 +21,7 @@ class ImportJob(BaseModel):
     workspace_id: str
     provider: str = "unknown"
     filename: str
+    statement_owner: str = ""
     status: ImportJobStatus = ImportJobStatus.UPLOADED
     created_at: datetime
     completed_at: datetime | None = None
@@ -50,6 +51,10 @@ class ImportDraftTransaction(BaseModel):
     id: str | None = None
     import_job_id: str
     transaction_fingerprint: str
+    canonical_fingerprint: str = ""
+    canonical_fingerprint_date: str = ""
+    statement_owner: str = ""
+    source_fund: str = "Blu"
     datetime: str = ""
     merchant_original: str = ""
     merchant_normalized: str = ""
@@ -68,6 +73,7 @@ class ImportUploadResult(BaseModel):
     job_id: str
     provider: str = "unknown"
     detection_source: str = "unknown"
+    statement_owner: str = ""
     status: ImportJobStatus = ImportJobStatus.UPLOADED
     transactions_found: int = 0
     new_transactions: int = 0

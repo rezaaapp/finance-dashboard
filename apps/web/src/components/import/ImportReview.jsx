@@ -306,6 +306,14 @@ const ImportReview = ({
               <p className="mt-1 text-sm leading-6 text-muted">
                 {summary.transactions_found || 0} transaksi dibaca
               </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted">
+                <span className="rounded-full bg-[var(--color-panel-hover)] px-3 py-1">
+                  Pemilik: {summary.statement_owner || "-"}
+                </span>
+                <span className="rounded-full bg-[var(--color-panel-hover)] px-3 py-1">
+                  Source Dana: {summary.source_fund || "Blu"}
+                </span>
+              </div>
             </div>
 
             <button
@@ -333,7 +341,7 @@ const ImportReview = ({
             <ReviewMetricCard
               icon={CircleAlert}
               label="Existing Transactions"
-              value={`⚪ ${summary.existing_transactions || 0} Sudah Pernah Diimport`}
+              value={`⚪ ${summary.existing_transactions || 0} Sudah Tercatat`}
               tone="muted"
             />
           </div>

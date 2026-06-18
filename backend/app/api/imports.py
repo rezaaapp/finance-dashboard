@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,7 @@ class ImportRetrySyncRequest(BaseModel):
 @router.post("/upload")
 def upload_import_file(
     file: UploadFile = File(...),
+    statement_owner: str = Form(...),
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
@@ -51,6 +52,7 @@ def upload_import_file(
                 connection,
                 workspace_id=str(workspace["id"]),
                 file=file,
+                statement_owner=statement_owner,
             )
 
     return result.model_dump()

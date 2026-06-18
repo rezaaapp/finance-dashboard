@@ -36,6 +36,10 @@ def create_import_transactions(
                     user_name,
                     import_job_id,
                     import_transaction_fingerprint,
+                    source_origin,
+                    source_reference,
+                    canonical_fingerprint,
+                    canonical_fingerprint_date,
                     sync_status,
                     sync_error_message
                 )
@@ -57,6 +61,10 @@ def create_import_transactions(
                     %(user_name)s,
                     %(import_job_id)s,
                     %(import_transaction_fingerprint)s,
+                    %(source_origin)s,
+                    %(source_reference)s,
+                    %(canonical_fingerprint)s,
+                    %(canonical_fingerprint_date)s,
                     %(sync_status)s,
                     %(sync_error_message)s
                 )
@@ -274,6 +282,7 @@ def serialize_import_transaction_row(
         "note": str(transaction.get("notes", "")) or None,
         "direction": str(transaction.get("direction", "")) or "expense",
         "raw_payload": {
+            "Nama": user_name,
             "merchant_original": str(transaction.get("merchant_original", "")),
             "merchant_normalized": str(transaction.get("merchant_normalized", "")),
             "merchant_display": str(
@@ -285,6 +294,7 @@ def serialize_import_transaction_row(
             "raw_text": str(transaction.get("raw_text", "")),
             "category": str(transaction.get("category", "")),
             "notes": str(transaction.get("notes", "")),
+            "source_fund": source_fund,
             "_import_provider": "blu",
             "_import_source": "smart_import",
         },
@@ -292,6 +302,10 @@ def serialize_import_transaction_row(
         "user_name": user_name,
         "import_job_id": import_job_id,
         "import_transaction_fingerprint": str(transaction.get("transaction_fingerprint", "")),
+        "source_origin": "blu_pdf",
+        "source_reference": f"import_job:{import_job_id}|fingerprint:{transaction.get('transaction_fingerprint', '')}",
+        "canonical_fingerprint": str(transaction.get("canonical_fingerprint", "")) or None,
+        "canonical_fingerprint_date": str(transaction.get("canonical_fingerprint_date", "")) or None,
         "sync_status": "pending",
         "sync_error_message": None,
     }

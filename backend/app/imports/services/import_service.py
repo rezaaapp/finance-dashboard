@@ -47,7 +47,12 @@ from app.imports.services.cleanup_service import ImportCleanupService
 from app.imports.services.incremental_import_engine import IncrementalImportEngine
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
-from app.imports.utils.fingerprint import build_transaction_fingerprint
+from app.imports.utils.fingerprint import (
+    build_canonical_fingerprint,
+    build_canonical_fingerprint_date,
+    build_transaction_fingerprint,
+    normalize_owner_name,
+)
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.utils.temp_storage import delete_temp_import_file, save_temp_import_file
@@ -55,6 +60,9 @@ from app.repositories.google_oauth_repository import get_active_google_oauth_con
 from app.repositories.google_sheet_source_repository import (
     ensure_import_google_sheet_source,
     get_google_sheet_source,
+)
+from app.repositories.transaction_repository import (
+    get_existing_transactions_by_canonical_fingerprint,
 )
 from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import GoogleSheetsClientError, read_sheet_values
@@ -161,17 +169,64 @@ class ImportService:
                 **merchant_fields,
             }
             enriched_transaction.pop("merchant", None)
-            enriched_transaction["transaction_fingerprint"] = build_transaction_fingerprint(
-                source_dana=parsed_result.provider.title(),
-                datetime_value=str(enriched_transaction.get("datetime", "")),
-                merchant_normalized=merchant_fields["merchant_normalized"],
-                amount=enriched_transaction.get("amount", 0),
-            )
             enriched_transactions.append(enriched_transaction)
 
         return ParsedImportResult(
             provider=parsed_result.provider,
             transactions=enriched_transactions,
+        )
+
+    def apply_statement_owner(
+        self,
+        parsed_result: ParsedImportResult,
+        *,
+        statement_owner: str,
+        source_fund: str = "Blu",
+    ) -> ParsedImportResult:
+        normalized_statement_owner = normalize_owner_name(statement_owner)
+        owner_transactions = []
+
+        for transaction in parsed_result.transactions:
+            merchant_name = (
+                transaction.get("merchant_display")
+                or transaction.get("merchant_normalized")
+                or transaction.get("merchant_original")
+                or ""
+            )
+            owner_transaction = {
+                **transaction,
+                "statement_owner": normalized_statement_owner,
+                "source_fund": source_fund,
+            }
+            owner_transaction["transaction_fingerprint"] = build_transaction_fingerprint(
+                owner_name=normalized_statement_owner,
+                source_dana=source_fund,
+                datetime_value=str(owner_transaction.get("datetime", "")),
+                merchant_normalized=str(owner_transaction.get("merchant_normalized", "")),
+                amount=owner_transaction.get("amount", 0),
+                direction=str(owner_transaction.get("direction", "")),
+            )
+            owner_transaction["canonical_fingerprint"] = build_canonical_fingerprint(
+                owner_name=normalized_statement_owner,
+                datetime_value=owner_transaction.get("datetime", ""),
+                merchant_name=str(merchant_name),
+                amount=owner_transaction.get("amount", 0),
+                direction=str(owner_transaction.get("direction", "")),
+                source_fund=source_fund,
+            )
+            owner_transaction["canonical_fingerprint_date"] = build_canonical_fingerprint_date(
+                owner_name=normalized_statement_owner,
+                datetime_value=owner_transaction.get("datetime", ""),
+                merchant_name=str(merchant_name),
+                amount=owner_transaction.get("amount", 0),
+                direction=str(owner_transaction.get("direction", "")),
+                source_fund=source_fund,
+            )
+            owner_transactions.append(owner_transaction)
+
+        return ParsedImportResult(
+            provider=parsed_result.provider,
+            transactions=owner_transactions,
         )
 
     def mark_existing_transactions(
@@ -186,16 +241,53 @@ class ImportService:
             for transaction in parsed_result.transactions
             if transaction.get("transaction_fingerprint")
         ]
+        canonical_fingerprints = [
+            str(transaction.get("canonical_fingerprint", ""))
+            for transaction in parsed_result.transactions
+            if transaction.get("canonical_fingerprint")
+        ]
+        canonical_fingerprint_dates = [
+            str(transaction.get("canonical_fingerprint_date", ""))
+            for transaction in parsed_result.transactions
+            if transaction.get("canonical_fingerprint_date")
+        ]
         fingerprint_statuses = get_registered_transaction_fingerprint_statuses(
             connection,
             transaction_fingerprints=transaction_fingerprints,
         )
         existing_fingerprints = set(fingerprint_statuses.keys())
+        canonical_matches = get_existing_transactions_by_canonical_fingerprint(
+            connection,
+            workspace_id=workspace_id,
+            canonical_fingerprints=canonical_fingerprints,
+            canonical_fingerprint_dates=canonical_fingerprint_dates,
+        )
 
         return ParsedImportResult(
             provider=parsed_result.provider,
             transactions=self.incremental_engine.apply(
-                parsed_result.transactions,
+                [
+                    {
+                        **transaction,
+                        "is_existing": bool(
+                            str(transaction.get("transaction_fingerprint", "")) in existing_fingerprints
+                            or str(transaction.get("canonical_fingerprint", "")) in canonical_matches
+                            or str(transaction.get("canonical_fingerprint_date", "")) in canonical_matches
+                        ),
+                        "registry_status": (
+                            fingerprint_statuses.get(str(transaction.get("transaction_fingerprint", "")))
+                            or (
+                                "already_recorded"
+                                if (
+                                    str(transaction.get("canonical_fingerprint", "")) in canonical_matches
+                                    or str(transaction.get("canonical_fingerprint_date", "")) in canonical_matches
+                                )
+                                else None
+                            )
+                        ),
+                    }
+                    for transaction in parsed_result.transactions
+                ],
                 existing_fingerprints=existing_fingerprints,
                 fingerprint_statuses=fingerprint_statuses,
             ),
@@ -210,6 +302,10 @@ class ImportService:
             ImportDraftTransaction(
                 import_job_id=import_job_id,
                 transaction_fingerprint=str(transaction.get("transaction_fingerprint", "")),
+                canonical_fingerprint=str(transaction.get("canonical_fingerprint", "")),
+                canonical_fingerprint_date=str(transaction.get("canonical_fingerprint_date", "")),
+                statement_owner=str(transaction.get("statement_owner", "")),
+                source_fund=str(transaction.get("source_fund", "Blu") or "Blu"),
                 datetime=str(transaction.get("datetime", "")),
                 merchant_original=str(transaction.get("merchant_original", "")),
                 merchant_normalized=str(transaction.get("merchant_normalized", "")),
@@ -230,7 +326,20 @@ class ImportService:
             draft_transactions=draft_transactions,
         )
 
-    def receive_upload(self, connection, *, workspace_id: str, file) -> ImportUploadResult:
+    def receive_upload(self, connection, *, workspace_id: str, file, statement_owner: str) -> ImportUploadResult:
+        normalized_statement_owner = normalize_owner_name(statement_owner)
+
+        if not normalized_statement_owner:
+            return ImportUploadResult(
+                job_id="",
+                provider="unknown",
+                statement_owner="",
+                status=ImportJobStatus.FAILED,
+                error_code="invalid_statement_owner",
+                message="Pemilik statement wajib dipilih sebelum upload.",
+                error="Pemilik statement wajib dipilih sebelum upload.",
+            )
+
         filename = file.filename or "uploaded-file"
         filename_provider = self.detect_provider(filename)
         job = create_import_job(
@@ -238,6 +347,7 @@ class ImportService:
             workspace_id=workspace_id,
             provider=filename_provider,
             filename=filename,
+            statement_owner=normalized_statement_owner,
             status=ImportJobStatus.UPLOADED.value,
         )
         job_id = str(job["id"])
@@ -373,6 +483,11 @@ class ImportService:
             parsed_result = self.enrich_transactions(
                 self.parse_extracted(extraction, provider=provider)
             )
+            parsed_result = self.apply_statement_owner(
+                parsed_result,
+                statement_owner=normalized_statement_owner,
+                source_fund="Blu",
+            )
 
             self._log_import_event(
                 "smart_import.parser.completed",
@@ -458,6 +573,7 @@ class ImportService:
             job_id=job_id,
             provider=parsed_result.provider or job["provider"],
             detection_source=detection_source,
+            statement_owner=normalized_statement_owner,
             status=ImportJobStatus.REVIEW,
             transactions_found=len(parsed_result.transactions),
             new_transactions=len(new_transactions),
@@ -566,6 +682,10 @@ class ImportService:
         serialized_transactions = [
             {
                 "id": str(transaction["id"]),
+                "statement_owner": transaction.get("statement_owner", "") or summary.get("statement_owner", ""),
+                "source_fund": transaction.get("source_fund", "") or "Blu",
+                "canonical_fingerprint": transaction.get("canonical_fingerprint", ""),
+                "canonical_fingerprint_date": transaction.get("canonical_fingerprint_date", ""),
                 "datetime": transaction["datetime"],
                 "merchant_original": transaction["merchant_original"],
                 "merchant_normalized": transaction["merchant_normalized"],
@@ -589,6 +709,8 @@ class ImportService:
                 "job_id": str(summary["id"]),
                 "filename": summary["filename"],
                 "provider": summary["provider"],
+                "statement_owner": summary.get("statement_owner", ""),
+                "source_fund": "Blu",
                 "transactions_found": summary["transactions_found"],
                 "new_transactions": summary["new_transactions"],
                 "existing_transactions": summary["existing_transactions"],
@@ -659,7 +781,7 @@ class ImportService:
             workspace_id=workspace_id,
             provider="Blu",
         )
-        resolved_user_name = self._resolve_import_user_name(
+        resolved_user_name = normalize_owner_name(review_summary.get("statement_owner", "")) or self._resolve_import_user_name(
             connection,
             current_user=current_user,
             workspace_id=workspace_id,
@@ -1092,6 +1214,10 @@ class ImportService:
             merged_drafts.append({
                 "id": draft_id,
                 "transaction_fingerprint": draft["transaction_fingerprint"],
+                "canonical_fingerprint": draft.get("canonical_fingerprint", ""),
+                "canonical_fingerprint_date": draft.get("canonical_fingerprint_date", ""),
+                "statement_owner": draft.get("statement_owner", ""),
+                "source_fund": draft.get("source_fund", "") or "Blu",
                 "datetime": draft["datetime"],
                 "merchant_original": draft["merchant_original"],
                 "merchant_normalized": draft["merchant_normalized"],
@@ -1247,6 +1373,7 @@ class ImportService:
             "job_id": str(job["id"]),
             "filename": job["filename"],
             "provider": job["provider"],
+            "statement_owner": job.get("statement_owner") or "",
             "status": job["status"],
             "import_time": job["created_at"],
             "transactions_found": int(job.get("transactions_found", 0) or 0),

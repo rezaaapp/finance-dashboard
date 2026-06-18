@@ -13,8 +13,14 @@ class IncrementalImportEngine:
             transaction_fingerprint = str(transaction.get("transaction_fingerprint", ""))
             incremental_transactions.append({
                 **transaction,
-                "is_existing": transaction_fingerprint in existing_fingerprints,
-                "registry_status": fingerprint_statuses.get(transaction_fingerprint),
+                "is_existing": bool(
+                    transaction.get("is_existing", False)
+                    or transaction_fingerprint in existing_fingerprints
+                ),
+                "registry_status": (
+                    transaction.get("registry_status")
+                    or fingerprint_statuses.get(transaction_fingerprint)
+                ),
             })
 
         return incremental_transactions

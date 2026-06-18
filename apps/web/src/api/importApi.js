@@ -12,9 +12,10 @@ const getAuthHeaders = () => {
   };
 };
 
-export const uploadImportFile = async (file) => {
+export const uploadImportFile = async (file, statementOwner) => {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("statement_owner", statementOwner);
 
   const response = await axios.post(
     `${IMPORT_API_URL}/upload`,

@@ -139,7 +139,7 @@ def _filters(year=None, month=None, direction=None, name=None):
             params.append(direction)
 
     if name:
-        clauses.append("coalesce(raw_payload->>'Nama', '') = %s")
+        clauses.append("coalesce(nullif(user_name, ''), raw_payload->>'Nama', '') = %s")
         params.append(name)
 
     return " and ".join(clauses), params
@@ -343,7 +343,7 @@ def _personal_period_totals(
             ), 0) as spending
         from (
             select
-                coalesce(nullif(t.raw_payload->>'Nama', ''), 'Unknown') as name,
+                coalesce(nullif(t.user_name, ''), nullif(t.raw_payload->>'Nama', ''), 'Unknown') as name,
                 t.amount,
                 {financial_type_expr} as financial_type
             from transactions t
@@ -788,7 +788,7 @@ def get_top_spending(connection, *, workspace_id: str, year=None, month=None, li
             transaction_date,
             title,
             {_category_label_expr()} as category,
-            coalesce(raw_payload->>'Nama', '') as name,
+            coalesce(nullif(user_name, ''), raw_payload->>'Nama', '') as name,
             coalesce(source_fund, '') as source_fund,
             coalesce(note, '') as note,
             amount
@@ -826,7 +826,7 @@ def get_transactions(connection, *, workspace_id: str, year=None, month=None, na
             transaction_date,
             title,
             {_category_label_expr()} as category,
-            coalesce(raw_payload->>'Nama', '') as name,
+            coalesce(nullif(user_name, ''), raw_payload->>'Nama', '') as name,
             amount
         from transactions
         where {where_clause}
@@ -1063,7 +1063,7 @@ def _get_personal_monthly_comparison(connection, *, workspace_id: str, year=None
         f"""
         select
             {_month_expr()} as month,
-            coalesce(nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
+            coalesce(nullif(user_name, ''), nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
             coalesce(sum(amount), 0) as total
         from transactions
         where {where_clause}
@@ -1090,7 +1090,7 @@ def _get_personal_top_categories(connection, *, workspace_id: str, year=None, mo
         connection,
         f"""
         select
-            coalesce(nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
+            coalesce(nullif(user_name, ''), nullif(raw_payload->>'Nama', ''), 'Unknown') as name,
             {_category_label_expr()} as category,
             coalesce(sum(amount), 0) as total
         from transactions

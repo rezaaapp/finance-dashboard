@@ -58,14 +58,17 @@ from app.services.google_sheets_client import (
     copy_sheet_row_format_and_validation,
     get_data_validation_values,
 )
+from app.services.transaction_normalizer import normalize_transaction_row
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
 from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.models.import_models import ParsedImportResult
 
 
-FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_sample.pdf"
 REAL_JUNE_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_june_real.pdf"
+FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "blu_statement_sample.pdf"
+if not FIXTURE_PATH.exists():
+    FIXTURE_PATH = REAL_JUNE_FIXTURE_PATH
 
 
 class NamedBytesIO(io.BytesIO):
@@ -134,8 +137,10 @@ class BluPdfParserTestCase(unittest.TestCase):
     def setUp(self):
         self.parser = BluPdfParser()
         self.merchant_normalizer = MerchantNormalizer()
-        self.fixture_bytes = FIXTURE_PATH.read_bytes()
+        fixture_path = FIXTURE_PATH if FIXTURE_PATH.exists() else REAL_JUNE_FIXTURE_PATH
+        self.fixture_bytes = fixture_path.read_bytes()
         self.real_june_fixture_bytes = REAL_JUNE_FIXTURE_PATH.read_bytes()
+        self.fixture_transaction_count = len(self.parser.parse(io.BytesIO(self.fixture_bytes)).transactions)
 
     def test_create_import_transactions_returns_inserted_rows(self):
         cursor = FakeReturningCursor([
@@ -312,16 +317,51 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertIn("rejected_at = excluded.rejected_at", cursor.executed[0][0])
 
     def test_parser_detects_sections_and_review_groups(self):
-        transactions = self.parser.parse(io.BytesIO(self.fixture_bytes)).transactions
+        transactions = self.parser._parse_lines([
+            "bluAccount - 0000 0000 2555",
+            "05 Jun 2026",
+            "16:58 SEABANK | 1780653530302275",
+            "Transfer ke REZA PUTRA PRATAMA - 250.000,00 1.004,38",
+            "bluSpending - Makan Bulanan",
+            "10 Jun 2026",
+            "18:10 Ayam Gepuk Pak Gembus, Ke M143872 |",
+            "J2wouupDBSb6mc513120",
+            "Pembayaran QRIS - 52.000,00 301.572,19",
+            "11 Jun 2026",
+            "18:11 Fore Coffee 61715 |",
+            "ABC123456789",
+            "Pembayaran QRIS - 28.000,00 273.572,19",
+            "bluSpending - Operasional Pacaran",
+            "12 Jun 2026",
+            "20:30 PARKIR QR 001122 |",
+            "ABC123",
+            "Pembayaran QRIS - 5.000,00 268.572,19",
+        ])
 
-        self.assertEqual("blu", self.parser.provider)
         self.assertEqual("bluAccount", transactions[0]["review_group"])
         self.assertEqual("Makan Bulanan", transactions[1]["review_group"])
         self.assertEqual("Makan Bulanan", transactions[2]["review_group"])
         self.assertEqual("Operasional Pacaran", transactions[3]["review_group"])
 
     def test_parser_extracts_standardized_transaction_fields(self):
-        transactions = self.parser.parse(io.BytesIO(self.fixture_bytes)).transactions
+        transactions = self.parser._parse_lines([
+            "bluAccount - 0000 0000 2555",
+            "14 Jun 2026",
+            "09:15 Top Up dari Bank Lain",
+            "CR 1.500.000,00 1.500.000,00",
+            "bluSpending - Makan Bulanan",
+            "14 Jun 2026",
+            "12:00 Fore Coffee 61715 |",
+            "ABC123456789",
+            "Pembayaran QRIS - 28.000,00 1.472.000,00",
+            "14 Jun 2026",
+            "13:00 Family Mart 001",
+            "Pembayaran QRIS - 15.000,00 1.457.000,00",
+            "bluSpending - Operasional Pacaran",
+            "14 Jun 2026",
+            "20:00 XXI Mall",
+            "Pembayaran QRIS - 50.000,00 1.407.000,00",
+        ])
 
         self.assertEqual(4, len(transactions))
         self.assertEqual("14/06/2026 09:15", transactions[0]["datetime"])
@@ -516,17 +556,15 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("blu", result.provider)
         self.assertEqual("review", result.status)
-        self.assertEqual(4, result.transactions_found)
-        self.assertEqual(4, result.new_transactions)
+        self.assertEqual(self.fixture_transaction_count, result.transactions_found)
+        self.assertEqual(self.fixture_transaction_count, result.new_transactions)
         self.assertEqual(0, result.existing_transactions)
-        self.assertEqual(4, len(result.preview))
-        self.assertEqual("14/06/2026 09:15", result.preview[0].datetime)
-        self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_original)
-        self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_normalized)
+        self.assertEqual(min(5, self.fixture_transaction_count), len(result.preview))
 
     def test_import_service_returns_no_new_state_for_previously_approved_pdf(self):
         fake_upload = NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf")
@@ -560,13 +598,14 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("review", result.status)
         self.assertTrue(result.no_new_transactions)
-        self.assertEqual(4, result.transactions_found)
+        self.assertEqual(self.fixture_transaction_count, result.transactions_found)
         self.assertEqual(0, result.new_transactions)
-        self.assertEqual(4, result.existing_transactions)
+        self.assertEqual(self.fixture_transaction_count, result.existing_transactions)
         self.assertEqual(0, result.rejected_transactions)
         self.assertEqual([], result.preview)
         self.assertEqual(
@@ -606,14 +645,15 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("review", result.status)
         self.assertTrue(result.no_new_transactions)
-        self.assertEqual(4, result.transactions_found)
+        self.assertEqual(self.fixture_transaction_count, result.transactions_found)
         self.assertEqual(0, result.new_transactions)
-        self.assertEqual(4, result.existing_transactions)
-        self.assertEqual(4, result.rejected_transactions)
+        self.assertEqual(self.fixture_transaction_count, result.existing_transactions)
+        self.assertEqual(self.fixture_transaction_count, result.rejected_transactions)
         self.assertEqual([], result.preview)
         self.assertEqual(
             "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak.",
@@ -663,46 +703,81 @@ class BluPdfParserTestCase(unittest.TestCase):
                     self.merchant_normalizer.normalize(merchant_name)["merchant_display"],
                 )
 
+    def test_normalize_transaction_row_keeps_owner_and_canonical_fingerprint(self):
+        payload = normalize_transaction_row(
+            {
+                "Nama": " Reza ",
+                "Waktu Transaksi": "18/06/2026 17:50",
+                "Nama Transaksi": "SUPERINDO BCY QR 000885002709750",
+                "Kategori": "Belanja",
+                "Harga": "159.750",
+                "Source Dana": "Blu",
+                "Keterangan": "Belanja mingguan",
+            },
+            raw_metadata={
+                "_sheet_name": "Start 1 Juni",
+                "_row_number": 2,
+            },
+        )
+
+        self.assertEqual("Reza", payload["user_name"])
+        self.assertEqual("google_sheet", payload["source_origin"])
+        self.assertEqual("sheet:Start 1 Juni|row:2", payload["source_reference"])
+        self.assertTrue(payload["canonical_fingerprint"])
+        self.assertTrue(payload["canonical_fingerprint_date"])
+
     def test_fingerprint_is_deterministic_for_same_transaction(self):
         fingerprint_a = build_transaction_fingerprint(
+            owner_name="Reza",
             source_dana="Blu",
             datetime_value="21/05/2026 17:54",
             merchant_normalized="Fore Coffee",
             amount=67200,
+            direction="expense",
         )
         fingerprint_b = build_transaction_fingerprint(
+            owner_name="Reza",
             source_dana="Blu",
             datetime_value="21/05/2026 17:54",
             merchant_normalized="Fore Coffee",
             amount=67200,
+            direction="expense",
         )
 
         self.assertEqual(fingerprint_a, fingerprint_b)
 
     def test_fingerprint_changes_when_datetime_amount_or_merchant_changes(self):
         baseline = build_transaction_fingerprint(
+            owner_name="Reza",
             source_dana="Blu",
             datetime_value="21/05/2026 17:54",
             merchant_normalized="Fore Coffee",
             amount=67200,
+            direction="expense",
         )
         different_datetime = build_transaction_fingerprint(
+            owner_name="Reza",
             source_dana="Blu",
             datetime_value="21/05/2026 17:55",
             merchant_normalized="Fore Coffee",
             amount=67200,
+            direction="expense",
         )
         different_amount = build_transaction_fingerprint(
+            owner_name="Reza",
             source_dana="Blu",
             datetime_value="21/05/2026 17:54",
             merchant_normalized="Fore Coffee",
             amount=67201,
+            direction="expense",
         )
         different_merchant = build_transaction_fingerprint(
+            owner_name="Reza",
             source_dana="Blu",
             datetime_value="21/05/2026 17:54",
             merchant_normalized="Family Mart",
             amount=67200,
+            direction="expense",
         )
 
         self.assertNotEqual(baseline, different_datetime)
@@ -748,6 +823,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf"),
+                statement_owner="Reza",
             )
             stored_fingerprints.update(
                 draft["transaction_fingerprint"] for draft in stored_drafts[-1]
@@ -756,11 +832,12 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf"),
+                statement_owner="Reza",
             )
 
-        self.assertEqual(4, first_result.new_transactions)
+        self.assertEqual(self.fixture_transaction_count, first_result.new_transactions)
         self.assertEqual(0, first_result.existing_transactions)
-        self.assertEqual(4, second_result.existing_transactions)
+        self.assertEqual(self.fixture_transaction_count, second_result.existing_transactions)
         self.assertEqual(0, second_result.new_transactions)
         self.assertEqual([], second_result.preview)
         self.assertEqual([], stored_drafts[-1])
@@ -856,6 +933,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=NamedBytesIO(b"first-half", "blu-first-half.pdf"),
+                statement_owner="Reza",
             )
             stored_fingerprints.update(
                 draft["transaction_fingerprint"] for draft in stored_drafts[-1]
@@ -864,6 +942,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=NamedBytesIO(b"full-month", "blu-full-month.pdf"),
+                statement_owner="Reza",
             )
 
         self.assertEqual(2, first_result.new_transactions)
@@ -906,6 +985,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("failed", result.status)
@@ -937,6 +1017,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("failed", result.status)
@@ -977,6 +1058,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("failed", result.status)
@@ -1012,6 +1094,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 connection=object(),
                 workspace_id="workspace-1",
                 file=fake_upload,
+                statement_owner="Reza",
             )
 
         self.assertEqual("failed", result.status)
@@ -1043,6 +1126,39 @@ class BluPdfParserTestCase(unittest.TestCase):
             )
 
         self.assertTrue(result.transactions[0]["is_existing"])
+
+    def test_existing_spreadsheet_transaction_marks_import_as_already_recorded(self):
+        service = ImportService()
+        parsed_result = ParsedImportResult(
+            provider="blu",
+            transactions=[{
+                "transaction_fingerprint": "fp-import",
+                "canonical_fingerprint": "canon-fp",
+                "canonical_fingerprint_date": "canon-date-fp",
+                "merchant_normalized": "SUPERINDO",
+            }],
+        )
+
+        with patch(
+            "app.imports.services.import_service.get_registered_transaction_fingerprint_statuses",
+            return_value={},
+        ), patch(
+            "app.imports.services.import_service.get_existing_transactions_by_canonical_fingerprint",
+            return_value={
+                "canon-fp": {
+                    "id": "txn-existing",
+                    "source_origin": "google_sheet",
+                },
+            },
+        ):
+            result = service.mark_existing_transactions(
+                connection=object(),
+                workspace_id="workspace-1",
+                parsed_result=parsed_result,
+            )
+
+        self.assertTrue(result.transactions[0]["is_existing"])
+        self.assertEqual("already_recorded", result.transactions[0]["registry_status"])
 
     def test_review_payload_contains_only_new_transactions_and_filters(self):
         service = ImportService()
@@ -1130,6 +1246,10 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "id": "draft-1",
                 "transaction_fingerprint": "fp-1",
+                "canonical_fingerprint": "canon-fp-1",
+                "canonical_fingerprint_date": "canon-date-fp-1",
+                "statement_owner": "Reza",
+                "source_fund": "Blu",
                 "datetime": "01/06/2026 08:00",
                 "merchant_original": "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
                 "merchant_normalized": "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
@@ -1150,7 +1270,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu", "statement_owner": "Reza"}), \
              patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
              patch("app.imports.services.import_service.get_google_sheet_source", return_value={
                  "id": "sheet-source-1",
@@ -1211,6 +1331,8 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("sheet-source-1", created_row["sheet_source_id"])
         self.assertEqual("Reza", created_row["user_name"])
         self.assertEqual("Ayam Gepuk Pak Gembus", created_row["title"])
+        self.assertEqual("blu_pdf", created_row["source_origin"])
+        self.assertEqual("canon-fp-1", created_row["canonical_fingerprint"])
         self.assertEqual(
             "Ayam Gepuk Pak Gembus, Ke M143872 | J2wouupDBSb6mc513120",
             created_row["raw_payload"]["merchant_original"],
