@@ -19,6 +19,7 @@ from app.repositories.workspace_invitation_repository import (
     is_active_workspace_member_by_email,
     normalize_invitation_email,
 )
+from app.security.workspace_permissions import require_workspace_manager
 from app.repositories import analytics_repository as analytics
 from app.services.financial_insight_service import generate_rule_based_insights
 from scripts.data_processing import load_and_process_data_from_spreadsheet
@@ -229,18 +230,6 @@ def resolve_workspace_for_request(
 
             return workspace
 
-
-def ensure_can_invite_workspace_member(current_user, workspace):
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    if current_user.get("role") == "super_admin" or workspace["role"] == "owner":
-        return
-
-    raise HTTPException(
-        status_code=403,
-        detail="Only workspace owners can invite members.",
-    )
 
 @router.get("/summary")
 def summary(
@@ -752,7 +741,11 @@ def invite_workspace_member(
         current_user,
         active_workspace_id,
     )
-    ensure_can_invite_workspace_member(current_user, workspace)
+    require_workspace_manager(
+        current_user=current_user,
+        workspace=workspace,
+        detail="Only workspace owners can invite members.",
+    )
 
     with get_db_connection() as connection:
         with connection.transaction():
@@ -801,19 +794,19 @@ def update_workspace_configuration(
     current_user=Depends(require_current_user),
     active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
 ):
-    if current_user.get("role") == "member":
-        raise HTTPException(
-            status_code=403,
-            detail="Members can view Google Sheets shortcuts but cannot change workspace configuration.",
-        )
-
     workspace = resolve_workspace_for_request(
         current_user,
         active_workspace_id,
     )
 
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+    require_workspace_manager(
+        current_user=current_user,
+        workspace=workspace,
+        detail=(
+            "Members can view Google Sheets shortcuts but cannot change "
+            "workspace configuration."
+        ),
+    )
 
     google_sheet_id = config.get("google_sheet_id")
     google_sheet_sources = config.get("google_sheet_sources")

@@ -17,6 +17,7 @@ from app.repositories.workspace_invitation_repository import (
     normalize_invitation_email,
 )
 from app.repositories.workspaces import get_workspace_for_user
+from app.security.workspace_permissions import require_workspace_manager
 
 
 router = APIRouter(tags=["Workspace Invitations"])
@@ -94,13 +95,11 @@ def _get_workspace_with_invite_permission(connection, *, current_user, workspace
     if not workspace:
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
-    if workspace["role"] not in {"owner", "admin"}:
-        raise HTTPException(
-            status_code=403,
-            detail="Only workspace owners can manage invitations.",
-        )
-
-    return workspace
+    return require_workspace_manager(
+        current_user=current_user,
+        workspace=workspace,
+        detail="Only workspace owners can manage invitations.",
+    )
 
 
 @router.post("/api/workspaces/{workspace_id}/invitations")
