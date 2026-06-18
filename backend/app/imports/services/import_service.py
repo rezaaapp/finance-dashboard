@@ -742,6 +742,59 @@ class ImportService:
         sheet_source_id: str | None = None,
         sheet_name: str | None = None,
     ):
+        approval_plan = self.prepare_review_approval(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
+            draft_ids=draft_ids,
+            item_updates=item_updates,
+            sheet_source_id=sheet_source_id,
+            sheet_name=sheet_name,
+        )
+        if approval_plan is None:
+            return None
+
+        persistence_result = self.persist_review_approval(
+            connection,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
+            approval_plan=approval_plan,
+        )
+        sync_result = self.execute_sync_plan(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            sync_plan=persistence_result["sync_plan"],
+        )
+        final_sync_result = self.record_review_sync_result(
+            connection,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
+            transaction_fingerprints=persistence_result["transaction_fingerprints"],
+            sync_result=sync_result,
+        )
+
+        return {
+            "approved_count": persistence_result["approved_count"],
+            "draft_ids": persistence_result["draft_ids"],
+            **final_sync_result,
+        }
+
+    def prepare_review_approval(
+        self,
+        connection,
+        *,
+        workspace: dict,
+        current_user: dict,
+        workspace_id: str,
+        import_job_id: str,
+        draft_ids: list[str],
+        item_updates: list[dict] | None = None,
+        sheet_source_id: str | None = None,
+        sheet_name: str | None = None,
+    ):
         review_summary = get_import_review_summary(
             connection,
             workspace_id=workspace_id,
@@ -762,11 +815,12 @@ class ImportService:
         )
         if not merged_drafts:
             return {
-                "approved_count": 0,
-                "sync_success": 0,
-                "sync_failed": 0,
-                "sync_status": "skipped",
-                "draft_ids": [],
+                "review_summary": review_summary,
+                "merged_drafts": [],
+                "target_sheet": None,
+                "resolved_source_dana": None,
+                "resolved_user_name": None,
+                "final_transaction_rows": [],
             }
 
         target_sheet = self._resolve_import_target_sheet(
@@ -799,9 +853,43 @@ class ImportService:
             )
             for draft in merged_drafts
         ]
+
+        return {
+            "review_summary": review_summary,
+            "merged_drafts": merged_drafts,
+            "target_sheet": target_sheet,
+            "resolved_source_dana": resolved_source_dana,
+            "resolved_user_name": resolved_user_name,
+            "final_transaction_rows": final_transaction_rows,
+        }
+
+    def persist_review_approval(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        import_job_id: str,
+        approval_plan: dict,
+    ):
+        merged_drafts = approval_plan["merged_drafts"]
+        if not merged_drafts:
+            return {
+                "approved_count": 0,
+                "draft_ids": [],
+                "transaction_fingerprints": [],
+                "sync_plan": {
+                    "approved_transactions": [],
+                    "target_sheet_source": None,
+                    "target_sheet_name": None,
+                    "user_name": None,
+                    "source_dana": None,
+                    "job_id": import_job_id,
+                },
+            }
+
         created_transactions = create_import_transactions(
             connection,
-            rows=final_transaction_rows,
+            rows=approval_plan["final_transaction_rows"],
         )
         register_transaction_fingerprints(
             connection,
@@ -809,75 +897,15 @@ class ImportService:
             rows=[
                 {
                     "transaction_fingerprint": draft["transaction_fingerprint"],
-                    "provider": review_summary["provider"],
+                    "provider": approval_plan["review_summary"]["provider"],
                 }
                 for draft in merged_drafts
             ],
         )
-        self._log_import_event(
-            "smart_import.spreadsheet_sync.started",
-            job_id=import_job_id,
-            sheet_source_id=str(target_sheet["source"]["id"]),
-            sheet_name=target_sheet["sheet_name"],
-            row_count=len(merged_drafts),
-        )
-        sync_result = self.spreadsheet_sync_service.sync_import_transactions(
-            connection,
-            workspace=workspace,
-            current_user=current_user,
-            approved_transactions=merged_drafts,
-            target_sheet_source=target_sheet["source"],
-            target_sheet_name=target_sheet["sheet_name"],
-            user_name=resolved_user_name,
-            source_dana=resolved_source_dana,
-            job_id=import_job_id,
-        )
-        if sync_result["status"] == "success":
-            self._log_import_event(
-                "smart_import.spreadsheet_sync.completed",
-                job_id=import_job_id,
-                success_count=sync_result["sync_success"],
-                failed_count=sync_result["sync_failed"],
-            )
-        else:
-            self._log_import_event(
-                "smart_import.spreadsheet_sync.failed",
-                job_id=import_job_id,
-                sheet_name=target_sheet["sheet_name"],
-                reason=sync_result.get("error") or sync_result["status"],
-            )
         transaction_fingerprints = [
             draft["transaction_fingerprint"]
             for draft in merged_drafts
         ]
-        if sync_result["status"] == "success":
-            success_status_kwargs = {
-                "transaction_fingerprints": transaction_fingerprints,
-                "sync_status": "success",
-            }
-            if sync_result.get("error"):
-                success_status_kwargs["sync_error_message"] = sync_result["error"]
-            update_import_transaction_sync_status(
-                connection,
-                workspace_id=workspace_id,
-                **success_status_kwargs,
-            )
-        elif sync_result["status"] == "needs_reconnect":
-            update_import_transaction_sync_status(
-                connection,
-                workspace_id=workspace_id,
-                transaction_fingerprints=transaction_fingerprints,
-                sync_status="needs_reconnect",
-                sync_error_message="needs_reconnect",
-            )
-        else:
-            update_import_transaction_sync_status(
-                connection,
-                workspace_id=workspace_id,
-                transaction_fingerprints=transaction_fingerprints,
-                sync_status="failed",
-                sync_error_message=sync_result.get("error"),
-            )
         delete_import_draft_transactions(
             connection,
             import_job_id=import_job_id,
@@ -914,11 +942,145 @@ class ImportService:
 
         return {
             "approved_count": len(created_transactions),
+            "draft_ids": [str(draft["id"]) for draft in merged_drafts],
+            "transaction_fingerprints": transaction_fingerprints,
+            "sync_plan": {
+                "approved_transactions": merged_drafts,
+                "target_sheet_source": approval_plan["target_sheet"]["source"],
+                "target_sheet_name": approval_plan["target_sheet"]["sheet_name"],
+                "user_name": approval_plan["resolved_user_name"],
+                "source_dana": approval_plan["resolved_source_dana"],
+                "job_id": import_job_id,
+            },
+        }
+
+    def execute_sync_plan(
+        self,
+        connection,
+        *,
+        workspace: dict,
+        current_user: dict,
+        sync_plan: dict,
+    ):
+        approved_transactions = sync_plan.get("approved_transactions") or []
+        if not approved_transactions:
+            return {
+                "status": "skipped",
+                "sync_success": 0,
+                "sync_failed": 0,
+                "source_id": None,
+                "error": None,
+            }
+
+        self._log_import_event(
+            "smart_import.spreadsheet_sync.started",
+            job_id=sync_plan.get("job_id"),
+            sheet_source_id=str(sync_plan["target_sheet_source"]["id"]),
+            sheet_name=sync_plan["target_sheet_name"],
+            row_count=len(approved_transactions),
+        )
+
+        try:
+            sync_result = self.spreadsheet_sync_service.sync_import_transactions(
+                connection,
+                workspace=workspace,
+                current_user=current_user,
+                approved_transactions=approved_transactions,
+                target_sheet_source=sync_plan["target_sheet_source"],
+                target_sheet_name=sync_plan["target_sheet_name"],
+                user_name=sync_plan["user_name"],
+                source_dana=sync_plan["source_dana"],
+                job_id=sync_plan.get("job_id"),
+            )
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            logger.exception(
+                "smart_import.spreadsheet_sync.unhandled",
+                extra={
+                    "smart_import": {
+                        "job_id": sync_plan.get("job_id"),
+                        "sheet_name": sync_plan.get("target_sheet_name"),
+                        "row_count": len(approved_transactions),
+                    },
+                },
+            )
+            sync_result = {
+                "status": "failed",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": (
+                    str(sync_plan["target_sheet_source"]["id"])
+                    if sync_plan.get("target_sheet_source")
+                    else None
+                ),
+                "error": str(exc),
+            }
+
+        if sync_result["status"] == "success":
+            self._log_import_event(
+                "smart_import.spreadsheet_sync.completed",
+                job_id=sync_plan.get("job_id"),
+                success_count=sync_result["sync_success"],
+                failed_count=sync_result["sync_failed"],
+            )
+        else:
+            self._log_import_event(
+                "smart_import.spreadsheet_sync.failed",
+                job_id=sync_plan.get("job_id"),
+                sheet_name=sync_plan.get("target_sheet_name"),
+                reason=sync_result.get("error") or sync_result["status"],
+            )
+
+        return sync_result
+
+    def record_review_sync_result(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        import_job_id: str,
+        transaction_fingerprints: list[str],
+        sync_result: dict,
+    ):
+        if sync_result["status"] == "success":
+            success_status_kwargs = {
+                "transaction_fingerprints": transaction_fingerprints,
+                "sync_status": "success",
+            }
+            if sync_result.get("error"):
+                success_status_kwargs["sync_error_message"] = sync_result["error"]
+            update_import_transaction_sync_status(
+                connection,
+                workspace_id=workspace_id,
+                **success_status_kwargs,
+            )
+        elif sync_result["status"] == "needs_reconnect":
+            update_import_transaction_sync_status(
+                connection,
+                workspace_id=workspace_id,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="needs_reconnect",
+                sync_error_message="needs_reconnect",
+            )
+        elif sync_result["status"] == "failed":
+            update_import_transaction_sync_status(
+                connection,
+                workspace_id=workspace_id,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="failed",
+                sync_error_message=sync_result.get("error"),
+            )
+
+        refresh_import_job_aggregates(
+            connection,
+            workspace_id=workspace_id,
+            job_id=import_job_id,
+        )
+
+        return {
             "sync_success": sync_result["sync_success"],
             "sync_failed": sync_result["sync_failed"],
             "sync_status": sync_result["status"],
             "sync_error_message": sync_result.get("error"),
-            "draft_ids": [str(draft["id"]) for draft in merged_drafts],
         }
 
     def reject_review_transactions(
@@ -1035,6 +1197,46 @@ class ImportService:
         sheet_source_id: str | None = None,
         sheet_name: str | None = None,
     ):
+        retry_plan = self.prepare_retry_sync(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
+            sheet_source_id=sheet_source_id,
+            sheet_name=sheet_name,
+        )
+        if not retry_plan:
+            return None
+        if retry_plan.get("status") == "skipped":
+            return retry_plan
+
+        sync_result = self.execute_sync_plan(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            sync_plan=retry_plan["sync_plan"],
+        )
+
+        return self.record_retry_sync_result(
+            connection,
+            workspace_id=workspace_id,
+            import_job_id=import_job_id,
+            retry_plan=retry_plan,
+            sync_result=sync_result,
+        )
+
+    def prepare_retry_sync(
+        self,
+        connection,
+        *,
+        workspace: dict,
+        current_user: dict,
+        workspace_id: str,
+        import_job_id: str,
+        sheet_source_id: str | None = None,
+        sheet_name: str | None = None,
+    ):
         job = get_import_history_detail(
             connection,
             workspace_id=workspace_id,
@@ -1087,30 +1289,44 @@ class ImportService:
             workspace_id=workspace_id,
             provider="Blu",
         )
-        sync_result = self.spreadsheet_sync_service.sync_import_transactions(
+        resolved_retry_user_name = self._resolve_import_user_name(
             connection,
-            workspace=workspace,
             current_user=current_user,
-            approved_transactions=retryable_transactions,
-            target_sheet_source=target_sheet["source"],
-            target_sheet_name=target_sheet["sheet_name"],
-            user_name=self._resolve_import_user_name(
-                connection,
-                current_user=current_user,
-                workspace_id=workspace_id,
-                workspace=workspace,
-            ),
-            source_dana=resolved_retry_source_dana,
-            job_id=import_job_id,
+            workspace_id=workspace_id,
+            workspace=workspace,
         )
         transaction_ids = [
             str(transaction["id"])
             for transaction in retryable_transactions
         ]
 
+        return {
+            "job_id": import_job_id,
+            "retryable_transactions": retryable_transactions,
+            "transaction_ids": transaction_ids,
+            "skipped_success": skipped_success,
+            "sync_plan": {
+                "approved_transactions": retryable_transactions,
+                "target_sheet_source": target_sheet["source"],
+                "target_sheet_name": target_sheet["sheet_name"],
+                "user_name": resolved_retry_user_name,
+                "source_dana": resolved_retry_source_dana,
+                "job_id": import_job_id,
+            },
+        }
+
+    def record_retry_sync_result(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        import_job_id: str,
+        retry_plan: dict,
+        sync_result: dict,
+    ):
         if sync_result["status"] == "success":
             success_status_kwargs = {
-                "transaction_ids": transaction_ids,
+                "transaction_ids": retry_plan["transaction_ids"],
                 "sync_status": "success",
             }
             if sync_result.get("error"):
@@ -1128,7 +1344,7 @@ class ImportService:
         elif sync_result["status"] == "needs_reconnect":
             update_import_transaction_sync_status_by_ids(
                 connection,
-                transaction_ids=transaction_ids,
+                transaction_ids=retry_plan["transaction_ids"],
                 sync_status="needs_reconnect",
                 sync_error_message="needs_reconnect",
             )
@@ -1140,7 +1356,7 @@ class ImportService:
         else:
             update_import_transaction_sync_status_by_ids(
                 connection,
-                transaction_ids=transaction_ids,
+                transaction_ids=retry_plan["transaction_ids"],
                 sync_status="failed",
                 sync_error_message=sync_result.get("error"),
             )
@@ -1158,10 +1374,10 @@ class ImportService:
 
         return {
             "job_id": import_job_id,
-            "retried_count": len(retryable_transactions),
+            "retried_count": len(retry_plan["retryable_transactions"]),
             "sync_success": sync_result["sync_success"],
             "sync_failed": sync_result["sync_failed"],
-            "skipped_success": skipped_success,
+            "skipped_success": retry_plan["skipped_success"],
             "status": (
                 "completed"
                 if sync_result["status"] == "success"

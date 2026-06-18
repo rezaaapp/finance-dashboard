@@ -37,6 +37,14 @@ class WorkspaceFingerprintMigrationTestCase(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
+            "having count(distinct workspace_id) = 1",
+            self.sql,
+        )
+        self.assertIn(
+            "workspace provenance unavailable during migration 019",
+            self.sql,
+        )
+        self.assertIn(
             "where workspace_id is null",
             self.sql,
         )
@@ -50,6 +58,23 @@ class WorkspaceFingerprintMigrationTestCase(unittest.TestCase):
             "duplicate canonical fingerprints exist within a workspace",
             self.sql,
         )
+
+    def test_duplicate_prechecks_happen_before_workspace_unique_indexes(self):
+        import_guard_position = self.sql.index(
+            "duplicate import fingerprints exist within a workspace"
+        )
+        import_index_position = self.sql.index(
+            "create unique index transactions_workspace_import_fingerprint_unique"
+        )
+        canonical_guard_position = self.sql.index(
+            "duplicate canonical fingerprints exist within a workspace"
+        )
+        canonical_index_position = self.sql.index(
+            "create unique index transactions_workspace_canonical_fingerprint_unique"
+        )
+
+        self.assertLess(import_guard_position, import_index_position)
+        self.assertLess(canonical_guard_position, canonical_index_position)
 
 
 if __name__ == "__main__":
