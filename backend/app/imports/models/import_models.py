@@ -72,6 +72,8 @@ class ImportUploadResult(BaseModel):
     transactions_found: int = 0
     new_transactions: int = 0
     existing_transactions: int = 0
+    rejected_transactions: int = 0
+    no_new_transactions: bool = False
     page_count: int = 0
     extracted_text_length: int = 0
     error_code: str | None = None

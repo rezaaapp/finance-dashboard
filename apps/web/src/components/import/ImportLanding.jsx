@@ -25,6 +25,7 @@ const ImportLanding = ({ onReviewReady }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("idle");
   const [error, setError] = useState("");
+  const [emptyResult, setEmptyResult] = useState(null);
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -40,6 +41,7 @@ const ImportLanding = ({ onReviewReady }) => {
     setUploading(true);
     setUploadStatus("uploading");
     setError("");
+    setEmptyResult(null);
 
     try {
       const response = await uploadImportFile(selectedFile);
@@ -51,6 +53,22 @@ const ImportLanding = ({ onReviewReady }) => {
           || response.error
           || "Upload import belum berhasil. Coba lagi."
         );
+        return;
+      }
+
+      if (
+        response.no_new_transactions
+        || (Number(response.transactions_found || 0) > 0 && Number(response.new_transactions || 0) === 0)
+      ) {
+        setUploadStatus("upload_no_new");
+        setEmptyResult({
+          filename: selectedFile.name,
+          transactionsFound: Number(response.transactions_found || 0),
+          newTransactions: Number(response.new_transactions || 0),
+          existingTransactions: Number(response.existing_transactions || 0),
+          rejectedTransactions: Number(response.rejected_transactions || 0),
+          message: response.message || "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak.",
+        });
         return;
       }
 
@@ -173,6 +191,38 @@ const ImportLanding = ({ onReviewReady }) => {
       {uploadStatus === "upload_success" && (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
           PDF berhasil dibaca. Menyiapkan halaman review...
+        </section>
+      )}
+
+      {uploadStatus === "upload_no_new" && emptyResult && (
+        <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-200">
+          <div className="flex items-start gap-3">
+            <CircleAlert size={18} className="mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-semibold text-main">Tidak ada transaksi baru.</p>
+              <p className="mt-1">
+                {emptyResult.message}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Dibaca</p>
+                  <p className="mt-1 font-semibold text-main">{emptyResult.transactionsFound}</p>
+                </div>
+                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Baru</p>
+                  <p className="mt-1 font-semibold text-main">{emptyResult.newTransactions}</p>
+                </div>
+                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Sudah Diimport</p>
+                  <p className="mt-1 font-semibold text-main">{emptyResult.existingTransactions}</p>
+                </div>
+                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Pernah Ditolak</p>
+                  <p className="mt-1 font-semibold text-main">{emptyResult.rejectedTransactions}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       )}
 

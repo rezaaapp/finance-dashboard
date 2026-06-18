@@ -20,6 +20,7 @@ from app.imports.repositories.final_transaction_repository import (
     update_import_transaction_sync_status_by_ids,
 )
 from app.imports.repositories.fingerprint_registry_repository import (
+    get_registered_transaction_fingerprint_statuses,
     register_rejected_transaction_fingerprints,
     register_transaction_fingerprints,
 )
@@ -30,7 +31,6 @@ from app.imports.repositories.import_repository import (
     delete_import_draft_transactions,
     get_import_history_detail,
     list_import_history,
-    get_existing_transaction_fingerprints,
     get_import_review_summary,
     increment_import_job_rejected_count,
     list_import_draft_transactions,
@@ -186,17 +186,18 @@ class ImportService:
             for transaction in parsed_result.transactions
             if transaction.get("transaction_fingerprint")
         ]
-        existing_fingerprints = get_existing_transaction_fingerprints(
+        fingerprint_statuses = get_registered_transaction_fingerprint_statuses(
             connection,
-            workspace_id=workspace_id,
             transaction_fingerprints=transaction_fingerprints,
         )
+        existing_fingerprints = set(fingerprint_statuses.keys())
 
         return ParsedImportResult(
             provider=parsed_result.provider,
             transactions=self.incremental_engine.apply(
                 parsed_result.transactions,
                 existing_fingerprints=existing_fingerprints,
+                fingerprint_statuses=fingerprint_statuses,
             ),
         )
 
@@ -417,6 +418,10 @@ class ImportService:
                 transaction for transaction in parsed_result.transactions
                 if transaction.get("is_existing", False)
             ]
+            rejected_transactions = [
+                transaction for transaction in existing_transactions
+                if transaction.get("registry_status") == "rejected"
+            ]
             update_import_job_summary(
                 connection,
                 job_id=job_id,
@@ -431,6 +436,7 @@ class ImportService:
                 transactions_found=len(parsed_result.transactions),
                 new_transactions=len(new_transactions),
                 existing_transactions=len(existing_transactions),
+                rejected_transactions=len(rejected_transactions),
             )
         except Exception:
             delete_temp_import_file(temp_file["path"])
@@ -456,6 +462,13 @@ class ImportService:
             transactions_found=len(parsed_result.transactions),
             new_transactions=len(new_transactions),
             existing_transactions=len(existing_transactions),
+            rejected_transactions=len(rejected_transactions),
+            no_new_transactions=len(parsed_result.transactions) > 0 and len(new_transactions) == 0,
+            message=(
+                "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak."
+                if len(parsed_result.transactions) > 0 and len(new_transactions) == 0
+                else None
+            ),
             page_count=parsed_result.page_count,
             extracted_text_length=parsed_result.extracted_text_length,
             preview=[

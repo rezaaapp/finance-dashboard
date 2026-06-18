@@ -1,13 +1,13 @@
 from psycopg.rows import dict_row
 
 
-def get_registered_transaction_fingerprints(
+def get_registered_transaction_fingerprint_statuses(
     connection,
     *,
     transaction_fingerprints: list[str],
 ):
     if not transaction_fingerprints:
-        return set()
+        return {}
 
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
@@ -15,15 +15,28 @@ def get_registered_transaction_fingerprints(
             update import_transaction_registry
             set last_seen_at = now()
             where transaction_fingerprint = any(%s)
-            returning transaction_fingerprint
+            returning transaction_fingerprint, status
             """,
             (transaction_fingerprints,),
         )
 
         return {
-            row["transaction_fingerprint"]
+            row["transaction_fingerprint"]: row["status"]
             for row in cursor.fetchall()
         }
+
+
+def get_registered_transaction_fingerprints(
+    connection,
+    *,
+    transaction_fingerprints: list[str],
+):
+    return set(
+        get_registered_transaction_fingerprint_statuses(
+            connection,
+            transaction_fingerprints=transaction_fingerprints,
+        ).keys()
+    )
 
 
 def register_transaction_fingerprints(

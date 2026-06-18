@@ -40,6 +40,7 @@ sys.modules.setdefault("httpx", fake_httpx)
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.repositories.final_transaction_repository import create_import_transactions
 from app.imports.repositories.fingerprint_registry_repository import (
+    get_registered_transaction_fingerprint_statuses,
     register_rejected_transaction_fingerprints,
     register_transaction_fingerprints,
 )
@@ -97,6 +98,14 @@ class FakeReturningCursor:
     def fetchall(self):
         self.fetchall_calls += 1
         raise AssertionError("create_import_transactions should not call fetchall")
+
+
+class FakeFetchAllCursor(FakeReturningCursor):
+    def fetchall(self):
+        self.fetchall_calls += 1
+        rows = list(self.returned_rows)
+        self.returned_rows.clear()
+        return rows
 
 
 class FakeReturningConnection:
@@ -250,6 +259,33 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertIn("do update set", cursor.executed[0][0])
         self.assertIn("provider = excluded.provider", cursor.executed[0][0])
         self.assertIn("approved_at = excluded.approved_at", cursor.executed[0][0])
+
+    def test_get_registered_transaction_fingerprint_statuses_returns_mapping(self):
+        cursor = FakeFetchAllCursor([
+            {
+                "transaction_fingerprint": "fp-approved",
+                "status": "approved",
+            },
+            {
+                "transaction_fingerprint": "fp-rejected",
+                "status": "rejected",
+            },
+        ])
+        connection = FakeReturningConnection(cursor)
+
+        statuses = get_registered_transaction_fingerprint_statuses(
+            connection,
+            transaction_fingerprints=["fp-approved", "fp-rejected"],
+        )
+
+        self.assertEqual(
+            {
+                "fp-approved": "approved",
+                "fp-rejected": "rejected",
+            },
+            statuses,
+        )
+        self.assertIn("returning transaction_fingerprint, status", cursor.executed[0][0])
 
     def test_register_rejected_transaction_fingerprint_returns_rejected_status(self):
         cursor = FakeReturningCursor([{
@@ -473,7 +509,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
              patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch("app.imports.services.import_service.get_existing_transaction_fingerprints", return_value=set()), \
+             patch("app.imports.services.import_service.get_registered_transaction_fingerprint_statuses", return_value={}), \
              patch("app.imports.services.import_service.create_import_draft_transactions"), \
              patch("app.imports.services.import_service.update_import_job_summary"):
             result = ImportService().receive_upload(
@@ -491,6 +527,99 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("14/06/2026 09:15", result.preview[0].datetime)
         self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_original)
         self.assertEqual("Top Up dari Bank Lain", result.preview[0].merchant_normalized)
+
+    def test_import_service_returns_no_new_state_for_previously_approved_pdf(self):
+        fake_upload = NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf")
+        fake_job = {
+            "id": "job-124",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        def fake_get_statuses(_connection, *, transaction_fingerprints):
+            return {
+                fingerprint: "approved"
+                for fingerprint in transaction_fingerprints
+            }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": str(FIXTURE_PATH),
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch(
+                 "app.imports.services.import_service.get_registered_transaction_fingerprint_statuses",
+                 side_effect=fake_get_statuses,
+             ), \
+             patch("app.imports.services.import_service.create_import_draft_transactions") as create_draft_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+            )
+
+        self.assertEqual("review", result.status)
+        self.assertTrue(result.no_new_transactions)
+        self.assertEqual(4, result.transactions_found)
+        self.assertEqual(0, result.new_transactions)
+        self.assertEqual(4, result.existing_transactions)
+        self.assertEqual(0, result.rejected_transactions)
+        self.assertEqual([], result.preview)
+        self.assertEqual(
+            "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak.",
+            result.message,
+        )
+        create_draft_mock.assert_called_once_with(unittest.mock.ANY, draft_transactions=[])
+
+    def test_import_service_returns_no_new_state_for_previously_rejected_pdf(self):
+        fake_upload = NamedBytesIO(self.fixture_bytes, "blu-estatement-june.pdf")
+        fake_job = {
+            "id": "job-125",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+        def fake_get_statuses(_connection, *, transaction_fingerprints):
+            return {
+                fingerprint: "rejected"
+                for fingerprint in transaction_fingerprints
+            }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file", return_value={
+                 "path": str(FIXTURE_PATH),
+                 "expires_at": "2026-06-17T10:00:00Z",
+             }), \
+             patch("app.imports.services.import_service.set_import_job_temp_file"), \
+             patch("app.imports.services.import_service.update_import_job_provider"), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch(
+                 "app.imports.services.import_service.get_registered_transaction_fingerprint_statuses",
+                 side_effect=fake_get_statuses,
+             ), \
+             patch("app.imports.services.import_service.create_import_draft_transactions") as create_draft_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+            )
+
+        self.assertEqual("review", result.status)
+        self.assertTrue(result.no_new_transactions)
+        self.assertEqual(4, result.transactions_found)
+        self.assertEqual(0, result.new_transactions)
+        self.assertEqual(4, result.existing_transactions)
+        self.assertEqual(4, result.rejected_transactions)
+        self.assertEqual([], result.preview)
+        self.assertEqual(
+            "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak.",
+            result.message,
+        )
+        create_draft_mock.assert_called_once_with(unittest.mock.ANY, draft_transactions=[])
 
     def test_merchant_normalizer_produces_stable_output(self):
         self.assertEqual(
@@ -595,8 +724,11 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "status": kwargs["status"],
             }
 
-        def fake_get_existing(_connection, **_kwargs):
-            return set(stored_fingerprints)
+        def fake_get_statuses(_connection, **_kwargs):
+            return {
+                fingerprint: "approved"
+                for fingerprint in stored_fingerprints
+            }
 
         def fake_create_drafts(_connection, *, draft_transactions):
             stored_drafts.append(draft_transactions)
@@ -609,7 +741,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
              patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
+             patch("app.imports.services.import_service.get_registered_transaction_fingerprint_statuses", side_effect=fake_get_statuses), \
              patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
              patch("app.imports.services.import_service.update_import_job_summary"):
             first_result = service.receive_upload(
@@ -699,8 +831,11 @@ class BluPdfParserTestCase(unittest.TestCase):
             self.assertEqual("blu", provider)
             return parse_queue.pop(0)
 
-        def fake_get_existing(_connection, **_kwargs):
-            return set(stored_fingerprints)
+        def fake_get_statuses(_connection, **_kwargs):
+            return {
+                fingerprint: "approved"
+                for fingerprint in stored_fingerprints
+            }
 
         def fake_create_drafts(_connection, *, draft_transactions):
             stored_drafts.append(draft_transactions)
@@ -714,7 +849,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
              patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch("app.imports.services.import_service.get_existing_transaction_fingerprints", side_effect=fake_get_existing), \
+             patch("app.imports.services.import_service.get_registered_transaction_fingerprint_statuses", side_effect=fake_get_statuses), \
              patch("app.imports.services.import_service.create_import_draft_transactions", side_effect=fake_create_drafts), \
              patch("app.imports.services.import_service.update_import_job_summary"):
             first_result = service.receive_upload(
@@ -898,8 +1033,8 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
 
         with patch(
-            "app.imports.services.import_service.get_existing_transaction_fingerprints",
-            return_value={"fp-rejected"},
+            "app.imports.services.import_service.get_registered_transaction_fingerprint_statuses",
+            return_value={"fp-rejected": "rejected"},
         ):
             result = service.mark_existing_transactions(
                 connection=object(),
