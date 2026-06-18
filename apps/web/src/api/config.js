@@ -69,6 +69,11 @@ export const SETTINGS_API_URL = DASHBOARD_API_URL.replace(
   "/api/settings"
 );
 
+export const BUDGETS_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/budgets"
+);
+
 export const WORKSPACES_API_URL = DASHBOARD_API_URL.replace(
   /\/api\/dashboard$/,
   "/api/workspaces"
@@ -82,6 +87,11 @@ export const WORKSPACE_INVITATIONS_API_URL = DASHBOARD_API_URL.replace(
 export const IMPORT_API_URL = DASHBOARD_API_URL.replace(
   /\/api\/dashboard$/,
   "/api/import"
+);
+
+export const INQUIRY_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/inquiry"
 );
 
 export const AUTH_BASE_URL = AUTH_API_URL.replace(/\/api\/auth$/, "/auth");

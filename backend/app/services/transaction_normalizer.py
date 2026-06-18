@@ -80,6 +80,16 @@ def _normalize_key(value: str) -> str:
     return str(value or "").strip().casefold()
 
 
+def normalize_search_text(*values: str | None) -> str:
+    joined_text = " ".join(
+        str(value or "").strip()
+        for value in values
+        if str(value or "").strip()
+    )
+
+    return re.sub(r"\s+", " ", joined_text.casefold()).strip()
+
+
 def map_sheet_rows(header: list[str], rows: list[list]) -> list[tuple[int, dict]]:
     normalized_header = [
         canonicalize_header(str(column or "").strip())
@@ -270,7 +280,7 @@ def _build_normalized_hash(payload: dict) -> str:
     stable_payload = {
         key: str(value) if isinstance(value, Decimal) else value
         for key, value in payload.items()
-        if key != "raw_payload"
+        if key not in {"raw_payload", "search_text_normalized"}
     }
     raw_payload = payload.get("raw_payload") or {}
     stable_payload["category_normalized"] = raw_payload.get("_category_normalized")
@@ -406,6 +416,13 @@ def normalize_transaction_row(row: dict, *, raw_metadata: dict | None = None) ->
         amount=amount,
         direction=direction,
         source_fund=source_fund or "",
+    )
+    payload["search_text_normalized"] = normalize_search_text(
+        title,
+        raw_category,
+        category_normalized,
+        source_fund,
+        note,
     )
     payload["normalized_hash"] = _build_normalized_hash(payload)
 

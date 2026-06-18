@@ -30,6 +30,7 @@ def _transaction_params(row: dict):
         payload.get("source_reference"),
         payload.get("canonical_fingerprint"),
         payload.get("canonical_fingerprint_date"),
+        payload["search_text_normalized"],
     )
 
 
@@ -192,9 +193,10 @@ def bulk_insert_transactions(
                     source_origin,
                     source_reference,
                     canonical_fingerprint,
-                    canonical_fingerprint_date
+                    canonical_fingerprint_date,
+                    search_text_normalized
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 on conflict (workspace_id, sheet_source_id, external_row_key)
                 do nothing
                 """,
@@ -237,6 +239,7 @@ def bulk_update_transactions(
                     source_reference = %s,
                     canonical_fingerprint = %s,
                     canonical_fingerprint_date = %s,
+                    search_text_normalized = %s,
                     updated_at = now()
                 where workspace_id = %s
                   and sheet_source_id = %s
@@ -261,6 +264,7 @@ def bulk_update_transactions(
                         row["payload"].get("source_reference"),
                         row["payload"].get("canonical_fingerprint"),
                         row["payload"].get("canonical_fingerprint_date"),
+                        row["payload"]["search_text_normalized"],
                         row["workspace_id"],
                         row["sheet_source_id"],
                         row["external_row_key"],
@@ -427,9 +431,10 @@ def upsert_transaction(
                 source_origin,
                 source_reference,
                 canonical_fingerprint,
-                canonical_fingerprint_date
+                canonical_fingerprint_date,
+                search_text_normalized
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (workspace_id, sheet_source_id, external_row_key)
             do update set
                 row_number = excluded.row_number,
@@ -448,6 +453,7 @@ def upsert_transaction(
                 source_reference = excluded.source_reference,
                 canonical_fingerprint = excluded.canonical_fingerprint,
                 canonical_fingerprint_date = excluded.canonical_fingerprint_date,
+                search_text_normalized = excluded.search_text_normalized,
                 updated_at = now()
             where transactions.normalized_hash is distinct from excluded.normalized_hash
             returning
@@ -476,6 +482,7 @@ def upsert_transaction(
                 payload.get("source_reference"),
                 payload.get("canonical_fingerprint"),
                 payload.get("canonical_fingerprint_date"),
+                payload["search_text_normalized"],
             ),
         )
         result = cursor.fetchone()
@@ -516,6 +523,7 @@ def bulk_update_transactions_by_id(
                     source_reference = %s,
                     canonical_fingerprint = %s,
                     canonical_fingerprint_date = %s,
+                    search_text_normalized = %s,
                     updated_at = now()
                 where id = %s
                 """,
@@ -538,6 +546,7 @@ def bulk_update_transactions_by_id(
                         row["payload"].get("source_reference"),
                         row["payload"].get("canonical_fingerprint"),
                         row["payload"].get("canonical_fingerprint_date"),
+                        row["payload"]["search_text_normalized"],
                         row["existing_transaction_id"],
                     )
                     for row in chunk

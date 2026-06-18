@@ -10,12 +10,13 @@ import {
   Moon,
   Upload,
   RefreshCw,
+  Search as SearchIcon,
   Settings,
   ShieldCheck,
   Sun,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import EmptyState from "../components/EmptyState";
 import SummaryCard from "../components/SummaryCard";
@@ -40,6 +41,7 @@ import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
 import ImportTransactions from "./ImportTransactions";
+import SearchPage from "./Search";
 import { PRIVACY_MODES } from "../utils/privacy";
 
 import {
@@ -104,6 +106,22 @@ const hasSummaryData = (summary = {}) => (
   || Number(summary.transaction_count || 0) > 0
 );
 
+const getInitialView = () => {
+  if (window.location.pathname.startsWith("/import")) {
+    return "import";
+  }
+
+  if (window.location.pathname.startsWith("/search")) {
+    return "search";
+  }
+
+  if (window.location.pathname.startsWith("/settings")) {
+    return "configuration";
+  }
+
+  return "dashboard";
+};
+
 const LockedFeature = ({ title, message }) => (
   <div className="panel rounded-lg p-6 shadow-lg">
     <div className="mx-auto flex max-w-2xl flex-col items-center py-10 text-center">
@@ -123,6 +141,8 @@ const LockedFeature = ({ title, message }) => (
 );
 
 const ProfileWidget = ({ auth, onLogout }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const hasSessionEmail = Boolean(auth?.email);
   const displayName = hasSessionEmail
     ? auth?.username || auth?.name || "Reza Putra Pratama"
@@ -130,22 +150,64 @@ const ProfileWidget = ({ auth, onLogout }) => {
   const displayEmail = auth?.email || "rezaaapp@gmail.com";
   const initial = (displayName || displayEmail || "R").trim().charAt(0).toUpperCase();
 
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMenuOpen]);
+
+  const handleLogout = () => {
+    setIsMenuOpen(false);
+    onLogout();
+  };
+
   return (
-    <div className="group relative inline-flex">
+    <div ref={menuRef} className="group relative inline-flex">
       <button
         type="button"
+        onClick={() => setIsMenuOpen((current) => !current)}
         className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-bold text-gray-800 shadow-sm transition-colors hover:border-amber-300 hover:bg-white dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-amber-700"
         aria-label={`Profile menu ${displayName}`}
+        aria-expanded={isMenuOpen}
+        aria-haspopup="menu"
         title={`${displayName} (${displayEmail})`}
       >
         {initial || <UserRound size={18} />}
       </button>
 
-      <div className="invisible absolute right-0 top-full z-50 mt-2 w-40 translate-y-1 opacity-0 transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+      <div
+        className={`absolute right-0 top-full z-50 mt-2 w-40 transition-all ${
+          isMenuOpen
+            ? "visible translate-y-0 opacity-100"
+            : "invisible translate-y-1 opacity-0 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+        }`}
+        role="menu"
+      >
         <button
           type="button"
-          onClick={onLogout}
+          onClick={handleLogout}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 shadow-lg transition-colors hover:bg-red-50 dark:border-gray-600 dark:bg-gray-700 dark:text-red-300 dark:hover:bg-red-950/30"
+          role="menuitem"
         >
           <LogOut size={16} />
           Logout
@@ -200,13 +262,7 @@ const Dashboard = ({
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [activeView, setActiveView] = useState(() => (
-    window.location.pathname.startsWith("/import")
-      ? "import"
-      : window.location.pathname.startsWith("/settings")
-      ? "configuration"
-      : "dashboard"
-  ));
+  const [activeView, setActiveView] = useState(() => getInitialView());
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -594,6 +650,30 @@ const Dashboard = ({
     }
   }, [hasPremiumAccess, onLogout, selectedAnalyticsUser]);
 
+  const refreshBudgetForecast = useCallback(async () => {
+    if (!hasPremiumAccess || selectedYear === "" || selectedMonth === "") {
+      setBudgetForecast({});
+      return;
+    }
+
+    try {
+      const budgetForecastData = await getBudgetForecast(
+        selectedYear,
+        selectedMonth
+      );
+      setBudgetForecast(budgetForecastData);
+    } catch (err) {
+      console.error("Failed to fetch budgeting data.");
+
+      if (err?.response?.status === 401) {
+        onLogout();
+        return;
+      }
+
+      setBudgetForecast({});
+    }
+  }, [hasPremiumAccess, onLogout, selectedMonth, selectedYear]);
+
   // =========================
   // INITIAL DATA
   // =========================
@@ -693,6 +773,12 @@ const Dashboard = ({
       );
     }
   }, [activeView, fetchDashboardData, selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    if (activeView === "budgeting") {
+      refreshBudgetForecast();
+    }
+  }, [activeView, refreshBudgetForecast]);
 
   // =========================
   // LAZY FETCH ANALYTICS DATA
@@ -970,6 +1056,31 @@ const Dashboard = ({
             {!isSidebarCollapsed && !hasPremiumAccess && (
               <span className="ml-auto rounded-full bg-[var(--color-alert-bg)] px-2 py-0.5 text-xs font-bold text-[var(--color-alert-text)]">
                 Locked
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView("search")}
+            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
+              isSidebarCollapsed
+                ? "justify-center px-0"
+                : "justify-start gap-3 px-3 py-2"
+            } ${
+              activeView === "search"
+                ? "bg-[var(--color-accent-bg)] text-accent"
+                : "bg-transparent"
+            }`}
+            aria-label="Search"
+            title="Search"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <SearchIcon size={18} />
+            </span>
+            {!isSidebarCollapsed && (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                Search
               </span>
             )}
           </button>
@@ -1550,6 +1661,13 @@ const Dashboard = ({
               </>
             )}
           </div>
+        ) : activeView === "search" ? (
+          <SearchPage
+            availableYears={years}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onUnauthorized={onLogout}
+          />
         ) : activeView === "budgeting" && !hasPremiumAccess ? (
           <LockedFeature
             title="Decision Alert Terkunci"
@@ -1560,7 +1678,9 @@ const Dashboard = ({
             data={budgetForecast}
             theme={theme}
             privacyMode={privacyMode}
-            autoBudget={autoBudget}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            onRefresh={refreshBudgetForecast}
           />
         ) : activeView === "admin" && isSuperAdmin ? (
           <AdminUsers
@@ -1585,7 +1705,7 @@ const Dashboard = ({
       </main>
 
       <nav className={`fixed inset-x-0 bottom-0 z-50 grid gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden ${
-        isSuperAdmin ? "grid-cols-6" : "grid-cols-5"
+        isSuperAdmin ? "grid-cols-7" : "grid-cols-6"
       }`}>
         <button
           type="button"
@@ -1634,6 +1754,19 @@ const Dashboard = ({
               Locked
             </span>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView("search")}
+          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
+            activeView === "search"
+              ? "bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+        >
+          <SearchIcon size={18} />
+          Search
         </button>
 
         <button
