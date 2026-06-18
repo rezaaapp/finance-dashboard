@@ -7,6 +7,76 @@ from app.imports.repositories.final_transaction_repository import (
 
 
 class SpreadsheetValueResolver:
+    def resolve_allowed_dropdown_value(
+        self,
+        desired_value,
+        allowed_values: list[str],
+        *,
+        allow_prefix_match: bool = False,
+        allow_single_value_fallback: bool = False,
+    ) -> dict:
+        desired_text = str(desired_value or "")
+        normalized_allowed_values = [
+            str(value or "").strip()
+            for value in allowed_values
+            if str(value or "").strip()
+        ]
+
+        for allowed_value in normalized_allowed_values:
+            if desired_text == allowed_value:
+                return {
+                    "value": allowed_value,
+                    "strategy": "exact",
+                    "matched": True,
+                }
+
+        for allowed_value in normalized_allowed_values:
+            if desired_text.casefold() == allowed_value.casefold():
+                return {
+                    "value": allowed_value,
+                    "strategy": "case_insensitive",
+                    "matched": True,
+                }
+
+        trimmed_desired = desired_text.strip()
+        for allowed_value in normalized_allowed_values:
+            if trimmed_desired == allowed_value:
+                return {
+                    "value": allowed_value,
+                    "strategy": "trimmed",
+                    "matched": True,
+                }
+
+        if allow_prefix_match and trimmed_desired:
+            desired_folded = trimmed_desired.casefold()
+            prefix_matches = [
+                allowed_value
+                for allowed_value in normalized_allowed_values
+                if (
+                    desired_folded.startswith(f"{allowed_value.casefold()} ")
+                    or desired_folded.startswith(f"{allowed_value.casefold()}-")
+                )
+            ]
+            if len(prefix_matches) == 1:
+                return {
+                    "value": prefix_matches[0],
+                    "strategy": "safe_prefix",
+                    "matched": True,
+                }
+
+        if allow_single_value_fallback and len(normalized_allowed_values) == 1:
+            return {
+                "value": normalized_allowed_values[0],
+                "strategy": "single_allowed_value",
+                "matched": True,
+            }
+
+        return {
+            "value": trimmed_desired,
+            "strategy": "fallback",
+            "matched": False,
+        }
+
     def resolve_user_name_for_append(
         self,
         connection,

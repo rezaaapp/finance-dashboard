@@ -54,6 +54,7 @@ from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueReso
 from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     copy_sheet_row_format_and_validation,
+    get_data_validation_values,
 )
 from app.imports.utils.fingerprint import build_transaction_fingerprint
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
@@ -969,6 +970,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Blu", created_row["source_fund"])
         self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
         self.assertEqual("Blu", sync_mock.call_args.kwargs["source_dana"])
+        self.assertEqual("job-1", sync_mock.call_args.kwargs["job_id"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",
@@ -1355,6 +1357,10 @@ class BluPdfParserTestCase(unittest.TestCase):
             "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
         }), \
              patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.get_data_validation_values", side_effect=[
+                 ["Reza", "Divya"],
+                 ["BCA", "Blu", "GoPay", "OVO", "SeaBank"],
+             ]), \
              patch("app.imports.services.spreadsheet_sync_service.append_sheet_values", return_value={
                  "updates": {
                      "updatedRange": "'Start 1 Juni'!A12:G12",
@@ -1400,8 +1406,9 @@ class BluPdfParserTestCase(unittest.TestCase):
                     "sheet_name": "Default",
                 },
                 target_sheet_name="Start 1 Juni",
-                user_name="Reza",
-                source_dana="Blu",
+                user_name="Reza Display",
+                source_dana="blu",
+                job_id="job-1",
             )
 
         append_values_mock.assert_called_once_with(
@@ -1445,6 +1452,10 @@ class BluPdfParserTestCase(unittest.TestCase):
             "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
         }), \
              patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.get_data_validation_values", side_effect=[
+                 ["Reza"],
+                 ["Blu"],
+             ]), \
              patch("app.imports.services.spreadsheet_sync_service.append_sheet_values", return_value={
                  "updates": {
                      "updatedRange": "'Start 1 Juni'!A12:G12",
@@ -1484,6 +1495,60 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(0, result["sync_failed"])
         self.assertEqual("warning", result["formatting_status"])
         self.assertEqual("Formatting copy failed", result["error"])
+
+    def test_validation_unavailable_still_appends_with_warning(self):
+        sync_service = SpreadsheetSyncService()
+
+        with patch("app.imports.services.spreadsheet_sync_service.get_active_google_oauth_connection", return_value={
+            "id": "oauth-1",
+            "access_token_encrypted": "encrypted-token",
+            "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
+        }), \
+             patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch(
+                 "app.imports.services.spreadsheet_sync_service.get_data_validation_values",
+                 side_effect=GoogleSheetsClientError("Validation metadata unavailable"),
+             ), \
+             patch("app.imports.services.spreadsheet_sync_service.append_sheet_values", return_value={
+                 "updates": {
+                     "updatedRange": "'Start 1 Juni'!A12:G12",
+                     "updatedRows": 1,
+                 },
+             }) as append_values_mock, \
+             patch.object(SpreadsheetSyncService, "_copy_template_formatting", return_value={
+                 "template_row": 2,
+                 "appended_row_range": "12:12",
+             }), \
+             patch("app.imports.services.spreadsheet_sync_service.update_google_sheet_last_synced"):
+            result = sync_service.sync_import_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza"},
+                approved_transactions=[{
+                    "datetime": "2026-06-13 13:26",
+                    "merchant_display": "SUPERINDO",
+                    "amount": 189400,
+                    "category": "Belanja",
+                    "notes": "",
+                }],
+                target_sheet_source={
+                    "id": "sheet-source-1",
+                    "sheet_id": "sheet-123",
+                    "sheet_name": "Default",
+                },
+                target_sheet_name="Start 1 Juni",
+                user_name="Reza",
+                source_dana="Blu",
+                job_id="job-1",
+            )
+
+        append_values_mock.assert_called_once()
+        self.assertEqual("success", result["status"])
+        self.assertEqual("warning", result["formatting_status"])
+        self.assertEqual(
+            "Tidak bisa membaca dropdown Google Sheets untuk Nama/Source Dana.",
+            result["error"],
+        )
 
     def test_template_row_falls_back_to_nearest_non_empty_row(self):
         sync_service = SpreadsheetSyncService()
@@ -1644,6 +1709,81 @@ class BluPdfParserTestCase(unittest.TestCase):
                 ),
             )
 
+    def test_dropdown_resolver_matches_exact_case_trimmed_and_prefix_values(self):
+        resolver = SpreadsheetValueResolver()
+
+        self.assertEqual(
+            {
+                "value": "Blu",
+                "strategy": "exact",
+                "matched": True,
+            },
+            resolver.resolve_allowed_dropdown_value("Blu", ["BCA", "Blu"]),
+        )
+        self.assertEqual(
+            "Blu",
+            resolver.resolve_allowed_dropdown_value("blu", ["BCA", "Blu"])["value"],
+        )
+        self.assertEqual(
+            "Reza",
+            resolver.resolve_allowed_dropdown_value(" Reza ", ["Reza"])["value"],
+        )
+        self.assertEqual(
+            {
+                "value": "Reza",
+                "strategy": "safe_prefix",
+                "matched": True,
+            },
+            resolver.resolve_allowed_dropdown_value(
+                "Reza Putra Pratama",
+                ["Reza", "Divya"],
+                allow_prefix_match=True,
+            ),
+        )
+
+    def test_google_client_reads_explicit_data_validation_values(self):
+        response = MagicMock()
+        response.json.return_value = {
+            "sheets": [{
+                "data": [{
+                    "rowData": [{
+                        "values": [{
+                            "dataValidation": {
+                                "condition": {
+                                    "type": "ONE_OF_LIST",
+                                    "values": [
+                                        {"userEnteredValue": "BCA"},
+                                        {"userEnteredValue": "Blu"},
+                                        {"userEnteredValue": "GoPay"},
+                                    ],
+                                },
+                            },
+                        }],
+                    }],
+                }],
+            }],
+        }
+
+        with patch(
+            "app.services.google_sheets_client.httpx.get",
+            return_value=response,
+            create=True,
+        ) as get_mock:
+            values = get_data_validation_values(
+                access_token="access-token",
+                spreadsheet_id="sheet-123",
+                sheet_name="Start 1 Juni",
+                column_index_or_letter="F",
+                sample_row=2,
+            )
+
+        response.raise_for_status.assert_called_once()
+        self.assertEqual(["BCA", "Blu", "GoPay"], values)
+        self.assertEqual(
+            "'Start 1 Juni'!F2:F100",
+            get_mock.call_args.kwargs["params"]["ranges"],
+        )
+
     def test_reject_review_transactions_removes_selected_drafts(self):
         service = ImportService()
 
@@ -1739,6 +1879,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         sync_mock.assert_called_once()
         self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
         self.assertEqual("Blu", sync_mock.call_args.kwargs["source_dana"])
+        self.assertEqual("job-1", sync_mock.call_args.kwargs["job_id"])
         self.assertEqual("Start 1 Juni", sync_mock.call_args.kwargs["target_sheet_name"])
         self.assertEqual(
             "sheet-source-1",

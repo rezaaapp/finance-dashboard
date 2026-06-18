@@ -12,6 +12,7 @@ from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     append_sheet_values,
     copy_sheet_row_format_and_validation,
+    get_data_validation_values,
     get_spreadsheet_metadata,
     read_sheet_values,
 )
@@ -38,6 +39,7 @@ class SpreadsheetSyncService:
         target_sheet_name: str | None = None,
         user_name: str | None = None,
         source_dana: str | None = None,
+        job_id: str | None = None,
     ) -> dict:
         if not approved_transactions:
             return {
@@ -99,6 +101,29 @@ class SpreadsheetSyncService:
             workspace_id=str(workspace["id"]),
             provider="Blu",
         )
+        validation_warnings = []
+        resolved_user_name = self._resolve_validated_dropdown_value(
+            access_token=access_token,
+            spreadsheet_id=sheet_source["sheet_id"],
+            sheet_name=target_sheet_name or sheet_source["sheet_name"] or "Sheet1",
+            column="A",
+            column_name="Nama",
+            desired_value=resolved_user_name,
+            job_id=job_id,
+            allow_prefix_match=True,
+            allow_single_value_fallback=True,
+            warnings=validation_warnings,
+        )
+        resolved_source_dana = self._resolve_validated_dropdown_value(
+            access_token=access_token,
+            spreadsheet_id=sheet_source["sheet_id"],
+            sheet_name=target_sheet_name or sheet_source["sheet_name"] or "Sheet1",
+            column="F",
+            column_name="Source Dana",
+            desired_value=resolved_source_dana,
+            job_id=job_id,
+            warnings=validation_warnings,
+        )
         rows = [
             self._build_sheet_row(
                 transaction,
@@ -110,7 +135,7 @@ class SpreadsheetSyncService:
         ]
 
         target_sheet_name = target_sheet_name or sheet_source["sheet_name"] or "Sheet1"
-        formatting_warning = None
+        sync_warnings = list(validation_warnings)
 
         try:
             append_result = append_sheet_values(
@@ -140,6 +165,7 @@ class SpreadsheetSyncService:
                 )
             except GoogleSheetsClientError as formatting_error:
                 formatting_warning = str(formatting_error)
+                sync_warnings.append(formatting_warning)
                 logger.warning(
                     "smart_import.spreadsheet_formatting.failed",
                     extra={
@@ -174,8 +200,8 @@ class SpreadsheetSyncService:
             "sync_success": len(approved_transactions),
             "sync_failed": 0,
             "source_id": str(sheet_source["id"]),
-            "error": formatting_warning,
-            "formatting_status": "warning" if formatting_warning else "success",
+            "error": " ".join(dict.fromkeys(sync_warnings)) or None,
+            "formatting_status": "warning" if sync_warnings else "success",
         }
 
     def requires_reconnect(self, scopes: list[str]) -> bool:
@@ -232,6 +258,106 @@ class SpreadsheetSyncService:
             str(source_dana or transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
             str(transaction.get("notes", "")),
         ]
+
+    def _resolve_validated_dropdown_value(
+        self,
+        *,
+        access_token: str,
+        spreadsheet_id: str,
+        sheet_name: str,
+        column: str,
+        column_name: str,
+        desired_value: str,
+        job_id: str | None,
+        warnings: list[str],
+        allow_prefix_match: bool = False,
+        allow_single_value_fallback: bool = False,
+    ) -> str:
+        try:
+            allowed_values = get_data_validation_values(
+                access_token=access_token,
+                spreadsheet_id=spreadsheet_id,
+                sheet_name=sheet_name,
+                column_index_or_letter=column,
+                sample_row=2,
+            )
+        except GoogleSheetsClientError as exc:
+            warning_message = (
+                "Tidak bisa membaca dropdown Google Sheets untuk Nama/Source Dana."
+            )
+            warnings.append(warning_message)
+            logger.warning(
+                "smart_import.sheet_validation.warning",
+                extra={
+                    "smart_import": {
+                        "job_id": job_id,
+                        "column": column_name,
+                        "reason": str(exc),
+                    },
+                },
+            )
+            return desired_value
+
+        logger.info(
+            "smart_import.sheet_validation.loaded",
+            extra={
+                "smart_import": {
+                    "job_id": job_id,
+                    "sheet_name": sheet_name,
+                    "column": column_name,
+                    "allowed_count": len(allowed_values),
+                },
+            },
+        )
+
+        if not allowed_values:
+            warning_message = (
+                "Tidak bisa membaca dropdown Google Sheets untuk Nama/Source Dana."
+            )
+            warnings.append(warning_message)
+            logger.warning(
+                "smart_import.sheet_validation.warning",
+                extra={
+                    "smart_import": {
+                        "job_id": job_id,
+                        "column": column_name,
+                        "reason": "No explicit or resolvable validation values were found",
+                    },
+                },
+            )
+            return desired_value
+
+        resolution = self.value_resolver.resolve_allowed_dropdown_value(
+            desired_value,
+            allowed_values,
+            allow_prefix_match=allow_prefix_match,
+            allow_single_value_fallback=allow_single_value_fallback,
+        )
+        event_fields = {
+            "job_id": job_id,
+            "column": column_name,
+            "desired_value": desired_value,
+            "resolved_value": resolution["value"],
+            "strategy": resolution["strategy"],
+        }
+
+        if resolution["matched"]:
+            logger.info(
+                "smart_import.sheet_validation.resolved",
+                extra={"smart_import": event_fields},
+            )
+        else:
+            logger.warning(
+                "smart_import.sheet_validation.warning",
+                extra={
+                    "smart_import": {
+                        **event_fields,
+                        "reason": "Desired value did not match the allowed dropdown values",
+                    },
+                },
+            )
+
+        return resolution["value"]
 
     def _copy_template_formatting(
         self,

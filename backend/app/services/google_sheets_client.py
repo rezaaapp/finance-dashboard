@@ -100,6 +100,88 @@ def read_sheet_values(
     return response.json().get("values", [])
 
 
+def get_data_validation_values(
+    access_token: str,
+    spreadsheet_id: str,
+    sheet_name: str,
+    column_index_or_letter,
+    sample_row: int = 2,
+) -> list[str]:
+    column_letter = _column_letter(column_index_or_letter)
+    escaped_sheet_name = str(sheet_name or "").strip().replace("'", "''")
+
+    if not escaped_sheet_name:
+        raise GoogleSheetsClientError("Google Sheets sheet name is required")
+
+    if sample_row < 1:
+        raise GoogleSheetsClientError("Google Sheets sample row must be positive")
+
+    range_name = (
+        f"'{escaped_sheet_name}'!"
+        f"{column_letter}{sample_row}:{column_letter}{sample_row + 98}"
+    )
+
+    try:
+        response = httpx.get(
+            f"{GOOGLE_SHEETS_API_BASE_URL}/{spreadsheet_id}",
+            params={
+                "includeGridData": "true",
+                "ranges": range_name,
+            },
+            headers=_authorization_headers(access_token),
+            timeout=20,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        _raise_safe_google_error(exc)
+
+    allowed_values = []
+    range_references = []
+
+    for sheet in response.json().get("sheets", []):
+        for grid_data in sheet.get("data", []):
+            for row in grid_data.get("rowData", []):
+                for cell in row.get("values", []):
+                    condition = (
+                        cell.get("dataValidation", {})
+                        .get("condition", {})
+                    )
+                    condition_type = condition.get("type")
+                    condition_values = condition.get("values", [])
+
+                    if condition_type == "ONE_OF_LIST":
+                        allowed_values.extend(
+                            str(value.get("userEnteredValue") or "").strip()
+                            for value in condition_values
+                            if str(value.get("userEnteredValue") or "").strip()
+                        )
+                    elif condition_type == "ONE_OF_RANGE":
+                        range_references.extend(
+                            str(value.get("userEnteredValue") or "").strip()
+                            for value in condition_values
+                            if str(value.get("userEnteredValue") or "").strip()
+                        )
+
+    for range_reference in range_references:
+        referenced_range = range_reference.removeprefix("=")
+        if not referenced_range:
+            continue
+
+        referenced_rows = read_sheet_values(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+            range_name=referenced_range,
+        )
+        allowed_values.extend(
+            str(value or "").strip()
+            for row in referenced_rows
+            for value in row
+            if str(value or "").strip()
+        )
+
+    return list(dict.fromkeys(allowed_values))
+
+
 def append_sheet_values(
     access_token: str,
     spreadsheet_id: str,
@@ -134,6 +216,26 @@ def append_sheet_values(
         _raise_safe_google_error(exc)
 
     return response.json()
+
+
+def _column_letter(column_index_or_letter) -> str:
+    if isinstance(column_index_or_letter, int):
+        if column_index_or_letter < 0:
+            raise GoogleSheetsClientError("Google Sheets column index is invalid")
+
+        column_number = column_index_or_letter + 1
+        letters = []
+        while column_number:
+            column_number, remainder = divmod(column_number - 1, 26)
+            letters.append(chr(65 + remainder))
+
+        return "".join(reversed(letters))
+
+    column_letter = str(column_index_or_letter or "").strip().upper()
+    if not column_letter.isalpha():
+        raise GoogleSheetsClientError("Google Sheets column letter is invalid")
+
+    return column_letter
 
 
 def copy_sheet_row_format_and_validation(

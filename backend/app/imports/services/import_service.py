@@ -651,6 +651,7 @@ class ImportService:
             target_sheet_name=target_sheet["sheet_name"],
             user_name=resolved_user_name,
             source_dana=resolved_source_dana,
+            job_id=import_job_id,
         )
         if sync_result["status"] == "success":
             self._log_import_event(
@@ -901,6 +902,7 @@ class ImportService:
                 workspace=workspace,
             ),
             source_dana=resolved_retry_source_dana,
+            job_id=import_job_id,
         )
         transaction_ids = [
             str(transaction["id"])
