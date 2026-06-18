@@ -38,7 +38,10 @@ sys.modules.setdefault("dotenv", fake_dotenv)
 sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
-from app.imports.repositories.final_transaction_repository import create_import_transactions
+from app.imports.repositories.final_transaction_repository import (
+    create_import_transactions,
+    update_import_transaction_sync_status,
+)
 from app.imports.repositories.fingerprint_registry_repository import (
     get_registered_transaction_fingerprint_statuses,
     register_rejected_transaction_fingerprints,
@@ -187,7 +190,10 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         self.assertEqual(1, len(cursor.executed))
         self.assertIn("returning id, import_transaction_fingerprint, sync_status", cursor.executed[0][0])
-        self.assertIn("on conflict (import_transaction_fingerprint)", cursor.executed[0][0])
+        self.assertIn(
+            "on conflict (workspace_id, import_transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
         self.assertEqual(1, cursor.fetchone_calls)
         self.assertEqual(0, cursor.fetchall_calls)
 
@@ -202,7 +208,14 @@ class BluPdfParserTestCase(unittest.TestCase):
         cursor = FakeReturningCursor([])
         connection = FakeReturningConnection(cursor)
 
-        self.assertEqual([], register_transaction_fingerprints(connection, rows=[]))
+        self.assertEqual(
+            [],
+            register_transaction_fingerprints(
+                connection,
+                workspace_id="workspace-1",
+                rows=[],
+            ),
+        )
         self.assertEqual([], connection.cursor_calls)
 
     def test_register_transaction_fingerprints_returns_registered_rows(self):
@@ -218,6 +231,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         registered_rows = register_transaction_fingerprints(
             connection,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-1",
                 "provider": "blu",
@@ -235,10 +249,14 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         self.assertEqual(1, len(cursor.executed))
         self.assertIn(
-            "returning transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at",
+            "returning workspace_id, transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at",
             cursor.executed[0][0],
         )
-        self.assertIn("on conflict (transaction_fingerprint)", cursor.executed[0][0])
+        self.assertIn(
+            "on conflict (workspace_id, transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
+        self.assertEqual("workspace-1", cursor.executed[0][1]["workspace_id"])
         self.assertEqual(1, cursor.fetchone_calls)
         self.assertEqual(0, cursor.fetchall_calls)
 
@@ -255,6 +273,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         register_transaction_fingerprints(
             connection,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-1",
                 "provider": "blu",
@@ -264,6 +283,36 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertIn("do update set", cursor.executed[0][0])
         self.assertIn("provider = excluded.provider", cursor.executed[0][0])
         self.assertIn("approved_at = excluded.approved_at", cursor.executed[0][0])
+
+    def test_same_fingerprint_can_be_registered_for_different_workspaces(self):
+        cursor = FakeReturningCursor([
+            {"transaction_fingerprint": "shared-fp", "workspace_id": "workspace-1"},
+            {"transaction_fingerprint": "shared-fp", "workspace_id": "workspace-2"},
+        ])
+        connection = FakeReturningConnection(cursor)
+        row = {
+            "transaction_fingerprint": "shared-fp",
+            "provider": "blu",
+        }
+
+        register_transaction_fingerprints(
+            connection,
+            workspace_id="workspace-1",
+            rows=[row],
+        )
+        register_transaction_fingerprints(
+            connection,
+            workspace_id="workspace-2",
+            rows=[row],
+        )
+
+        self.assertEqual(2, len(cursor.executed))
+        self.assertIn(
+            "on conflict (workspace_id, transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
+        self.assertEqual("workspace-1", cursor.executed[0][1]["workspace_id"])
+        self.assertEqual("workspace-2", cursor.executed[1][1]["workspace_id"])
 
     def test_get_registered_transaction_fingerprint_statuses_returns_mapping(self):
         cursor = FakeFetchAllCursor([
@@ -280,6 +329,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         statuses = get_registered_transaction_fingerprint_statuses(
             connection,
+            workspace_id="workspace-1",
             transaction_fingerprints=["fp-approved", "fp-rejected"],
         )
 
@@ -291,6 +341,11 @@ class BluPdfParserTestCase(unittest.TestCase):
             statuses,
         )
         self.assertIn("returning transaction_fingerprint, status", cursor.executed[0][0])
+        self.assertIn("where workspace_id = %s", cursor.executed[0][0])
+        self.assertEqual(
+            ("workspace-1", ["fp-approved", "fp-rejected"]),
+            cursor.executed[0][1],
+        )
 
     def test_register_rejected_transaction_fingerprint_returns_rejected_status(self):
         cursor = FakeReturningCursor([{
@@ -306,6 +361,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         rows = register_rejected_transaction_fingerprints(
             connection,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-rejected",
                 "provider": "blu",
@@ -315,6 +371,29 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("rejected", rows[0]["status"])
         self.assertIn("'rejected'", cursor.executed[0][0])
         self.assertIn("rejected_at = excluded.rejected_at", cursor.executed[0][0])
+        self.assertIn(
+            "on conflict (workspace_id, transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
+
+    def test_sync_status_update_is_scoped_by_workspace(self):
+        cursor = FakeFetchAllCursor([])
+        connection = FakeReturningConnection(cursor)
+
+        update_import_transaction_sync_status(
+            connection,
+            workspace_id="workspace-2",
+            transaction_fingerprints=["shared-fingerprint"],
+            sync_status="success",
+        )
+
+        query, params = cursor.executed[0]
+        self.assertIn("where workspace_id = %s", query)
+        self.assertIn("import_transaction_fingerprint = any(%s)", query)
+        self.assertEqual(
+            ("success", None, "workspace-2", ["shared-fingerprint"]),
+            params,
+        )
 
     def test_parser_detects_sections_and_review_groups(self):
         transactions = self.parser._parse_lines([
@@ -574,7 +653,8 @@ class BluPdfParserTestCase(unittest.TestCase):
             "status": "uploaded",
         }
 
-        def fake_get_statuses(_connection, *, transaction_fingerprints):
+        def fake_get_statuses(_connection, *, workspace_id, transaction_fingerprints):
+            self.assertEqual("workspace-1", workspace_id)
             return {
                 fingerprint: "approved"
                 for fingerprint in transaction_fingerprints
@@ -621,7 +701,8 @@ class BluPdfParserTestCase(unittest.TestCase):
             "provider": "blu",
             "status": "uploaded",
         }
-        def fake_get_statuses(_connection, *, transaction_fingerprints):
+        def fake_get_statuses(_connection, *, workspace_id, transaction_fingerprints):
+            self.assertEqual("workspace-1", workspace_id)
             return {
                 fingerprint: "rejected"
                 for fingerprint in transaction_fingerprints
@@ -1373,6 +1454,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         register_fingerprints_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-1",
                 "provider": "blu",
@@ -1380,6 +1462,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         update_sync_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             transaction_fingerprints=["fp-1"],
             sync_status="success",
         )
@@ -1705,6 +1788,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         update_sync_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             transaction_fingerprints=["fp-1"],
             sync_status="failed",
             sync_error_message="append failed",
@@ -2234,6 +2318,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(["draft-2"], reject_result["draft_ids"])
         register_rejected_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-rejected",
                 "provider": "blu",

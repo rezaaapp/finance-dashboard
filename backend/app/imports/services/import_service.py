@@ -253,6 +253,7 @@ class ImportService:
         ]
         fingerprint_statuses = get_registered_transaction_fingerprint_statuses(
             connection,
+            workspace_id=workspace_id,
             transaction_fingerprints=transaction_fingerprints,
         )
         existing_fingerprints = set(fingerprint_statuses.keys())
@@ -804,6 +805,7 @@ class ImportService:
         )
         register_transaction_fingerprints(
             connection,
+            workspace_id=workspace_id,
             rows=[
                 {
                     "transaction_fingerprint": draft["transaction_fingerprint"],
@@ -857,11 +859,13 @@ class ImportService:
                 success_status_kwargs["sync_error_message"] = sync_result["error"]
             update_import_transaction_sync_status(
                 connection,
+                workspace_id=workspace_id,
                 **success_status_kwargs,
             )
         elif sync_result["status"] == "needs_reconnect":
             update_import_transaction_sync_status(
                 connection,
+                workspace_id=workspace_id,
                 transaction_fingerprints=transaction_fingerprints,
                 sync_status="needs_reconnect",
                 sync_error_message="needs_reconnect",
@@ -869,6 +873,7 @@ class ImportService:
         else:
             update_import_transaction_sync_status(
                 connection,
+                workspace_id=workspace_id,
                 transaction_fingerprints=transaction_fingerprints,
                 sync_status="failed",
                 sync_error_message=sync_result.get("error"),
@@ -940,6 +945,7 @@ class ImportService:
         )
         register_rejected_transaction_fingerprints(
             connection,
+            workspace_id=workspace_id,
             rows=[
                 {
                     "transaction_fingerprint": draft["transaction_fingerprint"],

@@ -193,9 +193,9 @@ def get_existing_transaction_fingerprints(
     workspace_id: str,
     transaction_fingerprints: list[str],
 ):
-    del workspace_id
     return get_registered_transaction_fingerprints(
         connection,
+        workspace_id=workspace_id,
         transaction_fingerprints=transaction_fingerprints,
     )
 

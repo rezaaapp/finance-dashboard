@@ -70,7 +70,7 @@ def create_import_transactions(
                     %(sync_status)s,
                     %(sync_error_message)s
                 )
-                on conflict (import_transaction_fingerprint)
+                on conflict (workspace_id, import_transaction_fingerprint)
                 where import_transaction_fingerprint is not null
                 do update set
                     import_transaction_fingerprint = excluded.import_transaction_fingerprint
@@ -92,6 +92,7 @@ def create_import_transactions(
 def update_import_transaction_sync_status(
     connection,
     *,
+    workspace_id: str,
     transaction_fingerprints: list[str],
     sync_status: str,
     sync_error_message: str | None = None,
@@ -107,12 +108,14 @@ def update_import_transaction_sync_status(
                 sync_status = %s,
                 sync_error_message = %s,
                 updated_at = now()
-            where import_transaction_fingerprint = any(%s)
+            where workspace_id = %s
+              and import_transaction_fingerprint = any(%s)
             returning id, import_transaction_fingerprint, sync_status
             """,
             (
                 sync_status,
                 sync_error_message,
+                workspace_id,
                 transaction_fingerprints,
             ),
         )
