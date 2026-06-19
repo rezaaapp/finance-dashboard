@@ -1,25 +1,7 @@
 import unittest
-import sys
-import types
 from pathlib import Path
 
-
-fake_fastapi = types.ModuleType("fastapi")
-
-
-class HTTPException(Exception):
-    def __init__(self, *, status_code: int, detail: str):
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
-
-
-fake_fastapi.HTTPException = HTTPException
-fake_fastapi.status = types.SimpleNamespace(
-    HTTP_403_FORBIDDEN=403,
-    HTTP_404_NOT_FOUND=404,
-)
-sys.modules.setdefault("fastapi", fake_fastapi)
+from fastapi import HTTPException
 
 from backend.app.security.workspace_permissions import (
     can_manage_workspace,

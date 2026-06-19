@@ -57,7 +57,12 @@ class LocalLoginSessionTestCase(unittest.TestCase):
             "google_sheet_sources": [],
         }
 
-        with patch("app.api.auth.authenticate_user", return_value=True), \
+        with patch("app.api.auth.settings.DASHBOARD_USERNAME", "admin"), \
+             patch(
+                 "app.api.auth.settings.SUPER_ADMIN_EMAILS",
+                 ["admin@local.finance-dashboard"],
+             ), \
+             patch("app.api.auth.authenticate_user", return_value=True), \
              patch("app.api.auth.get_db_connection", return_value=_FakeConnection()), \
              patch("app.api.auth.upsert_user", return_value=fake_user) as upsert_user_mock, \
              patch(
@@ -105,7 +110,9 @@ class LocalLoginSessionTestCase(unittest.TestCase):
             "google_sheet_sources": [],
         }
 
-        with patch("app.api.auth.authenticate_user", return_value=True), \
+        with patch("app.api.auth.settings.DASHBOARD_USERNAME", "owner@example.com"), \
+             patch("app.api.auth.settings.SUPER_ADMIN_EMAILS", []), \
+             patch("app.api.auth.authenticate_user", return_value=True), \
              patch("app.api.auth.get_db_connection", return_value=_FakeConnection()), \
              patch("app.api.auth.upsert_user", return_value=fake_user) as upsert_user_mock, \
              patch(
