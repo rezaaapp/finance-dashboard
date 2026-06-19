@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from app.repositories.google_sheet_source_repository import (
     create_google_sheet_source,
     delete_google_sheet_source,
     get_google_sheet_source,
+    get_google_sheet_source_by_id,
     get_google_sheet_sources,
     mark_google_sheet_source_error,
     update_google_sheet_last_synced,
@@ -185,6 +187,56 @@ def _validate_optional_year(year: int | None) -> int | None:
     return normalized_year
 
 
+def _parse_source_id(source_id: str) -> str:
+    normalized_source_id = str(source_id or "").strip()
+
+    if not normalized_source_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google Sheet source ID is required",
+        )
+
+    try:
+        return str(UUID(normalized_source_id))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Google Sheet source ID",
+        ) from exc
+
+
+def _get_workspace_source_or_raise(
+    connection,
+    *,
+    workspace_id: str,
+    source_id: str,
+):
+    source = get_google_sheet_source(
+        connection,
+        workspace_id=workspace_id,
+        source_id=source_id,
+    )
+
+    if source:
+        return source
+
+    foreign_source = get_google_sheet_source_by_id(
+        connection,
+        source_id=source_id,
+    )
+
+    if foreign_source:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Google Sheet source access denied",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Google Sheet source not found",
+    )
+
+
 def _get_access_context(connection, *, workspace_id: str, user_id: str):
     oauth_connection = get_active_google_oauth_connection(
         connection,
@@ -311,20 +363,15 @@ def list_google_sheet_source_worksheets(
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
+    source_id = _parse_source_id(source_id)
     workspace_id = str(workspace["id"])
 
     with get_db_connection() as connection:
-        source = get_google_sheet_source(
+        source = _get_workspace_source_or_raise(
             connection,
             workspace_id=workspace_id,
             source_id=source_id,
         )
-
-        if not source:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Google Sheet source not found",
-            )
 
         _oauth_connection, access_token = _get_access_context(
             connection,
@@ -458,20 +505,15 @@ def sync_google_sheet_source(
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
+    source_id = _parse_source_id(source_id)
     workspace_id = str(workspace["id"])
 
     with get_db_connection() as connection:
-        source = get_google_sheet_source(
+        source = _get_workspace_source_or_raise(
             connection,
             workspace_id=workspace_id,
             source_id=source_id,
         )
-
-        if not source:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Google Sheet source not found",
-            )
 
         with connection.transaction():
             job = create_sync_job(
@@ -802,7 +844,15 @@ def delete_google_sheet_data_source(
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
+    source_id = _parse_source_id(source_id)
+
     with get_db_connection() as connection:
+        _get_workspace_source_or_raise(
+            connection,
+            workspace_id=str(workspace["id"]),
+            source_id=source_id,
+        )
+
         with connection.transaction():
             deleted_source = delete_google_sheet_source(
                 connection,
