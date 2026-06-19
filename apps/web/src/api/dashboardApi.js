@@ -39,6 +39,15 @@ export const getSummary = async (year, month) => {
   return response.data;
 };
 
+export const getDashboardViewModel = async (year, month, name) => {
+  const response = await axios.get(
+    `${DASHBOARD_API_URL}/view-model`,
+    buildConfig(year, month, name)
+  );
+
+  return response.data;
+};
+
 export const getMonthlySpending = async (year, month) => {
   const response = await axios.get(
     `${DASHBOARD_API_URL}/monthly-spending`,

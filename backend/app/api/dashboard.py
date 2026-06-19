@@ -13,6 +13,11 @@ from app.repositories.workspaces import (
     normalize_google_sheet_sources,
     update_google_sheet_id_for_user,
 )
+from app.repositories.google_oauth_repository import (
+    get_active_google_oauth_connection,
+    get_google_oauth_connection_status,
+)
+from app.repositories.google_sheet_source_repository import get_google_sheet_sources
 from app.repositories.workspace_invitation_repository import (
     create_workspace_invitation,
     has_pending_invitation,
@@ -22,6 +27,7 @@ from app.repositories.workspace_invitation_repository import (
 from app.security.workspace_permissions import require_workspace_manager
 from app.repositories import analytics_repository as analytics
 from app.services.financial_insight_service import generate_rule_based_insights
+from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
 
@@ -190,6 +196,241 @@ def serialize_workspace_invitation(invitation):
         "status": invitation["status"],
         "created_at": invitation["created_at"],
         "expires_at": invitation.get("expires_at"),
+    }
+
+
+def get_transaction_available_years_for_workspace(connection, *, workspace_id: str):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select distinct
+                    extract(year from transaction_date)::int as year
+                from transactions
+                where workspace_id = %s
+                  and transaction_date is not null
+                  and transaction_date <= current_date
+                order by year desc
+                """,
+                (workspace_id,),
+            )
+
+            return [
+                row[0]
+                for row in cursor.fetchall()
+                if row[0] is not None
+            ]
+    except UndefinedTable:
+        return []
+
+
+def build_dashboard_view_model_payload(
+    connection,
+    *,
+    workspace: dict,
+    current_user: dict,
+    year: int | None = None,
+    month: int | None = None,
+    name: str | None = None,
+):
+    workspace_id = str(workspace["id"])
+    available_years = get_transaction_available_years_for_workspace(
+        connection,
+        workspace_id=workspace_id,
+    )
+    selected_year = year if year is not None else (available_years[0] if available_years else None)
+    selected_month = month
+    analytics_user_name = name or None
+    google_sheet_sources = get_google_sheet_sources(
+        connection,
+        workspace_id=workspace_id,
+    )
+    connection_status = get_google_oauth_connection_status(
+        connection,
+        workspace_id=workspace_id,
+        user_id=current_user["sub"],
+    )
+    active_connection = get_active_google_oauth_connection(
+        connection,
+        workspace_id=workspace_id,
+        user_id=current_user["sub"],
+    )
+    sync_service = SpreadsheetSyncService()
+    google_connection = (
+        {
+            "connected": True,
+            "google_email": connection_status["google_email"],
+            "status": connection_status["status"],
+            "needs_reconnect": sync_service.requires_reconnect(
+                (active_connection or {}).get("scopes") or []
+            ),
+        }
+        if connection_status
+        else {"connected": False}
+    )
+    has_active_google_sheet = bool(
+        workspace.get("google_sheet_id")
+        or workspace.get("google_sheet_sources")
+        or google_sheet_sources
+    )
+
+    summary_data = analytics.get_summary(
+        connection,
+        workspace_id=workspace_id,
+        year=selected_year,
+        month=selected_month,
+    )
+    dashboard_payload = {
+        "summary": summary_data,
+        "monthly_spending": analytics.get_monthly_totals(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+            direction="expense",
+        ),
+        "monthly_saving": analytics.get_monthly_totals(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+            direction="saving_transfer",
+        ),
+        "monthly_income": analytics.get_monthly_totals(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+            direction="income",
+        ),
+        "top_spending": analytics.get_top_spending(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+        ),
+        "spending_by_category": analytics.get_spending_by_category(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+        ),
+        "financial_types": analytics.get_financial_type_breakdown(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+        ),
+        "monthly_financial_types": (
+            analytics.get_monthly_financial_type_breakdown(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+            )
+            if selected_year is not None
+            else []
+        ),
+        "rule_based_insights": generate_rule_based_insights(
+            connection,
+            workspace_id=workspace_id,
+            year=selected_year,
+            month=selected_month,
+        ),
+    }
+
+    is_premium = str(current_user.get("role") or "").strip().lower() in {
+        "super_admin",
+        "owner",
+        "member",
+    }
+
+    if is_premium:
+        insight_settings = get_effective_insight_settings(
+            connection,
+            workspace_id=workspace_id,
+            default_settings=settings.get_default_insight_settings(),
+        )
+        dashboard_payload.update({
+            "grocery_vs_food": analytics.get_grocery_vs_food(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+                name=analytics_user_name,
+            ),
+            "category_heatmap": analytics.get_category_heatmap(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+                name=analytics_user_name,
+            ),
+            "transactions": analytics.get_transactions(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+                name=analytics_user_name,
+            ),
+            "category_trends": analytics.get_category_trends(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+                name=analytics_user_name,
+            ),
+            "personal_analytics": analytics.get_personal_analytics(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+            ),
+            "budget_forecast": analytics.get_budget_forecast(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+            ),
+            "anomalies": analytics.get_anomalies(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+                insight_settings=insight_settings,
+            ),
+        })
+    else:
+        dashboard_payload.update({
+            "grocery_vs_food": [],
+            "category_heatmap": {},
+            "transactions": [],
+            "category_trends": {},
+            "personal_analytics": {},
+            "budget_forecast": {},
+            "anomalies": [],
+        })
+
+    return {
+        "workspace": {
+            "id": workspace_id,
+            "name": workspace["name"],
+            "role": workspace["role"],
+            "subscription_status": workspace["subscription_status"],
+        },
+        "selected_period": {
+            "year": selected_year,
+            "month": selected_month,
+            "name": analytics_user_name,
+        },
+        "available_years": available_years,
+        "google_connection": google_connection,
+        "google_sheet_sources": google_sheet_sources,
+        "has_active_google_sheet": has_active_google_sheet,
+        "current_sheet_name": (
+            summary_data.get("data_source", {}).get("name")
+            or (f"Google Sheet {selected_year}" if selected_year else "")
+        ),
+        "dashboard": dashboard_payload,
     }
 
 
@@ -619,6 +860,34 @@ def rule_based_insights(
 @router.get("/available-years")
 def available_years(years=Depends(get_transaction_available_years)):
     return years
+
+
+@router.get("/view-model")
+def dashboard_view_model(
+    year: int | None = None,
+    month: int | None = None,
+    name: str | None = None,
+    current_user=Depends(require_current_user),
+    active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
+):
+    workspace = resolve_workspace_for_request(
+        current_user,
+        active_workspace_id,
+        create_default=True,
+    )
+
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    with get_db_connection() as connection:
+        return build_dashboard_view_model_payload(
+            connection,
+            workspace=workspace,
+            current_user=current_user,
+            year=year,
+            month=month,
+            name=name,
+        )
 
 
 @router.get("/budget-forecast")
