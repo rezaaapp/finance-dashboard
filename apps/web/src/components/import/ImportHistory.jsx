@@ -6,6 +6,12 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import {
+  getOmonApprovalStatus,
+  getReadableSyncStatus,
+  getSpreadsheetDeliveryStatus,
+} from "./deliveryStatusUx";
+
 const formatDateTime = (value) => {
   if (!value) {
     return "-";
@@ -43,6 +49,26 @@ const formatAmount = (amount) => new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
 }).format(Number(amount || 0));
 
+const RetryResultBanner = ({ retryResult }) => {
+  if (!retryResult) {
+    return null;
+  }
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 text-sm ${
+      retryResult.tone === "success"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+        : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+    }`}>
+      <p className="font-semibold text-main">{retryResult.title}</p>
+      <p className="mt-1">{retryResult.message}</p>
+      {retryResult.detail && (
+        <p className="mt-1 text-xs">{retryResult.detail}</p>
+      )}
+    </div>
+  );
+};
+
 const ImportHistory = ({
   historyRows,
   selectedDetail,
@@ -67,6 +93,8 @@ const ImportHistory = ({
   onTargetSheetChange,
 }) => {
   const hasRetryTarget = Boolean(targetSourceId && targetSheetName);
+  const approvalStatus = selectedDetail ? getOmonApprovalStatus(selectedDetail) : null;
+  const deliveryStatus = selectedDetail ? getSpreadsheetDeliveryStatus(selectedDetail) : null;
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -88,7 +116,7 @@ const ImportHistory = ({
                 </div>
               </div>
               <p className="mt-4 max-w-3xl text-sm leading-6 text-muted">
-                Riwayat import tetap tersedia walau file PDF sementara sudah dihapus.
+                Riwayat approval di Omon dan status pengiriman salinan ke Google Spreadsheet dipantau terpisah, walau file PDF sementara sudah dihapus.
               </p>
             </div>
 
@@ -128,22 +156,22 @@ const ImportHistory = ({
               <table className="w-full min-w-[1080px] border-collapse text-sm">
                 <thead>
                   <tr className="table-header table-border text-muted">
-                    <th className="px-4 py-3 text-left font-semibold">Date</th>
-                    <th className="px-4 py-3 text-left font-semibold">Filename</th>
+                    <th className="px-4 py-3 text-left font-semibold">Waktu</th>
+                    <th className="px-4 py-3 text-left font-semibold">File</th>
                     <th className="px-4 py-3 text-left font-semibold">Provider</th>
-                    <th className="px-4 py-3 text-left font-semibold">Status</th>
-                    <th className="px-4 py-3 text-left font-semibold">New</th>
-                    <th className="px-4 py-3 text-left font-semibold">Existing</th>
-                    <th className="px-4 py-3 text-left font-semibold">Approved</th>
-                    <th className="px-4 py-3 text-left font-semibold">Rejected</th>
-                    <th className="px-4 py-3 text-left font-semibold">Sync</th>
-                    <th className="px-4 py-3 text-left font-semibold">Action</th>
+                    <th className="px-4 py-3 text-left font-semibold">Status Omon</th>
+                    <th className="px-4 py-3 text-left font-semibold">Baru</th>
+                    <th className="px-4 py-3 text-left font-semibold">Sudah Tercatat</th>
+                    <th className="px-4 py-3 text-left font-semibold">Disetujui</th>
+                    <th className="px-4 py-3 text-left font-semibold">Ditolak</th>
+                    <th className="px-4 py-3 text-left font-semibold">Status Spreadsheet</th>
+                    <th className="px-4 py-3 text-left font-semibold">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {historyRows.map((job) => {
-                    const syncLabel = `${job.sync_success} ok / ${job.sync_failed} fail`;
-                    const needsReconnect = job.needs_reconnect;
+                    const rowApprovalStatus = getOmonApprovalStatus(job);
+                    const rowDeliveryStatus = getSpreadsheetDeliveryStatus(job);
                     const canRetry = job.retryable_sync_count > 0;
 
                     return (
@@ -156,13 +184,8 @@ const ImportHistory = ({
                         </td>
                         <td className="px-4 py-3 uppercase text-muted">{job.provider}</td>
                         <td className="px-4 py-3">
-                          <StatusBadge tone={
-                            job.status === "completed" ? "success" :
-                            job.status === "cleanup_completed" ? "warning" :
-                            job.status === "failed" ? "danger" :
-                            "default"
-                          }>
-                            {job.status}
+                          <StatusBadge tone={rowApprovalStatus.tone}>
+                            {rowApprovalStatus.label}
                           </StatusBadge>
                         </td>
                         <td className="px-4 py-3 font-semibold text-main">{job.new_transactions}</td>
@@ -171,10 +194,12 @@ const ImportHistory = ({
                         <td className="px-4 py-3 text-muted">{job.rejected_transactions}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-col gap-1">
-                            <span className="text-main">{syncLabel}</span>
-                            {needsReconnect && (
-                              <StatusBadge tone="warning">needs_reconnect</StatusBadge>
-                            )}
+                            <StatusBadge tone={rowDeliveryStatus.tone}>
+                              {rowDeliveryStatus.label}
+                            </StatusBadge>
+                            <span className="text-xs text-muted">
+                              {job.sync_success} berhasil / {job.sync_failed} belum terkirim
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -184,7 +209,7 @@ const ImportHistory = ({
                               onClick={() => onViewDetail(job.job_id)}
                               className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)]"
                             >
-                              View Detail
+                              Lihat Detail
                             </button>
                             {canRetry && (
                               <button
@@ -229,47 +254,57 @@ const ImportHistory = ({
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Import Time</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Waktu Import</p>
                 <p className="mt-2 font-semibold text-main">{formatDateTime(selectedDetail.import_time)}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Status</p>
-                <p className="mt-2 font-semibold text-main">{selectedDetail.status}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Status Omon</p>
+                <p className="mt-2 font-semibold text-main">{approvalStatus.label}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Found</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Transaksi Dibaca</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.transactions_found}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">New</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Transaksi Baru</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.new_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Existing</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Sudah Tercatat</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.existing_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Approved in Omon</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Disetujui di Omon</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.approved_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Rejected</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Ditolak</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.rejected_transactions}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Spreadsheet Sent</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Terkirim ke Spreadsheet</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.sync_success}</p>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3">
-                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Spreadsheet Pending</p>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Belum Terkirim</p>
                 <p className="mt-2 font-semibold text-main">{selectedDetail.sync_failed}</p>
               </div>
             </div>
 
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Status Spreadsheet</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StatusBadge tone={deliveryStatus.tone}>{deliveryStatus.label}</StatusBadge>
+              </div>
+              <p className="mt-3 text-sm text-muted">
+                {deliveryStatus.summary}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
               <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">PDF</p>
               <p className="mt-2 font-semibold text-main">
-                {selectedDetail.pdf_status === "already_deleted" ? "Already Deleted" : "Available"}
+                {selectedDetail.pdf_status === "already_deleted" ? "Sudah Dihapus" : "Masih Tersedia"}
               </p>
             </div>
 
@@ -279,7 +314,7 @@ const ImportHistory = ({
                   Ada transaksi yang sudah disetujui dan menjadi data utama di Omon, tetapi salinannya belum terkirim ke Google Spreadsheet.
                 </p>
                 <p className="mt-1">
-                  {selectedDetail.unsynced_count} transaksi perlu retry pengiriman spreadsheet tanpa membuat ulang transaksi final.
+                  {selectedDetail.unsynced_count} transaksi perlu Retry pengiriman tanpa membuat ulang transaksi final di Omon.
                 </p>
               </div>
             )}
@@ -287,7 +322,7 @@ const ImportHistory = ({
             {selectedDetail.unsynced_transactions?.length > 0 && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Pengiriman Spreadsheet Tertunda
+                  Pengiriman Spreadsheet Belum Selesai
                 </p>
                 <div className="mt-3 grid grid-cols-1 gap-2">
                   {selectedDetail.unsynced_transactions.slice(0, 5).map((transaction) => (
@@ -309,7 +344,7 @@ const ImportHistory = ({
                         </p>
                       </div>
                       <p className="mt-2 text-xs text-muted">
-                        {transaction.sync_status}
+                        {getReadableSyncStatus(transaction)}
                         {transaction.sync_error_message ? ` · ${transaction.sync_error_message}` : ""}
                       </p>
                     </div>
@@ -321,7 +356,10 @@ const ImportHistory = ({
             {selectedDetail.unsynced_count > 0 && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Retry Sync
+                  Retry Pengiriman Spreadsheet
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  Retry hanya mencoba mengirim ulang salinan ke Google Spreadsheet. Transaksi yang sudah tersimpan di Omon tidak dibuat ulang.
                 </p>
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <label className="block">
@@ -368,21 +406,11 @@ const ImportHistory = ({
 
                   {(sheetSourcesError || worksheetsError || !hasRetryTarget) && (
                     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-4 py-3 text-sm text-muted">
-                      {sheetSourcesError || worksheetsError || "Pilih target spreadsheet dan tab tujuan sebelum Retry Sync."}
+                      {sheetSourcesError || worksheetsError || "Pilih spreadsheet dan tab tujuan sebelum retry pengiriman agar sistem bisa mengirim ulang salinan transaksi."}
                     </div>
                   )}
 
-                  {retryResult && (
-                    <div className={`rounded-lg border px-4 py-3 text-sm ${
-                      retryResult.status === "completed"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
-                        : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
-                    }`}>
-                      {retryResult.message || (
-                        `${retryResult.sync_success || 0} berhasil, ${retryResult.sync_failed || 0} gagal.`
-                      )}
-                    </div>
-                  )}
+                  <RetryResultBanner retryResult={retryResult} />
 
                   <button
                     type="button"
@@ -395,7 +423,7 @@ const ImportHistory = ({
                     ) : (
                       <RefreshCw size={16} />
                     )}
-                    Retry Sync
+                    Retry Pengiriman
                   </button>
                 </div>
               </div>
@@ -409,7 +437,7 @@ const ImportHistory = ({
                   className="primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
                 >
                   <Cloud size={16} />
-                  Reconnect Google
+                  Hubungkan Ulang Google
                 </button>
               )}
             </div>
@@ -421,7 +449,7 @@ const ImportHistory = ({
             </span>
             <h3 className="mt-4 text-lg font-bold text-main">Pilih riwayat import</h3>
             <p className="mt-2 max-w-xs text-sm leading-6 text-muted">
-              Klik View Detail untuk melihat ringkasan lifecycle import dan status sync.
+              Klik View Detail untuk melihat ringkasan approval di Omon dan status pengiriman Spreadsheet.
             </p>
           </div>
         )}

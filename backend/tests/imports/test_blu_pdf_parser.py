@@ -1644,7 +1644,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "status": "failed",
                 "error_code": "missing_target_sheet",
-                "message": "Pilih target spreadsheet dan tab tujuan sebelum approve.",
+                "message": "Pilih spreadsheet dan tab tujuan dulu sebelum approval dijalankan.",
             },
             raised.exception.to_response(),
         )
@@ -1709,7 +1709,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "status": "failed",
                 "error_code": "invalid_target_sheet_header",
-                "message": "Tab tujuan belum memiliki format kolom transaksi yang sesuai.",
+                "message": "Tab tujuan belum siap menerima salinan transaksi karena format kolomnya belum sesuai.",
             },
             raised.exception.to_response(),
         )

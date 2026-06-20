@@ -279,7 +279,6 @@ const ImportReview = ({
 
   const summary = reviewData?.summary || {};
   const filters = reviewData?.filters || [];
-  const isSyncWarning = Boolean(actionError?.syncStatus);
 
   return (
     <div className="grid grid-cols-1 gap-6">
@@ -329,19 +328,19 @@ const ImportReview = ({
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
             <ReviewMetricCard
               icon={Inbox}
-              label="Transactions Found"
+              label="Transaksi Dibaca"
               value={`${summary.transactions_found || 0} transaksi`}
             />
             <ReviewMetricCard
               icon={CheckCheck}
-              label="New Transactions"
-              value={`${draftRows.length} Baru Tersisa`}
+              label="Siap Direview"
+              value={`${draftRows.length} transaksi`}
               tone="success"
             />
             <ReviewMetricCard
               icon={CircleAlert}
-              label="Existing Transactions"
-              value={`⚪ ${summary.existing_transactions || 0} Sudah Tercatat`}
+              label="Sudah Tercatat"
+              value={`${summary.existing_transactions || 0} transaksi`}
               tone="muted"
             />
           </div>
@@ -355,12 +354,12 @@ const ImportReview = ({
               </p>
               <p className="mt-2 text-sm text-muted">
                 Setelah transaksi disetujui dan tersimpan di Omon, sistem akan mencoba
-                mengirim salinannya ke tab ini.
+                mengirim salinannya ke tab ini sebagai projection/export layer.
               </p>
               <p className="mt-2 text-xs text-muted">
                 PostgreSQL di Omon adalah source of truth. Google Spreadsheet dipakai
                 sebagai input dan projection/export layer, jadi status approval dan
-                status pengiriman spreadsheet dipantau terpisah.
+                status pengiriman Spreadsheet dipantau terpisah.
               </p>
             </div>
 
@@ -411,7 +410,7 @@ const ImportReview = ({
 
           {(sheetSourcesError || worksheetsError || !hasTargetSheet) && (
             <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-              {sheetSourcesError || worksheetsError || "Pilih tab tujuan untuk pengiriman salinan setelah approve."}
+              {sheetSourcesError || worksheetsError || "Pilih spreadsheet dan tab tujuan agar setelah transaksi tersimpan di Omon, sistem bisa mencoba mengirim salinannya ke Google Spreadsheet."}
             </div>
           )}
         </section>
@@ -423,40 +422,43 @@ const ImportReview = ({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-semibold text-main">
-                      {isSyncWarning
-                        ? "Transaksi sudah tersimpan di Omon, pengiriman ke Google Sheets perlu dicek"
-                        : "Approval import belum bisa dilanjutkan"}
+                      Approval belum dijalankan
                     </p>
                     <p className="mt-1">
                       {actionError.message}
                     </p>
                     {actionError.errorCode === "missing_google_sheet_source" && (
                       <p className="mt-1">
-                        Hubungkan Google Sheets terlebih dahulu.
+                        Omon belum menyimpan approval karena koneksi tujuan Google Spreadsheet belum siap.
                       </p>
                     )}
                     {actionError.errorCode === "missing_target_sheet" && (
                       <p className="mt-1">
-                        Google Sheets sudah terhubung, tapi tab tujuan transaksi belum dipilih.
+                        Pilih spreadsheet dan tab tujuan lebih dulu. Setelah approval tersimpan di Omon, salinannya akan dicoba dikirim ke tujuan ini.
                       </p>
                     )}
                     {actionError.errorCode === "needs_reconnect" && (
                       <p className="mt-1">
-                        Hubungkan ulang Google Sheets terlebih dahulu.
+                        Hubungkan ulang Google terlebih dahulu agar approval bisa dilanjutkan dengan target spreadsheet yang valid.
+                      </p>
+                    )}
+                    {actionError.errorCode === "invalid_target_sheet_header" && (
+                      <p className="mt-1">
+                        Tab tujuan sudah dipilih, tetapi format kolomnya belum sesuai untuk menerima salinan transaksi dari Omon.
                       </p>
                     )}
                     {actionError.errorCode === "sync_failed" && (
                       <p className="mt-1">
-                        Cek tab tujuan atau koneksi Google Sheets, lalu gunakan Retry Sync dari History.
+                        Cek tab tujuan atau koneksi Google Sheets, lalu lanjutkan lagi setelah target pengiriman siap.
                       </p>
                     )}
                   </div>
-                  {["missing_google_sheet_source", "needs_reconnect"].includes(actionError.errorCode) && (
+                  {["missing_google_sheet_source", "needs_reconnect", "invalid_target_sheet_header"].includes(actionError.errorCode) && (
                     <a
                       href="/settings"
                       className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/40"
                     >
-                      Buka Settings Google Sheets
+                      Buka Settings Integrasi
                     </a>
                   )}
                 </div>
@@ -470,20 +472,23 @@ const ImportReview = ({
                   : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
               }`}>
                 <p className="font-semibold text-main">
-                  {actionFeedback.tone === "success"
-                    ? "Approval berhasil dicatat di Omon."
-                    : "Pengiriman salinan ke Google Spreadsheet perlu ditindaklanjuti."}
+                  {actionFeedback.title}
                 </p>
                 <p className="mt-1">{actionFeedback.message}</p>
                 {actionFeedback.detail && (
                   <p className="mt-1 text-xs">{actionFeedback.detail}</p>
+                )}
+                {actionFeedback.tone !== "success" && (
+                  <p className="mt-2 text-xs">
+                    Lanjutkan monitoring status pengiriman salinan di tab History.
+                  </p>
                 )}
               </div>
             )}
 
             {actionLoading === "approve-selected" && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-                Sedang menyetujui transaksi di Omon, lalu mencoba mengirim salinannya ke Google Sheets...
+                Sedang menyimpan approval ke Omon, lalu mencoba mengirim salinannya ke Google Spreadsheet...
               </div>
             )}
 
@@ -538,7 +543,7 @@ const ImportReview = ({
                   disabled={selectedIds.length === 0 || actionLoading !== "" || !hasTargetSheet}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {actionLoading === "approve-selected" ? "Menyimpan transaksi..." : "Setujui Pilihan"}
+                  {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Setujui & Simpan di Omon"}
                 </button>
                 <button
                   type="button"
@@ -568,7 +573,7 @@ const ImportReview = ({
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
               <div className="flex items-center gap-3">
                 <CheckCheck size={20} className="shrink-0" />
-                <p className="font-semibold">Semua transaksi baru sudah diproses.</p>
+                <p className="font-semibold">Semua transaksi baru untuk file ini sudah diproses.</p>
               </div>
             </div>
           ) : filteredRows.length === 0 ? (

@@ -17,6 +17,10 @@ import {
 import ImportLanding from "../components/import/ImportLanding";
 import ImportHistory from "../components/import/ImportHistory";
 import ImportReview from "../components/import/ImportReview";
+import {
+  buildApproveFeedback,
+  buildRetryFeedback,
+} from "../components/import/deliveryStatusUx";
 
 const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null }) => {
   const normalizedFilename = String(filename || "").toLowerCase();
@@ -282,25 +286,7 @@ const ImportTransactions = () => {
     try {
       const response = await approveImportReview(activeJobId, payload);
       setReviewData(response.review);
-
-      if (response.sync_status === "success" && response.sync_failed === 0) {
-        setReviewActionFeedback({
-          tone: "success",
-          message: response.sync_success > 0
-            ? "Transaksi berhasil disetujui dan tersimpan di Omon. Salinannya juga berhasil dikirim ke Google Spreadsheet."
-            : "Transaksi berhasil disetujui dan tersimpan di Omon.",
-        });
-      } else {
-        setReviewActionFeedback({
-          tone: "warning",
-          message: (
-            "Transaksi sudah disetujui dan tersimpan di Omon sebagai data utama, "
-            + "tetapi pengiriman salinannya ke Google Spreadsheet belum berhasil. "
-            + "Gunakan Retry Sync di Riwayat Import."
-          ),
-          detail: response.sync_error_message || "",
-        });
-      }
+      setReviewActionFeedback(buildApproveFeedback(response));
 
       await loadHistory();
       return response;
@@ -337,7 +323,7 @@ const ImportTransactions = () => {
         sheet_source_id: targetSourceId,
         sheet_name: targetSheetName,
       });
-      setHistoryRetryResult(response);
+      setHistoryRetryResult(buildRetryFeedback(response));
       await loadHistory();
 
       if (historyDetail?.job_id === jobId) {
@@ -346,12 +332,14 @@ const ImportTransactions = () => {
     } catch (retryError) {
       const responsePayload = retryError?.response?.data || {};
 
-      setHistoryRetryResult({
-        status: "failed",
-        sync_status: "failed",
-        message: responsePayload.message || responsePayload.detail || "Retry sync belum berhasil.",
-        sync_error_message: responsePayload.message || responsePayload.detail || "Retry sync belum berhasil.",
-      });
+        setHistoryRetryResult({
+          ...buildRetryFeedback({
+            status: "failed",
+            sync_status: responsePayload.sync_status || "failed",
+            message: responsePayload.message || responsePayload.detail || "Retry pengiriman belum berhasil.",
+            sync_error_message: responsePayload.message || responsePayload.detail || "Retry pengiriman belum berhasil.",
+          }),
+        });
     } finally {
       setActionLoading("");
     }

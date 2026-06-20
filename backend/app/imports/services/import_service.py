@@ -88,7 +88,7 @@ GENERIC_IMPORT_CONTENT_TYPES = {
 
 class MissingGoogleSheetSourceError(Exception):
     error_code = "missing_google_sheet_source"
-    message = "Google Sheet aktif belum dikonfigurasi. Hubungkan Google Sheets dulu di Settings."
+    message = "Tujuan Google Spreadsheet belum siap. Hubungkan Google dulu di Settings sebelum approval dilanjutkan."
 
     def to_response(self) -> dict:
         return {
@@ -100,7 +100,7 @@ class MissingGoogleSheetSourceError(Exception):
 
 class MissingTargetSheetError(Exception):
     error_code = "missing_target_sheet"
-    message = "Pilih target spreadsheet dan tab tujuan sebelum approve."
+    message = "Pilih spreadsheet dan tab tujuan dulu sebelum approval dijalankan."
 
     def to_response(self) -> dict:
         return {
@@ -112,7 +112,7 @@ class MissingTargetSheetError(Exception):
 
 class InvalidTargetSheetHeaderError(Exception):
     error_code = "invalid_target_sheet_header"
-    message = "Tab tujuan belum memiliki format kolom transaksi yang sesuai."
+    message = "Tab tujuan belum siap menerima salinan transaksi karena format kolomnya belum sesuai."
 
     def to_response(self) -> dict:
         return {
