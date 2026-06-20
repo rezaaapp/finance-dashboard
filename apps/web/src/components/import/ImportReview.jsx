@@ -79,6 +79,8 @@ const ImportReview = ({
   categoryOptions = [],
   categoryOptionsLoading = false,
   categoryOptionsError = "",
+  pagination = null,
+  onPageChange,
   onBack,
 }) => {
   const [activeFilter, setActiveFilter] = useState("all");
@@ -241,7 +243,7 @@ const ImportReview = ({
     }
   };
 
-  if (loading) {
+  if (loading && !reviewData) {
     return (
       <div className="panel rounded-lg p-6 shadow-lg">
         <p className="text-sm text-muted">
@@ -279,6 +281,7 @@ const ImportReview = ({
 
   const summary = reviewData?.summary || {};
   const filters = reviewData?.filters || [];
+  const totalDraftRows = pagination?.total ?? draftRows.length;
 
   return (
     <div className="grid grid-cols-1 gap-6">
@@ -334,7 +337,7 @@ const ImportReview = ({
             <ReviewMetricCard
               icon={CheckCheck}
               label="Siap Direview"
-              value={`${draftRows.length} transaksi`}
+              value={`${totalDraftRows} transaksi`}
               tone="success"
             />
             <ReviewMetricCard
@@ -417,6 +420,18 @@ const ImportReview = ({
 
         <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
           <div className="flex flex-col gap-4">
+            {loading && reviewData && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
+                Memuat halaman transaksi review berikutnya...
+              </div>
+            )}
+
+            {error && reviewData && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+                {error}
+              </div>
+            )}
+
             {actionError && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -565,6 +580,12 @@ const ImportReview = ({
                 {categoryNotice.message}
               </div>
             )}
+
+            {pagination && pagination.total > pagination.limit && (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-xs text-muted">
+                Filter dan pencarian berlaku untuk transaksi yang sedang tampil di halaman ini. Total transaksi review: {pagination.total}.
+              </div>
+            )}
           </div>
         </section>
 
@@ -655,6 +676,32 @@ const ImportReview = ({
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {pagination && pagination.total > pagination.limit && (
+            <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-muted">
+                Menampilkan {pagination.offset + 1}-{Math.min(pagination.offset + draftRows.length, pagination.total)} dari {pagination.total} transaksi review.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(Math.max(0, pagination.offset - pagination.limit))}
+                  disabled={!pagination.has_previous || loading}
+                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Sebelumnya
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(pagination.offset + pagination.limit)}
+                  disabled={!pagination.has_next || loading}
+                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Berikutnya
+                </button>
+              </div>
             </div>
           )}
         </section>

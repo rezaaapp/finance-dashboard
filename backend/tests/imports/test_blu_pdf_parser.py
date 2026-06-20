@@ -1426,7 +1426,18 @@ class BluPdfParserTestCase(unittest.TestCase):
         ]
 
         with patch("app.imports.services.import_service.get_import_review_summary", return_value=review_summary), \
-             patch("app.imports.services.import_service.list_import_draft_transactions", return_value=draft_transactions):
+             patch(
+                 "app.imports.services.import_service.get_import_review_filter_counts",
+                 return_value={
+                     "total_count": 2,
+                     "needs_review_count": 2,
+                     "review_groups": [
+                         {"review_group": "Makan Bulanan", "count": 1},
+                         {"review_group": "bluAccount", "count": 1},
+                     ],
+                 },
+             ), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_paginated", return_value=draft_transactions):
             payload = service.get_review_payload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -1439,6 +1450,62 @@ class BluPdfParserTestCase(unittest.TestCase):
             ["Semua", "Makan Bulanan", "bluAccount", "Perlu Review"],
             [filter_item["label"] for filter_item in payload["filters"]],
         )
+        self.assertEqual(
+            {
+                "total": 2,
+                "limit": 100,
+                "offset": 0,
+                "page": 1,
+                "has_next": False,
+                "has_previous": False,
+            },
+            payload["pagination"],
+        )
+
+    def test_review_payload_applies_limit_and_offset(self):
+        service = ImportService()
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={
+            "id": "job-1",
+            "filename": "blu_statement_juni.pdf",
+            "provider": "blu",
+            "status": "uploaded",
+            "transactions_found": 120,
+            "new_transactions": 120,
+            "existing_transactions": 0,
+            "created_at": "2026-06-16T10:00:00Z",
+            "statement_owner": "Reza",
+        }), \
+             patch(
+                 "app.imports.services.import_service.get_import_review_filter_counts",
+                 return_value={
+                     "total_count": 120,
+                     "needs_review_count": 120,
+                     "review_groups": [],
+                 },
+             ), \
+             patch(
+                 "app.imports.services.import_service.list_import_draft_transactions_paginated",
+                 return_value=[],
+             ) as list_drafts_mock:
+            payload = service.get_review_payload(
+                connection=object(),
+                workspace_id="workspace-1",
+                job_id="job-1",
+                limit=25,
+                offset=50,
+            )
+
+        list_drafts_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            import_job_id="job-1",
+            status="new",
+            limit=25,
+            offset=50,
+        )
+        self.assertEqual(3, payload["pagination"]["page"])
+        self.assertTrue(payload["pagination"]["has_next"])
+        self.assertTrue(payload["pagination"]["has_previous"])
 
     def test_category_options_payload_uses_workspace_transaction_categories(self):
         connection = object()
@@ -2662,7 +2729,8 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.list_import_history", return_value=history_rows):
+        with patch("app.imports.services.import_service.count_import_history", return_value=1), \
+             patch("app.imports.services.import_service.list_import_history_paginated", return_value=history_rows):
             payload = service.get_history_payload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -2671,6 +2739,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, len(payload["jobs"]))
         self.assertEqual("cleanup_completed", payload["jobs"][0]["status"])
         self.assertEqual("already_deleted", payload["jobs"][0]["pdf_status"])
+        self.assertEqual(20, payload["pagination"]["limit"])
 
     def test_history_detail_includes_unsynced_transactions(self):
         service = ImportService()

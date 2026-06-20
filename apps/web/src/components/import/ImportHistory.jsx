@@ -76,7 +76,9 @@ const ImportHistory = ({
   detailLoading,
   error,
   actionLoading,
+  pagination = null,
   onRefresh,
+  onPageChange,
   onRetrySync,
   onViewDetail,
   onReconnectGoogle,
@@ -143,7 +145,13 @@ const ImportHistory = ({
         )}
 
         <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
-          {loading ? (
+          {loading && historyRows.length > 0 && (
+            <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4 text-sm text-muted">
+              Memuat halaman riwayat import...
+            </div>
+          )}
+
+          {loading && historyRows.length === 0 ? (
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-5 text-sm text-muted">
               Memuat riwayat import...
             </div>
@@ -230,6 +238,32 @@ const ImportHistory = ({
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {pagination && pagination.total > pagination.limit && historyRows.length > 0 && (
+            <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-muted">
+                Menampilkan {pagination.offset + 1}-{Math.min(pagination.offset + historyRows.length, pagination.total)} dari {pagination.total} job import.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(Math.max(0, pagination.offset - pagination.limit))}
+                  disabled={!pagination.has_previous || loading}
+                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Sebelumnya
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPageChange?.(pagination.offset + pagination.limit)}
+                  disabled={!pagination.has_next || loading}
+                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Berikutnya
+                </button>
+              </div>
             </div>
           )}
         </section>

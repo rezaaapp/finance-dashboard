@@ -25,15 +25,19 @@ from app.imports.repositories.fingerprint_registry_repository import (
     register_transaction_fingerprints,
 )
 from app.imports.repositories.import_repository import (
+    count_import_history,
     create_import_draft_transactions,
     create_import_job,
     count_new_import_draft_transactions,
     delete_import_draft_transactions,
     get_import_history_detail,
+    get_import_review_filter_counts,
     list_import_history,
+    list_import_history_paginated,
     get_import_review_summary,
     increment_import_job_rejected_count,
     list_import_draft_transactions,
+    list_import_draft_transactions_paginated,
     list_import_draft_transactions_by_ids,
     reject_import_draft_transactions,
     refresh_import_job_aggregates,
@@ -72,6 +76,9 @@ from app.services.sheet_header_validator import canonicalize_header
 logger = logging.getLogger(__name__)
 
 MAX_IMPORT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+DEFAULT_IMPORT_REVIEW_PAGE_SIZE = 100
+DEFAULT_IMPORT_HISTORY_PAGE_SIZE = 20
+MAX_IMPORT_PAGE_SIZE = 100
 ALLOWED_IMPORT_EXTENSIONS = {".pdf"}
 ALLOWED_IMPORT_CONTENT_TYPES = {
     "application/pdf",
@@ -791,7 +798,15 @@ class ImportService:
             extra={"smart_import": fields},
         )
 
-    def get_review_payload(self, connection, *, workspace_id: str, job_id: str):
+    def get_review_payload(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        job_id: str,
+        limit: int = DEFAULT_IMPORT_REVIEW_PAGE_SIZE,
+        offset: int = 0,
+    ):
         summary = get_import_review_summary(
             connection,
             workspace_id=workspace_id,
@@ -801,36 +816,29 @@ class ImportService:
         if not summary:
             return None
 
-        draft_transactions = list_import_draft_transactions(
+        safe_limit = self._normalize_page_limit(
+            limit,
+            default_limit=DEFAULT_IMPORT_REVIEW_PAGE_SIZE,
+        )
+        safe_offset = self._normalize_page_offset(offset)
+        filter_counts = get_import_review_filter_counts(
             connection,
             import_job_id=job_id,
             status="new",
+        ) or {}
+        draft_transactions = list_import_draft_transactions_paginated(
+            connection,
+            import_job_id=job_id,
+            status="new",
+            limit=safe_limit,
+            offset=safe_offset,
         )
 
         serialized_transactions = [
-            {
-                "id": str(transaction["id"]),
-                "statement_owner": transaction.get("statement_owner", "") or summary.get("statement_owner", ""),
-                "source_fund": transaction.get("source_fund", "") or "Blu",
-                "canonical_fingerprint": transaction.get("canonical_fingerprint", ""),
-                "canonical_fingerprint_date": transaction.get("canonical_fingerprint_date", ""),
-                "datetime": transaction["datetime"],
-                "merchant_original": transaction["merchant_original"],
-                "merchant_normalized": transaction["merchant_normalized"],
-                "merchant_display": self.merchant_normalizer.normalize(
-                    transaction["merchant_original"]
-                )["merchant_display"],
-                "amount": float(transaction["amount"]),
-                "direction": transaction["direction"],
-                "transaction_type": transaction["transaction_type"],
-                "review_group": transaction["review_group"],
-                "raw_text": transaction["raw_text"],
-                "status": transaction["status"],
-                "category": transaction["category"],
-                "notes": transaction["notes"],
-            }
+            self._serialize_review_transaction(transaction, summary=summary)
             for transaction in draft_transactions
         ]
+        total_count = int(filter_counts.get("total_count", 0) or 0)
 
         return {
             "summary": {
@@ -844,7 +852,12 @@ class ImportService:
                 "existing_transactions": summary["existing_transactions"],
                 "created_at": summary["created_at"],
             },
-            "filters": self._build_review_filters(serialized_transactions),
+            "filters": self._build_review_filters(filter_counts),
+            "pagination": self._build_pagination_payload(
+                total=total_count,
+                limit=safe_limit,
+                offset=safe_offset,
+            ),
             "draft_transactions": serialized_transactions,
         }
 
@@ -1277,14 +1290,37 @@ class ImportService:
             "draft_ids": [str(row["id"]) for row in deleted_rows],
         }
 
-    def get_history_payload(self, connection, *, workspace_id: str):
-        jobs = list_import_history(
+    def get_history_payload(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        limit: int = DEFAULT_IMPORT_HISTORY_PAGE_SIZE,
+        offset: int = 0,
+    ):
+        safe_limit = self._normalize_page_limit(
+            limit,
+            default_limit=DEFAULT_IMPORT_HISTORY_PAGE_SIZE,
+        )
+        safe_offset = self._normalize_page_offset(offset)
+        total_jobs = count_import_history(
             connection,
             workspace_id=workspace_id,
+        )
+        jobs = list_import_history_paginated(
+            connection,
+            workspace_id=workspace_id,
+            limit=safe_limit,
+            offset=safe_offset,
         )
 
         return {
             "jobs": [self._serialize_history_job(job) for job in jobs],
+            "pagination": self._build_pagination_payload(
+                total=total_jobs,
+                limit=safe_limit,
+                offset=safe_offset,
+            ),
         }
 
     def get_history_detail_payload(self, connection, *, workspace_id: str, job_id: str):
@@ -1683,39 +1719,77 @@ class ImportService:
         escaped_sheet_name = str(sheet_name or "").strip().replace("'", "''")
         return f"'{escaped_sheet_name}'!1:1"
 
-    def _build_review_filters(self, draft_transactions: list[dict]):
-        review_group_counts: dict[str, int] = {}
-
-        for transaction in draft_transactions:
-            review_group = str(transaction.get("review_group", "")).strip()
-            if review_group:
-                review_group_counts[review_group] = review_group_counts.get(review_group, 0) + 1
-
+    def _build_review_filters(self, filter_counts: dict):
         filters = [
             {
                 "id": "all",
                 "label": "Semua",
-                "count": len(draft_transactions),
+                "count": int(filter_counts.get("total_count", 0) or 0),
             },
         ]
 
-        for review_group in sorted(review_group_counts.keys()):
+        for group in filter_counts.get("review_groups", []) or []:
+            review_group = str(group.get("review_group", "")).strip()
+            if not review_group:
+                continue
             filters.append({
                 "id": f"group:{review_group}",
                 "label": review_group,
-                "count": review_group_counts[review_group],
+                "count": int(group.get("count", 0) or 0),
             })
 
         filters.append({
             "id": "needs-review",
             "label": "Perlu Review",
-            "count": sum(
-                1 for transaction in draft_transactions
-                if not str(transaction.get("category", "")).strip()
-            ),
+            "count": int(filter_counts.get("needs_review_count", 0) or 0),
         })
 
         return filters
+
+    def _serialize_review_transaction(self, transaction: dict, *, summary: dict):
+        return {
+            "id": str(transaction["id"]),
+            "statement_owner": transaction.get("statement_owner", "") or summary.get("statement_owner", ""),
+            "source_fund": transaction.get("source_fund", "") or "Blu",
+            "canonical_fingerprint": transaction.get("canonical_fingerprint", ""),
+            "canonical_fingerprint_date": transaction.get("canonical_fingerprint_date", ""),
+            "datetime": transaction["datetime"],
+            "merchant_original": transaction["merchant_original"],
+            "merchant_normalized": transaction["merchant_normalized"],
+            "merchant_display": self.merchant_normalizer.normalize(
+                transaction["merchant_original"]
+            )["merchant_display"],
+            "amount": float(transaction["amount"]),
+            "direction": transaction["direction"],
+            "transaction_type": transaction["transaction_type"],
+            "review_group": transaction["review_group"],
+            "raw_text": transaction["raw_text"],
+            "status": transaction["status"],
+            "category": transaction["category"],
+            "notes": transaction["notes"],
+        }
+
+    def _normalize_page_limit(self, limit: int | None, *, default_limit: int) -> int:
+        if limit is None:
+            return default_limit
+
+        return max(1, min(int(limit), MAX_IMPORT_PAGE_SIZE))
+
+    def _normalize_page_offset(self, offset: int | None) -> int:
+        if offset is None:
+            return 0
+
+        return max(0, int(offset))
+
+    def _build_pagination_payload(self, *, total: int, limit: int, offset: int):
+        return {
+            "total": int(total),
+            "limit": int(limit),
+            "offset": int(offset),
+            "page": (offset // limit) + 1 if limit else 1,
+            "has_next": offset + limit < total,
+            "has_previous": offset > 0,
+        }
 
     def _serialize_history_job(self, job: dict):
         return {

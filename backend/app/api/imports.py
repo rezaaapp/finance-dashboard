@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -75,6 +75,8 @@ def get_import_category_options(
 @router.get("/review/{job_id}")
 def get_import_review(
     job_id: str,
+    limit: int = Query(default=100, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
@@ -85,6 +87,8 @@ def get_import_review(
             connection,
             workspace_id=str(workspace["id"]),
             job_id=job_id,
+            limit=limit,
+            offset=offset,
         )
 
     if not payload:
@@ -98,6 +102,8 @@ def get_import_review(
 
 @router.get("/history")
 def get_import_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
@@ -107,6 +113,8 @@ def get_import_history(
         payload = service.get_history_payload(
             connection,
             workspace_id=str(workspace["id"]),
+            limit=limit,
+            offset=offset,
         )
 
     return payload
