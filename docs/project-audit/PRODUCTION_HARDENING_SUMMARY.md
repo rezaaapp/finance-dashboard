@@ -16,7 +16,7 @@ Task 1–9 berhasil menaikkan fondasi hardening aplikasi secara nyata, terutama 
 
 Secara codebase, hardening ini sudah substantial dan automated validation utama hijau.
 
-Namun final production regression saat ini masih `PARTIAL`, bukan `PASS`, karena runtime backend yang aktif untuk smoke test belum align dengan schema/env lokal Task 1–9. Akibatnya ada finding nyata pada flow import upload dan validasi migration status lokal belum bisa dikonfirmasi dari DB local yang diharapkan.
+Final production regression tetap disimpan sebagai `PARTIAL`, bukan `PASS`, karena beberapa flow eksternal (Google OAuth / manual sync / browser-visual checks) belum tervalidasi penuh. Environment/runtime mismatch yang sebelumnya sempat menjadi blocker sudah tertutup pada checkpoint alignment.
 
 ## 2. Before vs after score
 
@@ -28,8 +28,8 @@ Namun final production regression saat ini masih `PARTIAL`, bukan `PASS`, karena
 | Upload safety | 4/10 | 8/10 | extension, content-type, magic bytes, temp path, deletion containment |
 | Dashboard request efficiency | 3/10 | 7/10 | aggregate endpoint + date range query optimization |
 | Import UX resilience | 4/10 | 8/10 | delivery status semantics + pagination + partial loading |
-| Migration confidence | 4/10 | 7/10 | 019 sudah diverifikasi lokal sebelumnya, tapi final checkpoint runtime masih mismatch |
-| Overall production readiness | 4/10 | 7/10 | signifikan lebih aman, tapi belum full green untuk merge tanpa environment alignment |
+| Migration confidence | 4/10 | 8/10 | 019 sudah diverifikasi lokal dan runtime smoke kini align ke schema local |
+| Overall production readiness | 4/10 | 8/10 | signifikan lebih aman; remaining risk utama kini non-blocking dan bersifat external-flow coverage |
 
 ## 3. Semua task 1–9
 
@@ -66,7 +66,7 @@ Namun final production regression saat ini masih `PARTIAL`, bukan `PASS`, karena
 
 ### Task 5.6 — Local migration 019 verification
 
-- migration 019 pernah lolos verifikasi lokal PostgreSQL
+- migration 019 lolos verifikasi lokal PostgreSQL
 - schema baru dinyatakan compatible dengan perubahan Task 1–5.5
 
 ### Task 6 — Dashboard aggregation endpoint
@@ -113,6 +113,7 @@ Supporting checkpoint/blocker/audit commits:
 - `9498696` — `docs(audit): verify local migration 019`
 - `3b35c16` — `chore(gitignore): ignore underscore env files`
 - `0b354f7` — `docs(audit): add task 6-7 regression checkpoint`
+- `cdf6a4a` — `docs(audit): add final production hardening summary`
 
 ## 5. Before vs after architecture
 
@@ -176,7 +177,8 @@ Key change:
 
 Catatan final regression:
 
-- di runtime smoke saat ini, `/api/dashboard/view-model` masih observably lebih lambat daripada endpoint summary legacy, jadi masih perlu baseline ulang pada environment yang benar-benar align.
+- sesudah environment alignment, `/api/dashboard/view-model` pada smoke local turun ke kisaran puluhan milidetik,
+- baseline performa production-like dataset tetap perlu dipantau terpisah.
 
 ## 8. Before vs after database safety
 
@@ -190,13 +192,13 @@ Catatan final regression:
 ### After
 
 - fingerprint dan canonical duplicate handling sudah workspace-aware,
-- migration 019 sebelumnya sudah diverifikasi pada local PostgreSQL,
+- migration 019 sudah diverifikasi pada local PostgreSQL,
 - docs/copy sudah menegaskan ledger utama di PostgreSQL,
 - import approval tidak lagi digabung secara semantik dengan sync Google Sheet.
 
 Remaining concern:
 
-- final runtime smoke membuktikan masih ada risiko environment drift antara code dan DB runtime aktif.
+- risiko drift deployment tetap perlu dijaga secara operasional, tetapi checkpoint alignment membuktikan code Task 1–9 kompatibel dengan runtime local yang benar.
 
 ## 9. Before vs after security posture
 
@@ -217,43 +219,33 @@ Remaining concern:
 
 ## 10. Remaining risk
 
-1. Runtime environment drift
-   - backend runtime aktif saat final smoke tidak menunjuk local PostgreSQL config yang seharusnya dipakai untuk verifikasi hardening terbaru.
-
-2. Import upload regression pada runtime aktif
-   - upload 500 karena schema runtime tidak memiliki kolom `workspace_id` yang diharapkan code path hardening.
-
-3. View-model latency
-   - aggregate endpoint masih perlu diukur ulang di environment yang benar-benar representatif.
-
-4. End-to-end OAuth/import retry visual validation belum penuh
+1. End-to-end OAuth/import retry visual validation belum penuh
    - karena Google connection runtime sedang disconnected dan browser automation tidak tersedia di environment audit.
 
-5. Local PostgreSQL status final belum terkonfirmasi
-   - connection check ke target `.env_dev` gagal saat final checkpoint ini.
+2. Approve + spreadsheet delivery belum diulang pada runtime aligned
+   - checkpoint memilih reject aman dan upload/review verification untuk menghindari side effect spreadsheet yang tidak perlu.
+
+3. Deployment env drift tetap perlu dijaga
+   - meskipun local runtime kini sudah align, deployment target nantinya tetap harus memakai env dan schema yang sama.
 
 ## 11. Do not fix yet
 
 Temuan yang sebaiknya dicatat dulu, belum diperbaiki diam-diam:
 
-- runtime env aktif tidak local / tidak align dengan hardening schema terbaru,
-- import upload 500 karena schema mismatch runtime,
-- aggregate dashboard latency masih tinggi pada smoke ini,
-- local PostgreSQL migration status belum bisa dikonfirmasi karena koneksi local DB gagal.
+- gap coverage Google OAuth/manual sync visual end-to-end,
+- approve + spreadsheet delivery belum diulang pada checkpoint environment alignment,
+- deployment env drift tetap perlu dimitigasi secara operasional.
 
 ## 12. Recommendation: aman closed beta atau belum
 
-Belum ideal untuk disebut full-safe closed beta production path kalau environment deployment target masih berpotensi drift seperti runtime smoke saat ini.
+Belum ideal untuk disebut full-safe closed beta production path kalau requirement-nya adalah semua flow eksternal tervalidasi penuh.
 
 Rekomendasi:
 
 - **Code hardening Task 1–9:** layak diteruskan ke PR review.
-- **Merge ke main / closed beta exposure:** tunggu satu checkpoint tambahan yang memastikan:
-  - target runtime DB benar-benar memakai schema yang sudah selaras,
-  - import upload/review flow lolos smoke end-to-end,
-  - local/staging migration check bisa connect dan confirm state.
+- **Merge ke main / closed beta exposure:** secara teknis sudah aman untuk PR karena checkpoint alignment menutup blocker runtime mismatch dan import smoke utama sudah PASS.
 
 Kesimpulan praktis:
 
 - aman untuk menahan Task 10 dulu,
-- lebih tepat menutup environment/runtime alignment dulu sebelum modularization.
+- modularization tidak mendesak sebelum rangkaian hardening ini direview lewat PR.
