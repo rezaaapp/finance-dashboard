@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from psycopg.rows import dict_row
 
@@ -73,6 +74,113 @@ def get_user_by_id(connection, *, user_id: str):
             where id = %s
             """,
             (user_id,),
+        )
+
+        return cursor.fetchone()
+
+
+def get_user_by_email(connection, *, email: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                email,
+                name,
+                avatar_url,
+                role,
+                created_at,
+                updated_at
+            from users
+            where email = %s
+            """,
+            (email.lower(),),
+        )
+
+        return cursor.fetchone()
+
+
+def upsert_session_user(
+    connection,
+    *,
+    user_id: str,
+    email: str,
+    name: str,
+    role: str = "user",
+    avatar_url: Optional[str] = None,
+):
+    normalized_user_id = str(user_id or "").strip()
+    normalized_email = str(email or "").strip().lower()
+    normalized_name = str(name or "").strip()
+    normalized_role = str(role or "user").strip().lower() or "user"
+
+    if not normalized_user_id:
+        raise ValueError("User session is missing a subject identifier.")
+
+    try:
+        UUID(normalized_user_id)
+    except ValueError as exc:
+        raise ValueError("User session has an invalid subject identifier.") from exc
+
+    if not normalized_email:
+        raise ValueError("User session is missing an email address.")
+
+    if not normalized_name:
+        raise ValueError("User session is missing a display name.")
+
+    if normalized_role not in {"user", "member", "owner", "super_admin"}:
+        normalized_role = "user"
+
+    existing_user = get_user_by_id(connection, user_id=normalized_user_id)
+
+    if existing_user:
+        with connection.cursor(row_factory=dict_row) as cursor:
+            cursor.execute(
+                """
+                update users
+                set
+                    email = %s,
+                    name = %s,
+                    avatar_url = coalesce(%s, users.avatar_url),
+                    role = case
+                        when %s = 'super_admin' then 'super_admin'
+                        else users.role
+                    end
+                where id = %s
+                returning id, email, name, avatar_url, role, created_at, updated_at
+                """,
+                (
+                    normalized_email,
+                    normalized_name,
+                    avatar_url,
+                    normalized_role,
+                    normalized_user_id,
+                ),
+            )
+
+            return cursor.fetchone()
+
+    existing_email_user = get_user_by_email(connection, email=normalized_email)
+
+    if existing_email_user and str(existing_email_user["id"]) != normalized_user_id:
+        raise ValueError(
+            "User session does not match the stored account. Please sign in again."
+        )
+
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            insert into users (id, email, name, avatar_url, role)
+            values (%s, %s, %s, %s, %s)
+            returning id, email, name, avatar_url, role, created_at, updated_at
+            """,
+            (
+                normalized_user_id,
+                normalized_email,
+                normalized_name,
+                avatar_url,
+                normalized_role,
+            ),
         )
 
         return cursor.fetchone()

@@ -28,13 +28,44 @@ fake_psycopg.connect = lambda *args, **kwargs: None
 fake_psycopg.errors = fake_psycopg_errors
 fake_psycopg_pool.ConnectionPool = object
 fake_psycopg_types_json.Jsonb = lambda value: value
+fake_finance_service = types.ModuleType("app.services.finance_service")
+
+
+def _unused_legacy_finance_service(*args, **kwargs):
+    return None
+
+
+for _name in [
+    "get_summary",
+    "refresh_financial_data",
+    "get_monthly_spending",
+    "get_monthly_saving",
+    "get_monthly_income",
+    "get_top_spending",
+    "get_spending_by_category",
+    "get_category_heatmap",
+    "get_transactions",
+    "get_category_trends",
+    "get_source_dana_analytics",
+    "get_monthly_allocation",
+    "get_spending_per_person",
+    "get_personal_analytics",
+    "get_grocery_vs_food",
+    "get_anomalies",
+    "get_latest_insight",
+    "get_budget_forecast",
+    "save_configuration_settings",
+]:
+    setattr(fake_finance_service, _name, _unused_legacy_finance_service)
+
 sys.modules.setdefault("psycopg", fake_psycopg)
 sys.modules.setdefault("psycopg.errors", fake_psycopg_errors)
 sys.modules.setdefault("psycopg_pool", fake_psycopg_pool)
 sys.modules.setdefault("psycopg.types", fake_psycopg_types)
 sys.modules.setdefault("psycopg.types.json", fake_psycopg_types_json)
+sys.modules.setdefault("app.services.finance_service", fake_finance_service)
 
-from app.api.dashboard import build_dashboard_view_model_payload
+from app.api.dashboard import build_dashboard_view_model_payload, dashboard_view_model
 
 
 class DashboardViewModelTestCase(unittest.TestCase):
@@ -199,6 +230,54 @@ class DashboardViewModelTestCase(unittest.TestCase):
         self.assertEqual({}, payload["dashboard"]["personal_analytics"])
         self.assertEqual({}, payload["dashboard"]["budget_forecast"])
         self.assertEqual([], payload["dashboard"]["anomalies"])
+
+    def test_dashboard_view_model_provisions_default_workspace_for_session_user(self):
+        workspace = {
+            "id": "workspace-123",
+            "name": "Owner Household",
+            "role": "owner",
+            "subscription_status": "free",
+            "google_sheet_id": None,
+            "google_sheet_sources": [],
+        }
+        payload = {"workspace": {"id": "workspace-123"}}
+
+        with patch(
+            "app.api.dashboard.resolve_workspace_for_request",
+            return_value=workspace,
+        ) as resolve_workspace_mock, patch(
+            "app.api.dashboard.get_db_connection"
+        ) as get_db_connection_mock, patch(
+            "app.api.dashboard.build_dashboard_view_model_payload",
+            return_value=payload,
+        ) as build_payload_mock:
+            fake_connection = unittest.mock.MagicMock()
+            fake_connection.__enter__.return_value = fake_connection
+            fake_connection.__exit__.return_value = False
+            get_db_connection_mock.return_value = fake_connection
+
+            result = dashboard_view_model(
+                current_user={
+                    "sub": "c4896d51-c7df-4efb-b26e-b8a6de7fa0b7",
+                    "email": "owner@example.com",
+                    "name": "Owner",
+                    "role": "user",
+                },
+                active_workspace_id=None,
+            )
+
+        self.assertEqual(payload, result)
+        resolve_workspace_mock.assert_called_once_with(
+            {
+                "sub": "c4896d51-c7df-4efb-b26e-b8a6de7fa0b7",
+                "email": "owner@example.com",
+                "name": "Owner",
+                "role": "user",
+            },
+            None,
+            create_default=True,
+        )
+        build_payload_mock.assert_called_once()
 
 
 if __name__ == "__main__":

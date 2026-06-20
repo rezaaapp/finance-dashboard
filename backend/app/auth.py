@@ -6,6 +6,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 
 from app.config import settings
+from app.database import get_db_connection
+from app.repositories.users import upsert_session_user
 
 
 security = HTTPBearer(auto_error=False)
@@ -72,7 +74,29 @@ def require_current_user(
             detail="User session required",
         )
 
-    return auth_payload
+    try:
+        with get_db_connection() as connection:
+            with connection.transaction():
+                user = upsert_session_user(
+                    connection,
+                    user_id=auth_payload.get("sub"),
+                    email=auth_payload.get("email"),
+                    name=auth_payload.get("name"),
+                    role=auth_payload.get("role") or "user",
+                )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    return {
+        **auth_payload,
+        "sub": str(user["id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+    }
 
 
 def require_super_admin(auth_payload=Depends(require_auth)):
