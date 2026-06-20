@@ -19,7 +19,20 @@ if str(BACKEND_ROOT) not in sys.path:
 
 fake_psycopg_errors = types.ModuleType("psycopg.errors")
 fake_psycopg_errors.UndefinedTable = type("UndefinedTable", (Exception,), {})
+fake_psycopg_errors.NotSupportedError = type("NotSupportedError", (Exception,), {})
+fake_psycopg = types.ModuleType("psycopg")
+fake_psycopg_pool = types.ModuleType("psycopg_pool")
+fake_psycopg_types = types.ModuleType("psycopg.types")
+fake_psycopg_types_json = types.ModuleType("psycopg.types.json")
+fake_psycopg.connect = lambda *args, **kwargs: None
+fake_psycopg.errors = fake_psycopg_errors
+fake_psycopg_pool.ConnectionPool = object
+fake_psycopg_types_json.Jsonb = lambda value: value
+sys.modules.setdefault("psycopg", fake_psycopg)
 sys.modules.setdefault("psycopg.errors", fake_psycopg_errors)
+sys.modules.setdefault("psycopg_pool", fake_psycopg_pool)
+sys.modules.setdefault("psycopg.types", fake_psycopg_types)
+sys.modules.setdefault("psycopg.types.json", fake_psycopg_types_json)
 
 from app.api.dashboard import build_dashboard_view_model_payload
 

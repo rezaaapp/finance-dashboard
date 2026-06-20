@@ -147,6 +147,40 @@ def _direction_condition(direction):
     return "direction = %s"
 
 
+def _period_bounds(year=None, month=None):
+    if not year:
+        return None
+
+    selected_year = int(year)
+    selected_month = int(month) if month else None
+    period_start = date(selected_year, selected_month or 1, 1)
+
+    if selected_month:
+        if selected_month == 12:
+            period_end = date(selected_year + 1, 1, 1)
+        else:
+            period_end = date(selected_year, selected_month + 1, 1)
+    else:
+        period_end = date(selected_year + 1, 1, 1)
+
+    return period_start, period_end
+
+
+def _append_period_filter(clauses, params, *, date_expr: str, year=None, month=None):
+    period_bounds = _period_bounds(year, month)
+
+    if period_bounds:
+        period_start, period_end = period_bounds
+        clauses.append(f"{date_expr} >= %s")
+        clauses.append(f"{date_expr} < %s")
+        params.extend([period_start, period_end])
+        return
+
+    if month:
+        clauses.append(f"extract(month from {date_expr})::int = %s")
+        params.append(int(month))
+
+
 def _filters(year=None, month=None, direction=None, name=None):
     clauses = [
         "workspace_id = %s",
@@ -155,13 +189,13 @@ def _filters(year=None, month=None, direction=None, name=None):
     ]
     params = []
 
-    if year:
-        clauses.append("extract(year from transaction_date)::int = %s")
-        params.append(int(year))
-
-    if month:
-        clauses.append("extract(month from transaction_date)::int = %s")
-        params.append(int(month))
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="transaction_date",
+        year=year,
+        month=month,
+    )
 
     if direction:
         clauses.append(_direction_condition(direction))
@@ -241,12 +275,19 @@ def _empty_summary_totals():
 
 
 def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month=None):
-    month_clause = ""
-    params = [workspace_id, int(year)]
-
-    if month:
-        month_clause = "and extract(month from t.transaction_date)::int = %s"
-        params.append(int(month))
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
 
     financial_type_expr = _classification_financial_type_expr()
     rows = _fetch_all(
@@ -273,11 +314,7 @@ def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month=Non
               on c.workspace_id = t.workspace_id
              and c.transaction_id = t.id
              and c.is_current = true
-            where t.workspace_id = %s
-              and t.transaction_date is not null
-              and t.transaction_date <= current_date
-              and extract(year from t.transaction_date)::int = %s
-              {month_clause}
+            where {" and ".join(clauses)}
         ) period_transactions
         """,
         params,
@@ -347,14 +384,13 @@ def _personal_period_totals(
         "t.transaction_date <= current_date",
     ]
     params = [workspace_id]
-
-    if year:
-        clauses.append("extract(year from t.transaction_date)::int = %s")
-        params.append(int(year))
-
-    if month:
-        clauses.append("extract(month from t.transaction_date)::int = %s")
-        params.append(int(month))
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
 
     financial_type_expr = _classification_financial_type_expr()
     rows = _fetch_all(
@@ -701,6 +737,19 @@ def get_budget_spending_by_category(
     year: int,
     month: int,
 ):
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
     financial_type_expr = _classification_financial_type_expr()
     category_expr = _classification_category_expr()
     rows = _fetch_all(
@@ -720,17 +769,13 @@ def get_budget_spending_by_category(
               on c.workspace_id = t.workspace_id
              and c.transaction_id = t.id
              and c.is_current = true
-            where t.workspace_id = %s
-              and t.transaction_date is not null
-              and t.transaction_date <= current_date
-              and extract(year from t.transaction_date)::int = %s
-              and extract(month from t.transaction_date)::int = %s
+            where {" and ".join(clauses)}
         ) budget_transactions
         where financial_type in ('need', 'want', 'uncategorized')
         group by 1
         order by total desc
         """,
-        (workspace_id, int(year), int(month)),
+        params,
     )
 
     return [
@@ -820,7 +865,10 @@ def get_budget_history_by_category(
         return {}
 
     period_values = [
-        (period["year"], period["month"], period["label"])
+        (
+            *_period_bounds(period["year"], period["month"]),
+            period["label"],
+        )
         for period in periods
     ]
     financial_type_expr = _classification_financial_type_expr()
@@ -828,7 +876,7 @@ def get_budget_history_by_category(
     rows = _fetch_all(
         connection,
         f"""
-        with selected_periods(year, month, period_label) as (
+        with selected_periods(period_start, period_end, period_label) as (
             values {", ".join(["(%s, %s, %s)"] * len(period_values))}
         ),
         budget_transactions as (
@@ -839,8 +887,8 @@ def get_budget_history_by_category(
                 {financial_type_expr} as financial_type
             from transactions t
             join selected_periods sp
-              on extract(year from t.transaction_date)::int = sp.year
-             and extract(month from t.transaction_date)::int = sp.month
+              on t.transaction_date >= sp.period_start
+             and t.transaction_date < sp.period_end
             left join transaction_classifications c
               on c.workspace_id = t.workspace_id
              and c.transaction_id = t.id
@@ -890,14 +938,13 @@ def get_financial_type_breakdown(connection, *, workspace_id: str, year=None, mo
         "t.transaction_date <= current_date",
     ]
     params = [workspace_id]
-
-    if year:
-        clauses.append("extract(year from t.transaction_date)::int = %s")
-        params.append(int(year))
-
-    if month:
-        clauses.append("extract(month from t.transaction_date)::int = %s")
-        params.append(int(month))
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
 
     financial_type_expr = _classification_financial_type_expr()
     rows = _fetch_all(
@@ -949,6 +996,7 @@ def get_monthly_financial_type_breakdown(connection, *, workspace_id: str, year:
         return []
 
     max_month = today.month if selected_year == today.year else 12
+    period_start, period_end = _period_bounds(selected_year)
     financial_type_expr = _classification_financial_type_expr()
     rows = _fetch_all(
         connection,
@@ -965,11 +1013,12 @@ def get_monthly_financial_type_breakdown(connection, *, workspace_id: str, year:
         where t.workspace_id = %s
           and t.transaction_date is not null
           and t.transaction_date <= current_date
-          and extract(year from t.transaction_date)::int = %s
+          and t.transaction_date >= %s
+          and t.transaction_date < %s
         group by 1, 2
         order by 1, 2
         """,
-        (workspace_id, selected_year),
+        (workspace_id, period_start, period_end),
     )
     month_rows = {
         month: {
@@ -1435,14 +1484,13 @@ def get_anomalies(
         "t.transaction_date <= current_date",
     ]
     params = [workspace_id]
-
-    if year:
-        clauses.append("extract(year from t.transaction_date)::int = %s")
-        params.append(int(year))
-
-    if month:
-        clauses.append("extract(month from t.transaction_date)::int = %s")
-        params.append(int(month))
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
 
     financial_type_expr = _classification_financial_type_expr()
     category_expr = _classification_category_expr()
