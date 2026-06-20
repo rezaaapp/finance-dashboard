@@ -1,4 +1,5 @@
 from urllib.parse import urlencode
+import re
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
@@ -31,6 +32,37 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _derive_local_login_email(username: str) -> str:
+    normalized_username = str(username or "").strip().lower()
+
+    if "@" in normalized_username:
+        return normalized_username
+
+    username_slug = re.sub(r"[^a-z0-9]+", "-", normalized_username).strip("-")
+
+    if not username_slug:
+        username_slug = "local-admin"
+
+    return f"{username_slug}@local.finance-dashboard"
+
+
+def _derive_local_login_name(username: str) -> str:
+    normalized_username = str(username or "").strip()
+
+    if not normalized_username:
+        return "Local Admin"
+
+    if "@" in normalized_username:
+        normalized_username = normalized_username.split("@", maxsplit=1)[0]
+
+    readable_name = re.sub(r"[-_.]+", " ", normalized_username).strip()
+
+    if not readable_name:
+        return "Local Admin"
+
+    return readable_name.title()
+
+
 @router.post("/login")
 def login(payload: LoginRequest):
     if not authenticate_user(payload.username, payload.password):
@@ -39,10 +71,40 @@ def login(payload: LoginRequest):
             detail="Invalid username or password",
         )
 
+    email = _derive_local_login_email(payload.username)
+    role = (
+        "super_admin"
+        if (
+            payload.username.strip().lower() == settings.DASHBOARD_USERNAME.strip().lower()
+            and "@" not in payload.username
+        )
+        or email in settings.SUPER_ADMIN_EMAILS
+        else "user"
+    )
+
+    with get_db_connection() as connection:
+        with connection.transaction():
+            user = upsert_user(
+                connection,
+                email=email,
+                name=_derive_local_login_name(payload.username),
+                avatar_url=None,
+                role=role,
+            )
+            workspace = ensure_default_workspace_for_user(
+                connection,
+                user_id=str(user["id"]),
+                user_name=user["name"],
+            )
+
     return {
-        "token": settings.DASHBOARD_AUTH_TOKEN,
-        "username": payload.username,
-        "role": "super_admin",
+        "token": create_internal_token(user),
+        "username": user["name"],
+        "email": user["email"],
+        "userId": str(user["id"]),
+        "role": user["role"],
+        "workspaceId": str(workspace["id"]),
+        "provider": "local",
     }
 
 

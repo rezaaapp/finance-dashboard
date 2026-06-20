@@ -17,6 +17,13 @@ import {
 import ImportLanding from "../components/import/ImportLanding";
 import ImportHistory from "../components/import/ImportHistory";
 import ImportReview from "../components/import/ImportReview";
+import {
+  buildApproveFeedback,
+  buildRetryFeedback,
+} from "../components/import/deliveryStatusUx";
+
+const REVIEW_PAGE_SIZE = 100;
+const HISTORY_PAGE_SIZE = 20;
 
 const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null }) => {
   const normalizedFilename = String(filename || "").toLowerCase();
@@ -48,9 +55,11 @@ const ImportTransactions = () => {
   const [reviewData, setReviewData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [reviewPagination, setReviewPagination] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [historyPagination, setHistoryPagination] = useState(null);
   const [historyDetail, setHistoryDetail] = useState(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState("");
@@ -126,23 +135,33 @@ const ImportTransactions = () => {
     };
   }, [targetSourceId, sheetSources, reviewData?.summary?.filename]);
 
-  const loadReview = async (jobId) => {
+  const loadReview = async (jobId, options = {}) => {
+    const nextOffset = options.offset ?? 0;
+    const preserveData = Boolean(options.preserveData);
+
     setLoading(true);
-    setError("");
-    setReviewActionError(null);
-    setReviewActionFeedback(null);
+    if (!preserveData) {
+      setError("");
+      setReviewActionError(null);
+      setReviewActionFeedback(null);
+    }
     setActiveJobId(jobId);
     setCategoryOptionsLoading(true);
     setCategoryOptionsError("");
     setSheetSourcesLoading(true);
-    setSheetSourcesError("");
-    setWorksheets([]);
-    setWorksheetsError("");
-    setTargetSheetName("");
+    if (!preserveData) {
+      setSheetSourcesError("");
+      setWorksheets([]);
+      setWorksheetsError("");
+      setTargetSheetName("");
+    }
 
     try {
       const [reviewResult, categoryResult, sourcesResult] = await Promise.allSettled([
-        getImportReview(jobId),
+        getImportReview(jobId, {
+          limit: REVIEW_PAGE_SIZE,
+          offset: nextOffset,
+        }),
         getImportCategoryOptions(),
         getGoogleSheetSources(),
       ]);
@@ -162,6 +181,7 @@ const ImportTransactions = () => {
       }
 
       setReviewData(reviewResult.value);
+      setReviewPagination(reviewResult.value.pagination || null);
 
       if (sourcesResult.status === "fulfilled") {
         const sources = sourcesResult.value.sources || [];
@@ -186,7 +206,10 @@ const ImportTransactions = () => {
         reviewError?.response?.data?.detail
         || "Review import belum bisa dimuat."
       );
-      setReviewData(null);
+      if (!preserveData) {
+        setReviewData(null);
+        setReviewPagination(null);
+      }
     } finally {
       setLoading(false);
       setCategoryOptionsLoading(false);
@@ -194,15 +217,25 @@ const ImportTransactions = () => {
     }
   };
 
-  const loadHistory = async () => {
+  const loadHistory = async (options = {}) => {
+    const nextOffset = options.offset ?? 0;
+    const preserveData = Boolean(options.preserveData);
+
     setHistoryLoading(true);
-    setHistoryError("");
+    if (!preserveData) {
+      setHistoryError("");
+    }
     setSheetSourcesLoading(true);
-    setSheetSourcesError("");
+    if (!preserveData) {
+      setSheetSourcesError("");
+    }
 
     try {
       const [historyResult, sourcesResult] = await Promise.allSettled([
-        getImportHistory(),
+        getImportHistory({
+          limit: HISTORY_PAGE_SIZE,
+          offset: nextOffset,
+        }),
         getGoogleSheetSources(),
       ]);
 
@@ -211,6 +244,7 @@ const ImportTransactions = () => {
       }
 
       setHistoryRows(historyResult.value.jobs || []);
+      setHistoryPagination(historyResult.value.pagination || null);
 
       if (sourcesResult.status === "fulfilled") {
         const sources = sourcesResult.value.sources || [];
@@ -235,6 +269,10 @@ const ImportTransactions = () => {
         historyLoadError?.response?.data?.detail
         || "Riwayat import belum bisa dimuat."
       );
+      if (!preserveData) {
+        setHistoryRows([]);
+        setHistoryPagination(null);
+      }
     } finally {
       setHistoryLoading(false);
       setSheetSourcesLoading(false);
@@ -282,24 +320,8 @@ const ImportTransactions = () => {
     try {
       const response = await approveImportReview(activeJobId, payload);
       setReviewData(response.review);
-
-      if (response.sync_status === "success" && response.sync_failed === 0) {
-        setReviewActionFeedback({
-          tone: "success",
-          message: response.sync_success > 0
-            ? "Transaksi berhasil masuk ke database dan Google Spreadsheet."
-            : "Transaksi berhasil disimpan.",
-        });
-      } else {
-        setReviewActionFeedback({
-          tone: "warning",
-          message: (
-            "Transaksi tersimpan di database, tetapi belum masuk Google Spreadsheet. "
-            + "Gunakan Retry Sync di Riwayat Import."
-          ),
-          detail: response.sync_error_message || "",
-        });
-      }
+      setReviewPagination(response.review?.pagination || null);
+      setReviewActionFeedback(buildApproveFeedback(response));
 
       await loadHistory();
       return response;
@@ -324,6 +346,7 @@ const ImportTransactions = () => {
 
     const response = await rejectImportReview(activeJobId, payload);
     setReviewData(response.review);
+    setReviewPagination(response.review?.pagination || null);
     await loadHistory();
   };
 
@@ -336,7 +359,7 @@ const ImportTransactions = () => {
         sheet_source_id: targetSourceId,
         sheet_name: targetSheetName,
       });
-      setHistoryRetryResult(response);
+      setHistoryRetryResult(buildRetryFeedback(response));
       await loadHistory();
 
       if (historyDetail?.job_id === jobId) {
@@ -345,12 +368,14 @@ const ImportTransactions = () => {
     } catch (retryError) {
       const responsePayload = retryError?.response?.data || {};
 
-      setHistoryRetryResult({
-        status: "failed",
-        sync_status: "failed",
-        message: responsePayload.message || responsePayload.detail || "Retry sync belum berhasil.",
-        sync_error_message: responsePayload.message || responsePayload.detail || "Retry sync belum berhasil.",
-      });
+        setHistoryRetryResult({
+          ...buildRetryFeedback({
+            status: "failed",
+            sync_status: responsePayload.sync_status || "failed",
+            message: responsePayload.message || responsePayload.detail || "Retry pengiriman belum berhasil.",
+            sync_error_message: responsePayload.message || responsePayload.detail || "Retry pengiriman belum berhasil.",
+          }),
+        });
     } finally {
       setActionLoading("");
     }
@@ -427,9 +452,15 @@ const ImportTransactions = () => {
             categoryOptions={categoryOptions}
             categoryOptionsLoading={categoryOptionsLoading}
             categoryOptionsError={categoryOptionsError}
+            pagination={reviewPagination}
+            onPageChange={(nextOffset) => loadReview(activeJobId, {
+              offset: nextOffset,
+              preserveData: true,
+            })}
             onBack={() => {
               setActiveJobId("");
               setReviewData(null);
+              setReviewPagination(null);
               setError("");
               setReviewActionError(null);
               setSheetSources([]);
@@ -460,7 +491,15 @@ const ImportTransactions = () => {
           detailLoading={historyDetailLoading}
           error={historyError}
           actionLoading={actionLoading}
-          onRefresh={loadHistory}
+          pagination={historyPagination}
+          onRefresh={() => loadHistory({
+            offset: historyPagination?.offset || 0,
+            preserveData: historyRows.length > 0,
+          })}
+          onPageChange={(nextOffset) => loadHistory({
+            offset: nextOffset,
+            preserveData: true,
+          })}
           onRetrySync={handleRetrySync}
           onViewDetail={loadHistoryDetail}
           onReconnectGoogle={handleReconnectGoogle}

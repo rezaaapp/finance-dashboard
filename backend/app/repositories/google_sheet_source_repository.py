@@ -222,6 +222,32 @@ def get_google_sheet_source(
         return cursor.fetchone()
 
 
+def get_google_sheet_source_by_id(connection, *, source_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                workspace_id,
+                oauth_connection_id,
+                sheet_id,
+                sheet_url,
+                spreadsheet_title,
+                sheet_name,
+                year,
+                status,
+                last_synced_at,
+                created_at,
+                updated_at
+            from google_sheet_sources
+            where id = %s
+            """,
+            (source_id,),
+        )
+
+        return cursor.fetchone()
+
+
 def get_primary_google_sheet_source(connection, *, workspace_id: str):
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(

@@ -193,9 +193,9 @@ def get_existing_transaction_fingerprints(
     workspace_id: str,
     transaction_fingerprints: list[str],
 ):
-    del workspace_id
     return get_registered_transaction_fingerprints(
         connection,
+        workspace_id=workspace_id,
         transaction_fingerprints=transaction_fingerprints,
     )
 
@@ -313,6 +313,51 @@ def list_import_draft_transactions(connection, *, import_job_id: str, status: st
             order by datetime asc, created_at asc
             """,
             (import_job_id, status),
+        )
+
+        return cursor.fetchall()
+
+
+def list_import_draft_transactions_paginated(
+    connection,
+    *,
+    import_job_id: str,
+    status: str = "new",
+    limit: int,
+    offset: int,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select
+                id,
+                import_job_id,
+                transaction_fingerprint,
+                canonical_fingerprint,
+                canonical_fingerprint_date,
+                statement_owner,
+                source_fund,
+                datetime,
+                merchant_original,
+                merchant_normalized,
+                amount,
+                direction,
+                transaction_type,
+                review_group,
+                raw_text,
+                is_existing,
+                status,
+                category,
+                notes,
+                created_at
+            from import_draft_transactions
+            where import_job_id = %s
+              and status = %s
+            order by datetime asc, created_at asc
+            limit %s
+            offset %s
+            """,
+            (import_job_id, status, limit, offset),
         )
 
         return cursor.fetchall()
@@ -487,6 +532,44 @@ def count_new_import_draft_transactions(connection, *, import_job_id: str):
         return row["total"] if row else 0
 
 
+def get_import_review_filter_counts(connection, *, import_job_id: str, status: str = "new"):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            with review_stats as (
+                select
+                    review_group,
+                    count(*)::int as review_count,
+                    count(*) filter (
+                        where category is null
+                           or btrim(category) = ''
+                    )::int as needs_review_count
+                from import_draft_transactions
+                where import_job_id = %s
+                  and status = %s
+                group by review_group
+            )
+            select
+                coalesce(sum(review_count), 0)::int as total_count,
+                coalesce(sum(needs_review_count), 0)::int as needs_review_count,
+                coalesce(
+                    json_agg(
+                        json_build_object(
+                            'review_group', review_group,
+                            'count', review_count
+                        )
+                        order by review_group asc
+                    ) filter (where review_group is not null and btrim(review_group) <> ''),
+                    '[]'::json
+                ) as review_groups
+            from review_stats
+            """,
+            (import_job_id, status),
+        )
+
+        return cursor.fetchone()
+
+
 def refresh_import_job_aggregates(connection, *, workspace_id: str, job_id: str):
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
@@ -592,6 +675,93 @@ def list_import_history(connection, *, workspace_id: str):
             order by j.created_at desc
             """,
             (workspace_id, workspace_id, workspace_id),
+        )
+
+        return cursor.fetchall()
+
+
+def count_import_history(connection, *, workspace_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            select count(*)::int as total
+            from import_jobs
+            where workspace_id = %s
+            """,
+            (workspace_id,),
+        )
+
+        row = cursor.fetchone()
+        return row["total"] if row else 0
+
+
+def list_import_history_paginated(
+    connection,
+    *,
+    workspace_id: str,
+    limit: int,
+    offset: int,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            with transaction_stats as (
+                select
+                    import_job_id,
+                    count(*)::int as approved_transactions,
+                    count(*) filter (where sync_status = 'success')::int as sync_success,
+                    count(*) filter (
+                        where sync_status is null
+                           or sync_status in ('failed', 'needs_reconnect', 'pending')
+                    )::int as sync_failed,
+                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count
+                from transactions
+                where workspace_id = %s
+                  and import_job_id is not null
+                group by import_job_id
+            ),
+            retry_stats as (
+                select
+                    import_job_id,
+                    count(*)::int as retryable_sync_count
+                from transactions
+                where workspace_id = %s
+                  and import_job_id is not null
+                  and (
+                    sync_status is null
+                    or sync_status in ('failed', 'needs_reconnect', 'pending')
+                  )
+                group by import_job_id
+            )
+            select
+                j.id,
+                j.filename,
+                j.provider,
+                j.statement_owner,
+                j.status,
+                j.created_at,
+                j.completed_at,
+                j.transactions_found,
+                j.new_transactions,
+                j.existing_transactions,
+                j.rejected_transactions,
+                j.temp_file_deleted_at,
+                coalesce(ts.approved_transactions, 0) as approved_transactions,
+                coalesce(ts.sync_success, 0) as sync_success,
+                coalesce(ts.sync_failed, 0) as sync_failed,
+                coalesce(ts.needs_reconnect_count, 0) > 0 as needs_reconnect,
+                coalesce(rs.retryable_sync_count, 0) as retryable_sync_count
+            from import_jobs j
+            left join transaction_stats ts
+              on ts.import_job_id = j.id
+            left join retry_stats rs
+              on rs.import_job_id = j.id
+            where j.workspace_id = %s
+            order by j.created_at desc
+            limit %s
+            offset %s
+            """,
+            (workspace_id, workspace_id, workspace_id, limit, offset),
         )
 
         return cursor.fetchall()

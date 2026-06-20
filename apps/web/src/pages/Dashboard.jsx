@@ -45,16 +45,8 @@ import SearchPage from "./Search";
 import { PRIVACY_MODES } from "../utils/privacy";
 
 import {
-  getSummary,
+  getDashboardViewModel,
   refreshDashboardData,
-  getMonthlySpending,
-  getMonthlySaving,
-  getMonthlyIncome,
-  getTopSpending,
-  getSpendingByCategory,
-  getFinancialTypes,
-  getMonthlyFinancialTypes,
-  getRuleBasedInsights,
   getGroceryVsFood,
   getCategoryHeatmap,
   getTransactions,
@@ -63,12 +55,8 @@ import {
   getMonthlyAllocation,
   getPersonalAnalytics,
   getAnomalies,
-  getAvailableYears,
   getBudgetForecast,
-  getWorkspaceConfiguration,
 } from "../api/dashboardApi";
-import { getGoogleOAuthConnectionStatus } from "../api/googleOAuthApi";
-import { getGoogleSheetSources } from "../api/googleSheetSourcesApi";
 import { getWorkspaces } from "../api/workspacesApi";
 import {
   acceptWorkspaceInvitation,
@@ -551,88 +539,39 @@ const Dashboard = ({
       const analyticsUserName = selectedAnalyticsUser === "all"
         ? ""
         : selectedAnalyticsUser;
-
-      const summaryData = await getSummary(
-        year,
-        month
-      );
-      const spendingData = await getMonthlySpending(year, month);
-      const savingData = await getMonthlySaving(year, month);
-      const incomeData = await getMonthlyIncome(year, month);
-      const topSpendingData = await getTopSpending(year, month);
-      const categoryDataRes = await getSpendingByCategory(year, month);
       setFinancialInsightsLoading(true);
       setFinancialInsightsError("");
-      const [
-        financialTypesResult,
-        monthlyFinancialTypesResult,
-        ruleBasedInsightsResult,
-      ] = await Promise.allSettled([
-        getFinancialTypes({ year, month }),
-        getMonthlyFinancialTypes({ year }),
-        getRuleBasedInsights({ year, month }),
-      ]);
 
-      if (financialTypesResult.status === "fulfilled") {
-        setFinancialTypes(financialTypesResult.value);
-      } else {
-        setFinancialTypes([]);
-      }
-
-      if (monthlyFinancialTypesResult.status === "fulfilled") {
-        setMonthlyFinancialTypes(monthlyFinancialTypesResult.value);
-      } else {
-        setMonthlyFinancialTypes([]);
-      }
-
-      if (ruleBasedInsightsResult.status === "fulfilled") {
-        setRuleBasedInsights(ruleBasedInsightsResult.value);
-        setFinancialInsightsError("");
-      } else {
-        setRuleBasedInsights({});
-        setFinancialInsightsError("Failed to load rule-based insights.");
-      }
-
-      setFinancialInsightsLoading(false);
-      const groceryVsFoodData = hasPremiumAccess
-        ? await getGroceryVsFood(year, month, analyticsUserName)
-        : [];
-      const categoryHeatmapData = hasPremiumAccess
-        ? await getCategoryHeatmap(year, month, analyticsUserName)
-        : {};
-      const transactionsData = hasPremiumAccess
-        ? await getTransactions(year, month, analyticsUserName)
-        : [];
-      const categoryTrendsData = hasPremiumAccess
-        ? await getCategoryTrends(year, month, analyticsUserName)
-        : {};
-      const personalAnalyticsData = hasPremiumAccess
-        ? await getPersonalAnalytics(year, month)
-        : {};
-      const budgetForecastData = hasPremiumAccess
-        ? await getBudgetForecast(year, month)
-        : {};
-      const anomaliesData = hasPremiumAccess
-        ? await getAnomalies(year, month)
-        : [];
+      const viewModel = await getDashboardViewModel(
+        year,
+        month,
+        analyticsUserName
+      );
+      const dashboardData = viewModel?.dashboard || {};
+      const summaryData = dashboardData.summary || {};
 
       setSummary(summaryData);
       setCurrentSheetName(
-        summaryData?.data_source?.name
+        viewModel?.current_sheet_name
+        || summaryData?.data_source?.name
         || (year ? `Google Sheet ${year}` : "")
       );
-      setSpending(spendingData);
-      setSaving(savingData);
-      setIncome(incomeData);
-      setTopSpending(topSpendingData);
-      setCategoryData(categoryDataRes);
-      setGroceryVsFood(groceryVsFoodData);
-      setCategoryHeatmap(categoryHeatmapData);
-      setRawTransactions(transactionsData);
-      setCategoryTrends(categoryTrendsData);
-      setPersonalAnalytics(personalAnalyticsData);
-      setBudgetForecast(budgetForecastData);
-      setAnomalies(anomaliesData);
+      setSpending(dashboardData.monthly_spending || []);
+      setSaving(dashboardData.monthly_saving || []);
+      setIncome(dashboardData.monthly_income || []);
+      setTopSpending(dashboardData.top_spending || []);
+      setCategoryData(dashboardData.spending_by_category || []);
+      setFinancialTypes(dashboardData.financial_types || []);
+      setMonthlyFinancialTypes(dashboardData.monthly_financial_types || []);
+      setRuleBasedInsights(dashboardData.rule_based_insights || {});
+      setGroceryVsFood(dashboardData.grocery_vs_food || []);
+      setCategoryHeatmap(dashboardData.category_heatmap || {});
+      setRawTransactions(dashboardData.transactions || []);
+      setCategoryTrends(dashboardData.category_trends || {});
+      setPersonalAnalytics(dashboardData.personal_analytics || {});
+      setBudgetForecast(dashboardData.budget_forecast || {});
+      setAnomalies(dashboardData.anomalies || []);
+      setFinancialInsightsError("");
 
       setError("");
     } catch (err) {
@@ -648,7 +587,7 @@ const Dashboard = ({
       setFinancialInsightsLoading(false);
       setLoading(false);
     }
-  }, [hasPremiumAccess, onLogout, selectedAnalyticsUser]);
+  }, [onLogout, selectedAnalyticsUser]);
 
   const refreshBudgetForecast = useCallback(async () => {
     if (!hasPremiumAccess || selectedYear === "" || selectedMonth === "") {
@@ -680,45 +619,25 @@ const Dashboard = ({
   const loadInitialData = useCallback(async () => {
     try {
       setLoading(true);
+      const viewModel = await getDashboardViewModel();
+      const availableYears = viewModel?.available_years || [];
+      const syncedSources = viewModel?.google_sheet_sources || [];
+      const googleConnectionResponse = viewModel?.google_connection || { connected: false };
+      const hasGoogleSheet = Boolean(viewModel?.has_active_google_sheet);
 
-      const [
-        workspaceConfiguration,
-        dataSourcesResponse,
-        googleConnectionResponse,
-      ] = await Promise.all([
-        getWorkspaceConfiguration(),
-        getGoogleSheetSources(),
-        getGoogleOAuthConnectionStatus(),
-      ]);
-      const googleSheetSources = workspaceConfiguration?.configuration?.google_sheet_sources || [];
-      const googleSheetId = workspaceConfiguration?.configuration?.google_sheet_id;
-      const syncedSources = dataSourcesResponse?.sources || [];
-      const isGoogleConnected = Boolean(googleConnectionResponse?.connected);
-      const hasGoogleSheet = (
-        googleSheetSources.length > 0
-        || syncedSources.length > 0
-        || Boolean(googleSheetId)
-      );
-
-      setGoogleConnection(googleConnectionResponse || { connected: false });
+      setGoogleConnection(googleConnectionResponse);
       setGoogleSheetSources(syncedSources);
       setHasActiveGoogleSheet(hasGoogleSheet);
-
-      const availableYearsPayload = await getAvailableYears();
-      const availableYears = Array.isArray(availableYearsPayload)
-        ? availableYearsPayload
-        : availableYearsPayload?.years || [];
-
       setYears(availableYears);
 
       if (availableYears.length > 0) {
-        setSelectedYear(availableYears[0]);
+        setSelectedYear(viewModel?.selected_period?.year || availableYears[0]);
       } else {
         setSelectedYear("");
         setSelectedMonth("");
       }
 
-      if (!isGoogleConnected && !hasGoogleSheet) {
+      if (!googleConnectionResponse.connected && !hasGoogleSheet) {
         setSummary({});
         setSpending([]);
         setSaving([]);

@@ -4,6 +4,7 @@ from psycopg.rows import dict_row
 def get_registered_transaction_fingerprint_statuses(
     connection,
     *,
+    workspace_id: str,
     transaction_fingerprints: list[str],
 ):
     if not transaction_fingerprints:
@@ -14,10 +15,11 @@ def get_registered_transaction_fingerprint_statuses(
             """
             update import_transaction_registry
             set last_seen_at = now()
-            where transaction_fingerprint = any(%s)
+            where workspace_id = %s
+              and transaction_fingerprint = any(%s)
             returning transaction_fingerprint, status
             """,
-            (transaction_fingerprints,),
+            (workspace_id, transaction_fingerprints),
         )
 
         return {
@@ -29,11 +31,13 @@ def get_registered_transaction_fingerprint_statuses(
 def get_registered_transaction_fingerprints(
     connection,
     *,
+    workspace_id: str,
     transaction_fingerprints: list[str],
 ):
     return set(
         get_registered_transaction_fingerprint_statuses(
             connection,
+            workspace_id=workspace_id,
             transaction_fingerprints=transaction_fingerprints,
         ).keys()
     )
@@ -42,6 +46,7 @@ def get_registered_transaction_fingerprints(
 def register_transaction_fingerprints(
     connection,
     *,
+    workspace_id: str,
     rows: list[dict],
 ):
     if not rows:
@@ -54,6 +59,7 @@ def register_transaction_fingerprints(
             cursor.execute(
                 """
                 insert into import_transaction_registry (
+                    workspace_id,
                     transaction_fingerprint,
                     provider,
                     status,
@@ -62,6 +68,7 @@ def register_transaction_fingerprints(
                     last_seen_at
                 )
                 values (
+                    %(workspace_id)s,
                     %(transaction_fingerprint)s,
                     %(provider)s,
                     'approved',
@@ -69,16 +76,19 @@ def register_transaction_fingerprints(
                     null,
                     now()
                 )
-                on conflict (transaction_fingerprint)
+                on conflict (workspace_id, transaction_fingerprint)
                 do update set
                     provider = excluded.provider,
                     status = 'approved',
                     approved_at = excluded.approved_at,
                     rejected_at = null,
                     last_seen_at = excluded.last_seen_at
-                returning transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at
+                returning workspace_id, transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at
                 """,
-                row,
+                {
+                    **row,
+                    "workspace_id": workspace_id,
+                },
             )
             registered_row = cursor.fetchone()
 
@@ -91,6 +101,7 @@ def register_transaction_fingerprints(
 def register_rejected_transaction_fingerprints(
     connection,
     *,
+    workspace_id: str,
     rows: list[dict],
 ):
     if not rows:
@@ -103,6 +114,7 @@ def register_rejected_transaction_fingerprints(
             cursor.execute(
                 """
                 insert into import_transaction_registry (
+                    workspace_id,
                     transaction_fingerprint,
                     provider,
                     status,
@@ -111,6 +123,7 @@ def register_rejected_transaction_fingerprints(
                     last_seen_at
                 )
                 values (
+                    %(workspace_id)s,
                     %(transaction_fingerprint)s,
                     %(provider)s,
                     'rejected',
@@ -118,16 +131,19 @@ def register_rejected_transaction_fingerprints(
                     now(),
                     now()
                 )
-                on conflict (transaction_fingerprint)
+                on conflict (workspace_id, transaction_fingerprint)
                 do update set
                     provider = excluded.provider,
                     status = 'rejected',
                     approved_at = null,
                     rejected_at = excluded.rejected_at,
                     last_seen_at = excluded.last_seen_at
-                returning transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at
+                returning workspace_id, transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at
                 """,
-                row,
+                {
+                    **row,
+                    "workspace_id": workspace_id,
+                },
             )
             registered_row = cursor.fetchone()
 

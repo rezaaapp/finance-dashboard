@@ -28,11 +28,12 @@ export const uploadImportFile = async (file, statementOwner) => {
   return response.data;
 };
 
-export const getImportReview = async (jobId) => {
+export const getImportReview = async (jobId, params = {}) => {
   const response = await axios.get(
     `${IMPORT_API_URL}/review/${jobId}`,
     {
       headers: getAuthHeaders(),
+      params,
     }
   );
 
@@ -74,11 +75,12 @@ export const rejectImportReview = async (jobId, payload) => {
   return response.data;
 };
 
-export const getImportHistory = async () => {
+export const getImportHistory = async (params = {}) => {
   const response = await axios.get(
     `${IMPORT_API_URL}/history`,
     {
       headers: getAuthHeaders(),
+      params,
     }
   );
 

@@ -38,7 +38,10 @@ sys.modules.setdefault("dotenv", fake_dotenv)
 sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
-from app.imports.repositories.final_transaction_repository import create_import_transactions
+from app.imports.repositories.final_transaction_repository import (
+    create_import_transactions,
+    update_import_transaction_sync_status,
+)
 from app.imports.repositories.fingerprint_registry_repository import (
     get_registered_transaction_fingerprint_statuses,
     register_rejected_transaction_fingerprints,
@@ -72,10 +75,19 @@ if not FIXTURE_PATH.exists():
 
 
 class NamedBytesIO(io.BytesIO):
-    def __init__(self, content: bytes, name: str):
+    def __init__(
+        self,
+        content: bytes,
+        name: str,
+        *,
+        content_type: str | None = None,
+        size: int | None = None,
+    ):
         super().__init__(content)
         self.filename = name
         self.file = self
+        self.content_type = content_type
+        self.size = len(content) if size is None else size
 
 
 class FakeReturningCursor:
@@ -187,7 +199,10 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         self.assertEqual(1, len(cursor.executed))
         self.assertIn("returning id, import_transaction_fingerprint, sync_status", cursor.executed[0][0])
-        self.assertIn("on conflict (import_transaction_fingerprint)", cursor.executed[0][0])
+        self.assertIn(
+            "on conflict (workspace_id, import_transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
         self.assertEqual(1, cursor.fetchone_calls)
         self.assertEqual(0, cursor.fetchall_calls)
 
@@ -202,7 +217,14 @@ class BluPdfParserTestCase(unittest.TestCase):
         cursor = FakeReturningCursor([])
         connection = FakeReturningConnection(cursor)
 
-        self.assertEqual([], register_transaction_fingerprints(connection, rows=[]))
+        self.assertEqual(
+            [],
+            register_transaction_fingerprints(
+                connection,
+                workspace_id="workspace-1",
+                rows=[],
+            ),
+        )
         self.assertEqual([], connection.cursor_calls)
 
     def test_register_transaction_fingerprints_returns_registered_rows(self):
@@ -218,6 +240,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         registered_rows = register_transaction_fingerprints(
             connection,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-1",
                 "provider": "blu",
@@ -235,10 +258,14 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         self.assertEqual(1, len(cursor.executed))
         self.assertIn(
-            "returning transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at",
+            "returning workspace_id, transaction_fingerprint, provider, status, approved_at, rejected_at, last_seen_at, created_at",
             cursor.executed[0][0],
         )
-        self.assertIn("on conflict (transaction_fingerprint)", cursor.executed[0][0])
+        self.assertIn(
+            "on conflict (workspace_id, transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
+        self.assertEqual("workspace-1", cursor.executed[0][1]["workspace_id"])
         self.assertEqual(1, cursor.fetchone_calls)
         self.assertEqual(0, cursor.fetchall_calls)
 
@@ -255,6 +282,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         register_transaction_fingerprints(
             connection,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-1",
                 "provider": "blu",
@@ -264,6 +292,36 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertIn("do update set", cursor.executed[0][0])
         self.assertIn("provider = excluded.provider", cursor.executed[0][0])
         self.assertIn("approved_at = excluded.approved_at", cursor.executed[0][0])
+
+    def test_same_fingerprint_can_be_registered_for_different_workspaces(self):
+        cursor = FakeReturningCursor([
+            {"transaction_fingerprint": "shared-fp", "workspace_id": "workspace-1"},
+            {"transaction_fingerprint": "shared-fp", "workspace_id": "workspace-2"},
+        ])
+        connection = FakeReturningConnection(cursor)
+        row = {
+            "transaction_fingerprint": "shared-fp",
+            "provider": "blu",
+        }
+
+        register_transaction_fingerprints(
+            connection,
+            workspace_id="workspace-1",
+            rows=[row],
+        )
+        register_transaction_fingerprints(
+            connection,
+            workspace_id="workspace-2",
+            rows=[row],
+        )
+
+        self.assertEqual(2, len(cursor.executed))
+        self.assertIn(
+            "on conflict (workspace_id, transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
+        self.assertEqual("workspace-1", cursor.executed[0][1]["workspace_id"])
+        self.assertEqual("workspace-2", cursor.executed[1][1]["workspace_id"])
 
     def test_get_registered_transaction_fingerprint_statuses_returns_mapping(self):
         cursor = FakeFetchAllCursor([
@@ -280,6 +338,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         statuses = get_registered_transaction_fingerprint_statuses(
             connection,
+            workspace_id="workspace-1",
             transaction_fingerprints=["fp-approved", "fp-rejected"],
         )
 
@@ -291,6 +350,11 @@ class BluPdfParserTestCase(unittest.TestCase):
             statuses,
         )
         self.assertIn("returning transaction_fingerprint, status", cursor.executed[0][0])
+        self.assertIn("where workspace_id = %s", cursor.executed[0][0])
+        self.assertEqual(
+            ("workspace-1", ["fp-approved", "fp-rejected"]),
+            cursor.executed[0][1],
+        )
 
     def test_register_rejected_transaction_fingerprint_returns_rejected_status(self):
         cursor = FakeReturningCursor([{
@@ -306,6 +370,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         rows = register_rejected_transaction_fingerprints(
             connection,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-rejected",
                 "provider": "blu",
@@ -315,6 +380,29 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("rejected", rows[0]["status"])
         self.assertIn("'rejected'", cursor.executed[0][0])
         self.assertIn("rejected_at = excluded.rejected_at", cursor.executed[0][0])
+        self.assertIn(
+            "on conflict (workspace_id, transaction_fingerprint)",
+            cursor.executed[0][0],
+        )
+
+    def test_sync_status_update_is_scoped_by_workspace(self):
+        cursor = FakeFetchAllCursor([])
+        connection = FakeReturningConnection(cursor)
+
+        update_import_transaction_sync_status(
+            connection,
+            workspace_id="workspace-2",
+            transaction_fingerprints=["shared-fingerprint"],
+            sync_status="success",
+        )
+
+        query, params = cursor.executed[0]
+        self.assertIn("where workspace_id = %s", query)
+        self.assertIn("import_transaction_fingerprint = any(%s)", query)
+        self.assertEqual(
+            ("success", None, "workspace-2", ["shared-fingerprint"]),
+            params,
+        )
 
     def test_parser_detects_sections_and_review_groups(self):
         transactions = self.parser._parse_lines([
@@ -574,7 +662,8 @@ class BluPdfParserTestCase(unittest.TestCase):
             "status": "uploaded",
         }
 
-        def fake_get_statuses(_connection, *, transaction_fingerprints):
+        def fake_get_statuses(_connection, *, workspace_id, transaction_fingerprints):
+            self.assertEqual("workspace-1", workspace_id)
             return {
                 fingerprint: "approved"
                 for fingerprint in transaction_fingerprints
@@ -621,7 +710,8 @@ class BluPdfParserTestCase(unittest.TestCase):
             "provider": "blu",
             "status": "uploaded",
         }
-        def fake_get_statuses(_connection, *, transaction_fingerprints):
+        def fake_get_statuses(_connection, *, workspace_id, transaction_fingerprints):
+            self.assertEqual("workspace-1", workspace_id)
             return {
                 fingerprint: "rejected"
                 for fingerprint in transaction_fingerprints
@@ -951,7 +1041,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             first_result = service.receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
-                file=NamedBytesIO(b"first-half", "blu-first-half.pdf"),
+                file=NamedBytesIO(b"%PDF-first-half", "blu-first-half.pdf"),
                 statement_owner="Reza",
             )
             stored_fingerprints.update(
@@ -960,7 +1050,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             second_result = service.receive_upload(
                 connection=object(),
                 workspace_id="workspace-1",
-                file=NamedBytesIO(b"full-month", "blu-full-month.pdf"),
+                file=NamedBytesIO(b"%PDF-full-month", "blu-full-month.pdf"),
                 statement_owner="Reza",
             )
 
@@ -1040,8 +1130,121 @@ class BluPdfParserTestCase(unittest.TestCase):
             )
 
         self.assertEqual("failed", result.status)
-        self.assertEqual("invalid_pdf", result.error_code)
-        self.assertEqual("PDF tidak valid atau gagal dibaca.", result.message)
+        self.assertEqual("invalid_pdf_signature", result.error_code)
+        self.assertEqual("File PDF tidak valid atau isinya bukan PDF.", result.message)
+
+    def test_import_service_rejects_non_pdf_extension_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"%PDF-fake",
+            "blu-invalid.png",
+            content_type="application/pdf",
+        )
+        fake_job = {
+            "id": "job-extension",
+            "provider": "unknown",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("invalid_file_extension", result.error_code)
+        self.assertEqual("File harus berformat PDF (.pdf).", result.message)
+        save_temp_mock.assert_not_called()
+
+    def test_import_service_rejects_non_pdf_content_type_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"%PDF-fake",
+            "blu-invalid.pdf",
+            content_type="image/png",
+        )
+        fake_job = {
+            "id": "job-content-type",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("invalid_content_type", result.error_code)
+        self.assertEqual("File yang diupload bukan PDF yang valid.", result.message)
+        save_temp_mock.assert_not_called()
+
+    def test_import_service_rejects_invalid_pdf_magic_bytes_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"not-a-pdf",
+            "blu-invalid.pdf",
+            content_type="application/pdf",
+        )
+        fake_job = {
+            "id": "job-signature",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("invalid_pdf_signature", result.error_code)
+        self.assertEqual("File PDF tidak valid atau isinya bukan PDF.", result.message)
+        save_temp_mock.assert_not_called()
+
+    def test_import_service_rejects_pdf_over_max_size_before_temp_save(self):
+        fake_upload = NamedBytesIO(
+            b"%PDF-small",
+            "blu-large.pdf",
+            content_type="application/pdf",
+            size=(10 * 1024 * 1024) + 1,
+        )
+        fake_job = {
+            "id": "job-too-large",
+            "provider": "blu",
+            "status": "uploaded",
+        }
+
+        with patch("app.imports.services.import_service.create_import_job", return_value=fake_job), \
+             patch("app.imports.services.import_service.save_temp_import_file") as save_temp_mock, \
+             patch("app.imports.services.import_service.update_import_job_summary"), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = ImportService().receive_upload(
+                connection=object(),
+                workspace_id="workspace-1",
+                file=fake_upload,
+                statement_owner="Reza",
+            )
+
+        self.assertEqual("failed", result.status)
+        self.assertEqual("file_too_large", result.error_code)
+        self.assertEqual("Ukuran PDF terlalu besar. Maksimal upload adalah 10 MB.", result.message)
+        save_temp_mock.assert_not_called()
 
     def test_import_service_fails_blu_pdf_when_text_exists_but_parser_returns_zero(self):
         fake_upload = NamedBytesIO(b"%PDF-no-transactions", "statement.pdf")
@@ -1223,7 +1426,18 @@ class BluPdfParserTestCase(unittest.TestCase):
         ]
 
         with patch("app.imports.services.import_service.get_import_review_summary", return_value=review_summary), \
-             patch("app.imports.services.import_service.list_import_draft_transactions", return_value=draft_transactions):
+             patch(
+                 "app.imports.services.import_service.get_import_review_filter_counts",
+                 return_value={
+                     "total_count": 2,
+                     "needs_review_count": 2,
+                     "review_groups": [
+                         {"review_group": "Makan Bulanan", "count": 1},
+                         {"review_group": "bluAccount", "count": 1},
+                     ],
+                 },
+             ), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_paginated", return_value=draft_transactions):
             payload = service.get_review_payload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -1236,6 +1450,62 @@ class BluPdfParserTestCase(unittest.TestCase):
             ["Semua", "Makan Bulanan", "bluAccount", "Perlu Review"],
             [filter_item["label"] for filter_item in payload["filters"]],
         )
+        self.assertEqual(
+            {
+                "total": 2,
+                "limit": 100,
+                "offset": 0,
+                "page": 1,
+                "has_next": False,
+                "has_previous": False,
+            },
+            payload["pagination"],
+        )
+
+    def test_review_payload_applies_limit_and_offset(self):
+        service = ImportService()
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={
+            "id": "job-1",
+            "filename": "blu_statement_juni.pdf",
+            "provider": "blu",
+            "status": "uploaded",
+            "transactions_found": 120,
+            "new_transactions": 120,
+            "existing_transactions": 0,
+            "created_at": "2026-06-16T10:00:00Z",
+            "statement_owner": "Reza",
+        }), \
+             patch(
+                 "app.imports.services.import_service.get_import_review_filter_counts",
+                 return_value={
+                     "total_count": 120,
+                     "needs_review_count": 120,
+                     "review_groups": [],
+                 },
+             ), \
+             patch(
+                 "app.imports.services.import_service.list_import_draft_transactions_paginated",
+                 return_value=[],
+             ) as list_drafts_mock:
+            payload = service.get_review_payload(
+                connection=object(),
+                workspace_id="workspace-1",
+                job_id="job-1",
+                limit=25,
+                offset=50,
+            )
+
+        list_drafts_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            import_job_id="job-1",
+            status="new",
+            limit=25,
+            offset=50,
+        )
+        self.assertEqual(3, payload["pagination"]["page"])
+        self.assertTrue(payload["pagination"]["has_next"])
+        self.assertTrue(payload["pagination"]["has_previous"])
 
     def test_category_options_payload_uses_workspace_transaction_categories(self):
         connection = object()
@@ -1373,6 +1643,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         register_fingerprints_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-1",
                 "provider": "blu",
@@ -1380,6 +1651,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         update_sync_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             transaction_fingerprints=["fp-1"],
             sync_status="success",
         )
@@ -1439,7 +1711,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "status": "failed",
                 "error_code": "missing_target_sheet",
-                "message": "Pilih target spreadsheet dan tab tujuan sebelum approve.",
+                "message": "Pilih spreadsheet dan tab tujuan dulu sebelum approval dijalankan.",
             },
             raised.exception.to_response(),
         )
@@ -1504,7 +1776,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             {
                 "status": "failed",
                 "error_code": "invalid_target_sheet_header",
-                "message": "Tab tujuan belum memiliki format kolom transaksi yang sesuai.",
+                "message": "Tab tujuan belum siap menerima salinan transaksi karena format kolomnya belum sesuai.",
             },
             raised.exception.to_response(),
         )
@@ -1705,6 +1977,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         update_sync_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             transaction_fingerprints=["fp-1"],
             sync_status="failed",
             sync_error_message="append failed",
@@ -2234,6 +2507,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(["draft-2"], reject_result["draft_ids"])
         register_rejected_mock.assert_called_once_with(
             unittest.mock.ANY,
+            workspace_id="workspace-1",
             rows=[{
                 "transaction_fingerprint": "fp-rejected",
                 "provider": "blu",
@@ -2455,7 +2729,8 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.list_import_history", return_value=history_rows):
+        with patch("app.imports.services.import_service.count_import_history", return_value=1), \
+             patch("app.imports.services.import_service.list_import_history_paginated", return_value=history_rows):
             payload = service.get_history_payload(
                 connection=object(),
                 workspace_id="workspace-1",
@@ -2464,6 +2739,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, len(payload["jobs"]))
         self.assertEqual("cleanup_completed", payload["jobs"][0]["status"])
         self.assertEqual("already_deleted", payload["jobs"][0]["pdf_status"])
+        self.assertEqual(20, payload["pagination"]["limit"])
 
     def test_history_detail_includes_unsynced_transactions(self):
         service = ImportService()
