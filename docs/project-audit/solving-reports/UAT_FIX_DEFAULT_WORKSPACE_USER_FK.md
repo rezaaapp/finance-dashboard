@@ -99,4 +99,4 @@ PASS
 
 ## Commit hash
 
-- To be filled after commit: `PENDING`
+- `10b3c0e` — `fix(auth): upsert session user before workspace provisioning`
