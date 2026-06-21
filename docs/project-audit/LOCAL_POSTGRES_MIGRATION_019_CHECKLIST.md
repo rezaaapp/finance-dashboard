@@ -67,7 +67,24 @@ Jika project memakai file `.env`, pastikan values local tidak mengarah ke Supaba
 
 ## 4. Command menjalankan migration dari awal
 
-Dari root repo:
+Dari root repo, hentikan backend terlebih dahulu. Reset hanya akan berjalan
+jika seluruh database URL yang aktif menunjuk host loopback dan database
+bernama tepat `finance_dashboard_local`.
+
+```bash
+npm run db:reset:local -- --confirm finance_dashboard_local
+```
+
+Guard reset akan menolak eksekusi jika:
+
+- host bukan `localhost`, `127.0.0.1`, atau `::1`;
+- nama database bukan `finance_dashboard_local`;
+- ada URL Supabase/remote yang masih terkonfigurasi;
+- backend masih listening pada port `8000`;
+- masih ada koneksi aktif ke database target;
+- nilai `--confirm` tidak persis `finance_dashboard_local`.
+
+Setelah reset sukses, jalankan migration:
 
 ```bash
 .\backend\venv\Scripts\python.exe backend\scripts\run_migrations.py
@@ -78,6 +95,28 @@ Expected behavior:
 - Migration runner membuat `schema_migrations` bila belum ada.
 - Seluruh file migration berjalan berurutan.
 - Jika migration 019 gagal, process exit non-zero dan `019_scope_import_fingerprints_by_workspace.sql` tidak tercatat di `schema_migrations`.
+
+## 4.1 Seed minimal UAT
+
+Samakan identity seed dengan identity yang dibentuk oleh login lokal. Untuk
+username login `admin`, konfigurasi lokalnya:
+
+```env
+SEED_USER_EMAIL=admin@local.finance-dashboard
+SEED_USER_NAME=Admin
+SEED_WORKSPACE_NAME=Admin's Household
+```
+
+File `.env` dan `backend/.env` bersifat lokal/ignored dan tidak boleh
+di-commit. Jalankan seed setelah seluruh migration sukses:
+
+```bash
+npm run db:seed
+```
+
+Seed aman dijalankan ulang. User di-upsert berdasarkan email dan workspace
+owner dicari berdasarkan user serta nama workspace, sehingga rerun tidak boleh
+membuat akun, workspace, membership, atau configuration kedua.
 
 ## 5. Command menjalankan test setelah migration
 
@@ -178,11 +217,10 @@ Kalau migration gagal sebelum selesai:
 3. Jika tidak tercatat, perbaiki data/duplikasi penyebab failure lalu rerun migration.
 4. Jika database local sudah terlanjur kotor dan lebih cepat untuk reset, drop database local lalu buat ulang database kosong, kemudian rerun seluruh migration dari awal.
 
-Contoh reset local database:
+Gunakan guarded reset workflow:
 
 ```bash
-dropdb finance_dashboard_local
-createdb finance_dashboard_local
+npm run db:reset:local -- --confirm finance_dashboard_local
 .\backend\venv\Scripts\python.exe backend\scripts\run_migrations.py
 ```
 
