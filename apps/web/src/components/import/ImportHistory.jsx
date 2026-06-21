@@ -182,7 +182,10 @@ const ImportHistory = ({
                     const rowApprovalStatus = getOmonApprovalStatus(job);
                     const rowDeliveryStatus = getSpreadsheetDeliveryStatus(job);
                     const canRetry = job.retryable_sync_count > 0;
-                    const canContinueReview = job.status === "review";
+                    const canContinueReview = (
+                      job.status === "review"
+                      && Number(job.new_transactions || 0) > 0
+                    );
 
                     return (
                       <tr key={job.job_id} className="table-row table-border">
@@ -475,7 +478,7 @@ const ImportHistory = ({
             )}
 
             <div className="grid grid-cols-1 gap-3">
-              {selectedDetail.status === "review" && (
+              {selectedDetail.status === "review" && Number(selectedDetail.new_transactions || 0) > 0 && (
                 <button
                   type="button"
                   onClick={() => onContinueReview(selectedDetail.job_id)}

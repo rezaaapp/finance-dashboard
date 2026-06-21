@@ -149,6 +149,12 @@ class BluPdfParserTestCase(unittest.TestCase):
     def setUp(self):
         self.parser = BluPdfParser()
         self.merchant_normalizer = MerchantNormalizer()
+        self.registry_status_patcher = patch(
+            "app.imports.services.import_service.get_registered_transaction_fingerprint_statuses",
+            return_value={},
+        )
+        self.registry_status_patcher.start()
+        self.addCleanup(self.registry_status_patcher.stop)
         fixture_path = FIXTURE_PATH if FIXTURE_PATH.exists() else REAL_JUNE_FIXTURE_PATH
         self.fixture_bytes = fixture_path.read_bytes()
         self.real_june_fixture_bytes = REAL_JUNE_FIXTURE_PATH.read_bytes()
@@ -691,7 +697,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 statement_owner="Reza",
             )
 
-        self.assertEqual("review", result.status)
+        self.assertEqual("completed", result.status)
         self.assertTrue(result.no_new_transactions)
         self.assertEqual(self.fixture_transaction_count, result.transactions_found)
         self.assertEqual(0, result.new_transactions)
@@ -739,7 +745,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 statement_owner="Reza",
             )
 
-        self.assertEqual("review", result.status)
+        self.assertEqual("completed", result.status)
         self.assertTrue(result.no_new_transactions)
         self.assertEqual(self.fixture_transaction_count, result.transactions_found)
         self.assertEqual(0, result.new_transactions)
@@ -1789,6 +1795,83 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("skipped", result["sheet_delivery"]["status"])
         self.assertIn("sudah tersimpan di Omon", result["sync_error_message"])
 
+    def test_approve_stale_drafts_skips_approved_and_rejected_registry_rows(self):
+        service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
+        selected_drafts = [
+            {
+                "id": "draft-approved",
+                "transaction_fingerprint": "fp-approved",
+                "datetime": "01/06/2026 08:00",
+                "merchant_original": "Existing Merchant",
+                "merchant_normalized": "Existing Merchant",
+                "amount": 28000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-approved",
+                "category": "Food",
+                "notes": "",
+            },
+            {
+                "id": "draft-rejected",
+                "transaction_fingerprint": "fp-rejected",
+                "datetime": "01/06/2026 09:00",
+                "merchant_original": "Rejected Merchant",
+                "merchant_normalized": "Rejected Merchant",
+                "amount": 19000,
+                "direction": "expense",
+                "transaction_type": "DB",
+                "review_group": "Makan Bulanan",
+                "raw_text": "raw-rejected",
+                "category": "Food",
+                "notes": "",
+            },
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu", "statement_owner": "Reza"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_registered_transaction_fingerprint_statuses", return_value={
+                 "fp-approved": "approved",
+                 "fp-rejected": "rejected",
+             }), \
+             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(ImportCleanupService, "delete_temp_pdf_for_job"), \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status"):
+            result = service.approve_review_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": ""},
+                current_user={"sub": "user-1", "name": "Reza"},
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-approved", "draft-rejected"],
+                item_updates=[],
+            )
+
+        create_transactions_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            rows=[],
+        )
+        register_fingerprints_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            rows=[],
+        )
+        delete_drafts_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            import_job_id="job-1",
+            draft_ids=["draft-approved", "draft-rejected"],
+        )
+        self.assertEqual(0, result["approved_count"])
+        self.assertEqual(1, result["skipped_existing_count"])
+        self.assertEqual(1, result["skipped_rejected_count"])
+        self.assertFalse(result["ledger_saved"])
+
     def test_approve_review_transactions_invalid_target_header_keeps_ledger(self):
         service = ImportService()
         service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
@@ -1826,7 +1909,10 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "Deskripsi",
                  "Nominal",
              ]]), \
-             patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]) as create_transactions_mock, \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{
+                 "id": "txn-1",
+                 "import_transaction_fingerprint": "fp-1",
+             }]) as create_transactions_mock, \
              patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
              patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
              patch.object(ImportCleanupService, "delete_temp_pdf_for_job"), \
@@ -1962,7 +2048,10 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "Source Dana",
                  "Keterangan",
              ]]), \
-             patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]), \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{
+                 "id": "txn-1",
+                 "import_transaction_fingerprint": "fp-1",
+             }]), \
              patch("app.imports.services.import_service.register_transaction_fingerprints", side_effect=RuntimeError("registry failed")), \
              patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
              patch.object(SpreadsheetSyncService, "sync_import_transactions") as sync_mock:
@@ -2023,7 +2112,10 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "Source Dana",
                  "Keterangan",
              ]]), \
-             patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]), \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{
+                 "id": "txn-1",
+                 "import_transaction_fingerprint": "fp-1",
+             }]), \
              patch("app.imports.services.import_service.register_transaction_fingerprints"), \
              patch.object(SpreadsheetSyncService, "sync_import_transactions", return_value={
                  "status": "failed",
@@ -2590,6 +2682,48 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         create_transactions_mock.assert_not_called()
         sync_mock.assert_not_called()
+
+    def test_reject_stale_drafts_does_not_change_registry_status(self):
+        service = ImportService()
+        selected_drafts = [
+            {"id": "draft-approved", "transaction_fingerprint": "fp-approved"},
+            {"id": "draft-rejected", "transaction_fingerprint": "fp-rejected"},
+        ]
+
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+             patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
+             patch("app.imports.services.import_service.get_registered_transaction_fingerprint_statuses", return_value={
+                 "fp-approved": "approved",
+                 "fp-rejected": "rejected",
+             }), \
+             patch("app.imports.services.import_service.register_rejected_transaction_fingerprints") as register_mock, \
+             patch("app.imports.services.import_service.reject_import_draft_transactions", return_value=[
+                 {"id": "draft-approved"},
+                 {"id": "draft-rejected"},
+             ]), \
+             patch("app.imports.services.import_service.increment_import_job_rejected_count") as increment_mock, \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status"):
+            result = service.reject_review_transactions(
+                connection=object(),
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-approved", "draft-rejected"],
+            )
+
+        register_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            rows=[],
+        )
+        increment_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            job_id="job-1",
+            rejected_count=0,
+        )
+        self.assertEqual(0, result["rejected_count"])
+        self.assertEqual(1, result["skipped_existing_count"])
+        self.assertEqual(1, result["skipped_rejected_count"])
 
     def test_retry_sync_uses_existing_unsynced_transactions_and_selected_sheet(self):
         service = ImportService()

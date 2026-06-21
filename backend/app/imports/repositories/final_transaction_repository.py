@@ -72,8 +72,7 @@ def create_import_transactions(
                 )
                 on conflict (workspace_id, import_transaction_fingerprint)
                 where import_transaction_fingerprint is not null
-                do update set
-                    import_transaction_fingerprint = excluded.import_transaction_fingerprint
+                do nothing
                 returning id, import_transaction_fingerprint, sync_status
                 """,
                 {

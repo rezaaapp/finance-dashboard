@@ -120,6 +120,21 @@ export const getSpreadsheetDeliveryStatus = (job = {}) => {
 export const getOmonApprovalStatus = (job = {}) => {
   const approvedCount = Number(job.approved_transactions || 0);
   const rejectedCount = Number(job.rejected_transactions || 0);
+  const transactionsFound = Number(job.transactions_found || 0);
+  const newTransactions = Number(job.new_transactions || 0);
+  const existingTransactions = Number(job.existing_transactions || 0);
+
+  if (
+    transactionsFound > 0
+    && newTransactions === 0
+    && existingTransactions === transactionsFound
+  ) {
+    return {
+      tone: "default",
+      label: "Tidak ada transaksi baru",
+      summary: `${existingTransactions} transaksi dalam file ini sudah pernah diproses atau ditolak.`,
+    };
+  }
 
   if (approvedCount > 0) {
     return {
@@ -145,10 +160,26 @@ export const getOmonApprovalStatus = (job = {}) => {
 };
 
 export const buildApproveFeedback = (response = {}) => {
+  const approvedCount = Number(response.approved_count || 0);
+  const skippedExisting = Number(response.skipped_existing_count || 0);
+  const skippedRejected = Number(response.skipped_rejected_count || 0);
   const syncStatus = response.sync_status;
   const syncSuccess = Number(response.sync_success || 0);
   const syncFailed = Number(response.sync_failed || 0);
   const detail = response.sync_error_message || "";
+  const skipDetail = [
+    skippedExisting > 0 ? `${skippedExisting} sudah disetujui sebelumnya` : "",
+    skippedRejected > 0 ? `${skippedRejected} sudah ditolak sebelumnya` : "",
+  ].filter(Boolean).join(", ");
+
+  if (approvedCount === 0 && (skippedExisting > 0 || skippedRejected > 0)) {
+    return {
+      tone: "warning",
+      title: "Tidak ada transaksi baru yang disimpan.",
+      message: "Pilihan berasal dari review lama dan sudah diproses sebelumnya.",
+      detail: skipDetail,
+    };
+  }
 
   if (syncStatus === "success" && syncFailed === 0) {
     return {
