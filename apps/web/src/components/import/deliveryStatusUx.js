@@ -31,13 +31,19 @@ export const isMissingTargetSheetMessage = (message = "") => {
   ].some((keyword) => normalized.includes(keyword));
 };
 
+export const isUnconfiguredSpreadsheetMessage = (message = "") => (
+  normalizeText(message).includes("target spreadsheet belum dikonfigurasi")
+);
+
 export const getSpreadsheetDeliveryStatus = (job = {}) => {
   const approvedCount = Number(job.approved_transactions || 0);
   const syncSuccess = Number(job.sync_success ?? job.sync_success_count ?? 0);
   const syncFailed = Number(job.sync_failed ?? job.sync_failed_count ?? 0);
   const retryableCount = Number(job.retryable_sync_count ?? job.unsynced_count ?? syncFailed ?? 0);
   const needsReconnect = Boolean(job.needs_reconnect);
+  const spreadsheetUnconfigured = Boolean(job.spreadsheet_unconfigured);
   const syncMessages = collectSyncMessages(job);
+  const isUnconfigured = spreadsheetUnconfigured || syncMessages.some((message) => isUnconfiguredSpreadsheetMessage(message));
   const hasMissingTargetSheet = syncMessages.some((message) => isMissingTargetSheetMessage(message));
 
   if (approvedCount <= 0) {
@@ -55,6 +61,15 @@ export const getSpreadsheetDeliveryStatus = (job = {}) => {
       tone: "warning",
       label: "Perlu hubungkan ulang Google",
       summary: "Transaksi sudah tersimpan di Omon, tetapi akses Google perlu dihubungkan ulang sebelum pengiriman Spreadsheet dilanjutkan.",
+    };
+  }
+
+  if (isUnconfigured) {
+    return {
+      key: "not_configured",
+      tone: "warning",
+      label: "Spreadsheet belum terhubung",
+      summary: "Transaksi sudah tersimpan di Omon. Sinkronisasi Spreadsheet dapat dilakukan setelah Google Sheet terhubung.",
     };
   }
 
@@ -146,6 +161,15 @@ export const buildApproveFeedback = (response = {}) => {
     };
   }
 
+  if (syncStatus === "skipped") {
+    return {
+      tone: "warning",
+      title: "Approval selesai dan transaksi tersimpan di Omon.",
+      message: "Sinkronisasi Spreadsheet dapat dilakukan setelah Google Sheet terhubung.",
+      detail,
+    };
+  }
+
   if (syncStatus === "needs_reconnect") {
     return {
       tone: "warning",
@@ -218,6 +242,10 @@ export const getReadableSyncStatus = (transaction = {}) => {
 
   if (syncStatus === "needs_reconnect" || syncMessage === "needs_reconnect") {
     return "Perlu hubungkan ulang Google";
+  }
+
+  if (isUnconfiguredSpreadsheetMessage(syncMessage)) {
+    return "Spreadsheet belum terhubung";
   }
 
   if (isMissingTargetSheetMessage(syncMessage)) {

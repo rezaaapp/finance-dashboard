@@ -629,7 +629,11 @@ def list_import_history(connection, *, workspace_id: str):
                         where sync_status is null
                            or sync_status in ('failed', 'needs_reconnect', 'pending')
                     )::int as sync_failed,
-                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count
+                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count,
+                    count(*) filter (
+                        where sync_status = 'pending'
+                          and sync_error_message ilike 'Target Spreadsheet belum dikonfigurasi%%'
+                    )::int as unconfigured_spreadsheet_count
                 from transactions
                 where workspace_id = %s
                   and import_job_id is not null
@@ -665,6 +669,7 @@ def list_import_history(connection, *, workspace_id: str):
                 coalesce(ts.sync_success, 0) as sync_success,
                 coalesce(ts.sync_failed, 0) as sync_failed,
                 coalesce(ts.needs_reconnect_count, 0) > 0 as needs_reconnect,
+                coalesce(ts.unconfigured_spreadsheet_count, 0) > 0 as spreadsheet_unconfigured,
                 coalesce(rs.retryable_sync_count, 0) as retryable_sync_count
             from import_jobs j
             left join transaction_stats ts
@@ -714,7 +719,11 @@ def list_import_history_paginated(
                         where sync_status is null
                            or sync_status in ('failed', 'needs_reconnect', 'pending')
                     )::int as sync_failed,
-                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count
+                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count,
+                    count(*) filter (
+                        where sync_status = 'pending'
+                          and sync_error_message ilike 'Target Spreadsheet belum dikonfigurasi%%'
+                    )::int as unconfigured_spreadsheet_count
                 from transactions
                 where workspace_id = %s
                   and import_job_id is not null
@@ -750,6 +759,7 @@ def list_import_history_paginated(
                 coalesce(ts.sync_success, 0) as sync_success,
                 coalesce(ts.sync_failed, 0) as sync_failed,
                 coalesce(ts.needs_reconnect_count, 0) > 0 as needs_reconnect,
+                coalesce(ts.unconfigured_spreadsheet_count, 0) > 0 as spreadsheet_unconfigured,
                 coalesce(rs.retryable_sync_count, 0) as retryable_sync_count
             from import_jobs j
             left join transaction_stats ts
@@ -780,7 +790,11 @@ def get_import_history_detail(connection, *, workspace_id: str, job_id: str):
                         where sync_status is null
                            or sync_status in ('failed', 'needs_reconnect', 'pending')
                     )::int as sync_failed,
-                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count
+                    count(*) filter (where sync_status = 'needs_reconnect')::int as needs_reconnect_count,
+                    count(*) filter (
+                        where sync_status = 'pending'
+                          and sync_error_message ilike 'Target Spreadsheet belum dikonfigurasi%%'
+                    )::int as unconfigured_spreadsheet_count
                 from transactions
                 where workspace_id = %s
                   and import_job_id = %s
@@ -817,6 +831,7 @@ def get_import_history_detail(connection, *, workspace_id: str, job_id: str):
                 coalesce(ts.sync_success, 0) as sync_success,
                 coalesce(ts.sync_failed, 0) as sync_failed,
                 coalesce(ts.needs_reconnect_count, 0) > 0 as needs_reconnect,
+                coalesce(ts.unconfigured_spreadsheet_count, 0) > 0 as spreadsheet_unconfigured,
                 coalesce(rs.retryable_sync_count, 0) as retryable_sync_count
             from import_jobs j
             left join transaction_stats ts

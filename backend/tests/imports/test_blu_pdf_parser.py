@@ -168,7 +168,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             connection,
             rows=[{
                 "workspace_id": "workspace-1",
-                "sheet_source_id": "sheet-source-1",
+                "sheet_source_id": None,
                 "external_row_key": "fp-1",
                 "row_number": None,
                 "transaction_date": "2026-06-01",
@@ -203,6 +203,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             "on conflict (workspace_id, import_transaction_fingerprint)",
             cursor.executed[0][0],
         )
+        self.assertIsNone(cursor.executed[0][1]["sheet_source_id"])
         self.assertEqual(1, cursor.fetchone_calls)
         self.assertEqual(0, cursor.fetchall_calls)
 
@@ -1671,8 +1672,9 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, approve_result["sync_success"])
         self.assertEqual(0, approve_result["sync_failed"])
 
-    def test_approve_review_transactions_missing_target_stops_before_persistence(self):
+    def test_approve_review_transactions_without_target_persists_ledger_and_registry(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         selected_drafts = [
             {
                 "id": "draft-1",
@@ -1690,38 +1692,59 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu", "statement_owner": "Reza"}), \
              patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
-             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{
+                 "id": "txn-1",
+                 "import_transaction_fingerprint": "fp-1",
+                 "sync_status": "pending",
+             }]) as create_transactions_mock, \
              patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
              patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(ImportCleanupService, "delete_temp_pdf_for_job"), \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock, \
              patch.object(SpreadsheetSyncService, "sync_import_transactions") as sync_mock:
-            with self.assertRaises(MissingTargetSheetError) as raised:
-                service.approve_review_transactions(
-                    connection=object(),
-                    workspace={"id": "workspace-1", "google_sheet_id": ""},
-                    current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
-                    workspace_id="workspace-1",
-                    import_job_id="job-1",
-                    draft_ids=["draft-1"],
-                    item_updates=[],
-                )
+            result = service.approve_review_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": ""},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-1"],
+                item_updates=[],
+            )
 
-        self.assertEqual(
-            {
-                "status": "failed",
-                "error_code": "missing_target_sheet",
-                "message": "Pilih spreadsheet dan tab tujuan dulu sebelum approval dijalankan.",
-            },
-            raised.exception.to_response(),
+        created_row = create_transactions_mock.call_args.kwargs["rows"][0]
+        self.assertIsNone(created_row["sheet_source_id"])
+        register_fingerprints_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            rows=[{
+                "transaction_fingerprint": "fp-1",
+                "provider": "blu",
+            }],
         )
-        create_transactions_mock.assert_not_called()
-        register_fingerprints_mock.assert_not_called()
-        delete_drafts_mock.assert_not_called()
+        delete_drafts_mock.assert_called_once()
         sync_mock.assert_not_called()
+        update_sync_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            transaction_fingerprints=["fp-1"],
+            sync_status="pending",
+            sync_error_message=unittest.mock.ANY,
+        )
+        self.assertTrue(result["ledger_saved"])
+        self.assertEqual("skipped", result["sync_status"])
+        self.assertEqual(1, result["sync_failed"])
+        self.assertEqual("skipped", result["sheet_delivery"]["status"])
+        self.assertIn("sudah tersimpan di Omon", result["sync_error_message"])
 
-    def test_approve_review_transactions_invalid_target_header_stops_before_persistence(self):
+    def test_approve_review_transactions_invalid_target_header_keeps_ledger(self):
         service = ImportService()
+        service.spreadsheet_value_resolver = FakeSpreadsheetValueResolver()
         selected_drafts = [
             {
                 "id": "draft-1",
@@ -1739,7 +1762,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu"}), \
+        with patch("app.imports.services.import_service.get_import_review_summary", return_value={"id": "job-1", "provider": "blu", "statement_owner": "Reza"}), \
              patch("app.imports.services.import_service.list_import_draft_transactions_by_ids", return_value=selected_drafts), \
              patch("app.imports.services.import_service.get_google_sheet_source", return_value={
                  "id": "sheet-source-1",
@@ -1756,33 +1779,38 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "Deskripsi",
                  "Nominal",
              ]]), \
-             patch("app.imports.services.import_service.create_import_transactions") as create_transactions_mock, \
+             patch("app.imports.services.import_service.create_import_transactions", return_value=[{"id": "txn-1"}]) as create_transactions_mock, \
              patch("app.imports.services.import_service.register_transaction_fingerprints") as register_fingerprints_mock, \
-             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock:
-            with self.assertRaises(InvalidTargetSheetHeaderError) as raised:
-                service.approve_review_transactions(
-                    connection=object(),
-                    workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
-                    current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
-                    workspace_id="workspace-1",
-                    import_job_id="job-1",
-                    draft_ids=["draft-1"],
-                    sheet_source_id="sheet-source-1",
-                    sheet_name="Start 1 Juni",
-                    item_updates=[],
-                )
+             patch("app.imports.services.import_service.delete_import_draft_transactions") as delete_drafts_mock, \
+             patch.object(ImportCleanupService, "delete_temp_pdf_for_job"), \
+             patch("app.imports.services.import_service.count_new_import_draft_transactions", return_value=0), \
+             patch("app.imports.services.import_service.update_import_job_status"), \
+             patch("app.imports.services.import_service.refresh_import_job_aggregates"), \
+             patch("app.imports.services.import_service.update_import_transaction_sync_status") as update_sync_mock:
+            result = service.approve_review_transactions(
+                connection=object(),
+                workspace={"id": "workspace-1", "google_sheet_id": "sheet-123"},
+                current_user={"sub": "user-1", "name": "Reza", "email": "reza@example.com"},
+                workspace_id="workspace-1",
+                import_job_id="job-1",
+                draft_ids=["draft-1"],
+                sheet_source_id="sheet-source-1",
+                sheet_name="Start 1 Juni",
+                item_updates=[],
+            )
 
-        self.assertEqual(
-            {
-                "status": "failed",
-                "error_code": "invalid_target_sheet_header",
-                "message": "Tab tujuan belum siap menerima salinan transaksi karena format kolomnya belum sesuai.",
-            },
-            raised.exception.to_response(),
+        create_transactions_mock.assert_called_once()
+        register_fingerprints_mock.assert_called_once()
+        delete_drafts_mock.assert_called_once()
+        update_sync_mock.assert_called_once_with(
+            unittest.mock.ANY,
+            workspace_id="workspace-1",
+            transaction_fingerprints=["fp-1"],
+            sync_status="failed",
+            sync_error_message="Tab tujuan belum siap menerima salinan transaksi karena format kolomnya belum sesuai.",
         )
-        create_transactions_mock.assert_not_called()
-        register_fingerprints_mock.assert_not_called()
-        delete_drafts_mock.assert_not_called()
+        self.assertTrue(result["ledger_saved"])
+        self.assertEqual("failed", result["sync_status"])
 
     def test_approve_review_transactions_insert_failure_keeps_draft_and_skips_sync(self):
         service = ImportService()
@@ -2725,6 +2753,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "sync_failed": 10,
                 "retryable_sync_count": 10,
                 "needs_reconnect": False,
+                "spreadsheet_unconfigured": True,
                 "temp_file_deleted_at": "2026-06-16T11:00:00Z",
             },
         ]
@@ -2738,6 +2767,7 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         self.assertEqual(1, len(payload["jobs"]))
         self.assertEqual("cleanup_completed", payload["jobs"][0]["status"])
+        self.assertTrue(payload["jobs"][0]["spreadsheet_unconfigured"])
         self.assertEqual("already_deleted", payload["jobs"][0]["pdf_status"])
         self.assertEqual(20, payload["pagination"]["limit"])
 

@@ -222,9 +222,7 @@ const ImportTransactions = () => {
     const preserveData = Boolean(options.preserveData);
 
     setHistoryLoading(true);
-    if (!preserveData) {
-      setHistoryError("");
-    }
+    setHistoryError("");
     setSheetSourcesLoading(true);
     if (!preserveData) {
       setSheetSourcesError("");

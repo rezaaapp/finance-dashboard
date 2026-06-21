@@ -271,7 +271,7 @@ def list_workspace_transaction_source_funds(connection, *, workspace_id: str) ->
 def serialize_import_transaction_row(
     *,
     workspace_id: str,
-    sheet_source_id: str,
+    sheet_source_id: str | None,
     import_job_id: str,
     user_name: str,
     source_fund: str = "Blu",

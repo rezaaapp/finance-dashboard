@@ -79,6 +79,10 @@ MAX_IMPORT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 DEFAULT_IMPORT_REVIEW_PAGE_SIZE = 100
 DEFAULT_IMPORT_HISTORY_PAGE_SIZE = 20
 MAX_IMPORT_PAGE_SIZE = 100
+MISSING_SPREADSHEET_TARGET_MESSAGE = (
+    "Target Spreadsheet belum dikonfigurasi. "
+    "Transaksi sudah tersimpan di Omon dan dapat dikirim setelah Google Sheet terhubung."
+)
 ALLOWED_IMPORT_EXTENSIONS = {".pdf"}
 ALLOWED_IMPORT_CONTENT_TYPES = {
     "application/pdf",
@@ -963,14 +967,15 @@ class ImportService:
                 "final_transaction_rows": [],
             }
 
-        target_sheet = self._resolve_import_target_sheet(
-            connection,
-            workspace=workspace,
-            current_user=current_user,
-            workspace_id=workspace_id,
-            sheet_source_id=sheet_source_id,
-            sheet_name=sheet_name,
-        )
+        normalized_source_id = str(sheet_source_id or "").strip()
+        normalized_sheet_name = str(sheet_name or "").strip()
+        target_sheet_source = None
+        if normalized_source_id and normalized_sheet_name:
+            target_sheet_source = get_google_sheet_source(
+                connection,
+                workspace_id=workspace_id,
+                source_id=normalized_source_id,
+            )
         resolved_source_dana = self.spreadsheet_value_resolver.resolve_source_dana_for_append(
             connection,
             workspace_id=workspace_id,
@@ -985,7 +990,11 @@ class ImportService:
         final_transaction_rows = [
             serialize_import_transaction_row(
                 workspace_id=workspace_id,
-                sheet_source_id=str(target_sheet["source"]["id"]),
+                sheet_source_id=(
+                    str(target_sheet_source["id"])
+                    if target_sheet_source
+                    else None
+                ),
                 import_job_id=import_job_id,
                 user_name=resolved_user_name,
                 source_fund=resolved_source_dana,
@@ -997,7 +1006,9 @@ class ImportService:
         return {
             "review_summary": review_summary,
             "merged_drafts": merged_drafts,
-            "target_sheet": target_sheet,
+            "target_sheet_source": target_sheet_source,
+            "target_sheet_source_id": normalized_source_id or None,
+            "target_sheet_name": normalized_sheet_name or None,
             "resolved_source_dana": resolved_source_dana,
             "resolved_user_name": resolved_user_name,
             "final_transaction_rows": final_transaction_rows,
@@ -1086,8 +1097,9 @@ class ImportService:
             "transaction_fingerprints": transaction_fingerprints,
             "sync_plan": {
                 "approved_transactions": merged_drafts,
-                "target_sheet_source": approval_plan["target_sheet"]["source"],
-                "target_sheet_name": approval_plan["target_sheet"]["sheet_name"],
+                "target_sheet_source": approval_plan["target_sheet_source"],
+                "target_sheet_source_id": approval_plan["target_sheet_source_id"],
+                "target_sheet_name": approval_plan["target_sheet_name"],
                 "user_name": approval_plan["resolved_user_name"],
                 "source_dana": approval_plan["resolved_source_dana"],
                 "job_id": import_job_id,
@@ -1112,11 +1124,53 @@ class ImportService:
                 "error": None,
             }
 
+        target_sheet_source = sync_plan.get("target_sheet_source") or {}
+        target_source_id = str(
+            sync_plan.get("target_sheet_source_id")
+            or target_sheet_source.get("id")
+            or ""
+        ).strip()
+        target_sheet_name = str(sync_plan.get("target_sheet_name") or "").strip()
+        if not target_source_id or not target_sheet_name:
+            return {
+                "status": "skipped",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": None,
+                "error": MISSING_SPREADSHEET_TARGET_MESSAGE,
+            }
+
+        try:
+            target_sheet = self._resolve_import_target_sheet(
+                connection,
+                workspace=workspace,
+                current_user=current_user,
+                workspace_id=str(workspace["id"]),
+                sheet_source_id=target_source_id,
+                sheet_name=target_sheet_name,
+            )
+        except MissingGoogleSheetSourceError as exc:
+            return {
+                "status": "needs_reconnect",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": target_source_id,
+                "error": exc.message,
+            }
+        except (MissingTargetSheetError, InvalidTargetSheetHeaderError) as exc:
+            return {
+                "status": "failed",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": target_source_id or None,
+                "error": exc.message,
+            }
+
         self._log_import_event(
             "smart_import.spreadsheet_sync.started",
             job_id=sync_plan.get("job_id"),
-            sheet_source_id=str(sync_plan["target_sheet_source"]["id"]),
-            sheet_name=sync_plan["target_sheet_name"],
+            sheet_source_id=str(target_sheet["source"]["id"]),
+            sheet_name=target_sheet["sheet_name"],
             row_count=len(approved_transactions),
         )
 
@@ -1126,8 +1180,8 @@ class ImportService:
                 workspace=workspace,
                 current_user=current_user,
                 approved_transactions=approved_transactions,
-                target_sheet_source=sync_plan["target_sheet_source"],
-                target_sheet_name=sync_plan["target_sheet_name"],
+                target_sheet_source=target_sheet["source"],
+                target_sheet_name=target_sheet["sheet_name"],
                 user_name=sync_plan["user_name"],
                 source_dana=sync_plan["source_dana"],
                 job_id=sync_plan.get("job_id"),
@@ -1209,6 +1263,14 @@ class ImportService:
                 sync_status="failed",
                 sync_error_message=sync_result.get("error"),
             )
+        elif sync_result["status"] == "skipped":
+            update_import_transaction_sync_status(
+                connection,
+                workspace_id=workspace_id,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="pending",
+                sync_error_message=sync_result.get("error"),
+            )
 
         refresh_import_job_aggregates(
             connection,
@@ -1217,10 +1279,17 @@ class ImportService:
         )
 
         return {
+            "ledger_saved": True,
             "sync_success": sync_result["sync_success"],
             "sync_failed": sync_result["sync_failed"],
             "sync_status": sync_result["status"],
             "sync_error_message": sync_result.get("error"),
+            "sheet_delivery": {
+                "status": sync_result["status"],
+                "success_count": sync_result["sync_success"],
+                "pending_or_failed_count": sync_result["sync_failed"],
+                "message": sync_result.get("error"),
+            },
         }
 
     def reject_review_transactions(
@@ -1811,6 +1880,7 @@ class ImportService:
             "unsynced_count": int(job.get("retryable_sync_count", 0) or 0),
             "retryable_sync_count": int(job.get("retryable_sync_count", 0) or 0),
             "needs_reconnect": bool(job.get("needs_reconnect", False)),
+            "spreadsheet_unconfigured": bool(job.get("spreadsheet_unconfigured", False)),
             "pdf_status": (
                 "already_deleted"
                 if job.get("temp_file_deleted_at")

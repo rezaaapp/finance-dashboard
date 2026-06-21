@@ -413,7 +413,11 @@ const ImportReview = ({
 
           {(sheetSourcesError || worksheetsError || !hasTargetSheet) && (
             <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-              {sheetSourcesError || worksheetsError || "Pilih spreadsheet dan tab tujuan agar setelah transaksi tersimpan di Omon, sistem bisa mencoba mengirim salinannya ke Google Spreadsheet."}
+              {sheetSourcesError || worksheetsError || (
+                hasTargetSheet
+                  ? "Target Spreadsheet siap digunakan setelah transaksi tersimpan di Omon."
+                  : "Transaksi akan disimpan di Omon. Sinkronisasi Spreadsheet dapat dilakukan setelah Google Sheet terhubung."
+              )}
             </div>
           )}
         </section>
@@ -555,7 +559,7 @@ const ImportReview = ({
                 <button
                   type="button"
                   onClick={handleApproveSelected}
-                  disabled={selectedIds.length === 0 || actionLoading !== "" || !hasTargetSheet}
+                  disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Setujui & Simpan di Omon"}
