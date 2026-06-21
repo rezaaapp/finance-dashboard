@@ -299,6 +299,11 @@ const ImportTransactions = () => {
     setActiveTab("review");
   };
 
+  const handleContinueReview = async (jobId) => {
+    setActiveTab("review");
+    await loadReview(jobId);
+  };
+
   const handleSwitchTab = async (tabId) => {
     setActiveTab(tabId);
 
@@ -500,6 +505,7 @@ const ImportTransactions = () => {
           })}
           onRetrySync={handleRetrySync}
           onViewDetail={loadHistoryDetail}
+          onContinueReview={handleContinueReview}
           onReconnectGoogle={handleReconnectGoogle}
           sheetSources={sheetSources}
           sheetSourcesLoading={sheetSourcesLoading}

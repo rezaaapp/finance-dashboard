@@ -81,6 +81,7 @@ const ImportHistory = ({
   onPageChange,
   onRetrySync,
   onViewDetail,
+  onContinueReview,
   onReconnectGoogle,
   sheetSources = [],
   sheetSourcesLoading = false,
@@ -181,6 +182,7 @@ const ImportHistory = ({
                     const rowApprovalStatus = getOmonApprovalStatus(job);
                     const rowDeliveryStatus = getSpreadsheetDeliveryStatus(job);
                     const canRetry = job.retryable_sync_count > 0;
+                    const canContinueReview = job.status === "review";
 
                     return (
                       <tr key={job.job_id} className="table-row table-border">
@@ -212,6 +214,15 @@ const ImportHistory = ({
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
+                            {canContinueReview && (
+                              <button
+                                type="button"
+                                onClick={() => onContinueReview(job.job_id)}
+                                className="primary-button inline-flex min-h-10 items-center justify-center px-3 py-2 text-xs font-semibold"
+                              >
+                                Lanjutkan Review
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => onViewDetail(job.job_id)}
@@ -464,6 +475,16 @@ const ImportHistory = ({
             )}
 
             <div className="grid grid-cols-1 gap-3">
+              {selectedDetail.status === "review" && (
+                <button
+                  type="button"
+                  onClick={() => onContinueReview(selectedDetail.job_id)}
+                  className="primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
+                >
+                  <FileText size={16} />
+                  Lanjutkan Review
+                </button>
+              )}
               {selectedDetail.needs_reconnect && (
                 <button
                   type="button"
