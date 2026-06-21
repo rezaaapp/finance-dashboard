@@ -1508,12 +1508,12 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertTrue(payload["pagination"]["has_next"])
         self.assertTrue(payload["pagination"]["has_previous"])
 
-    def test_category_options_payload_uses_workspace_transaction_categories(self):
+    def test_category_options_payload_bootstraps_fresh_workspace(self):
         connection = object()
 
         with patch(
             "app.imports.services.import_service.list_workspace_transaction_categories",
-            return_value=["Groceries", "Makanan", "Parkir", "Pacaran"],
+            return_value=[],
         ) as list_categories_mock:
             payload = ImportService().get_category_options_payload(
                 connection,
@@ -1521,8 +1521,55 @@ class BluPdfParserTestCase(unittest.TestCase):
             )
 
         self.assertEqual(
-            {"categories": ["Groceries", "Makanan", "Parkir", "Pacaran"]},
-            payload,
+            [
+                "Bills",
+                "Education",
+                "Entertainment",
+                "Family",
+                "Food",
+                "Groceries",
+                "Health",
+                "Household",
+                "Income",
+                "Other",
+                "Saving",
+                "Shopping",
+                "Subscription",
+                "Transport",
+            ],
+            payload["categories"],
+        )
+        list_categories_mock.assert_called_once_with(
+            connection,
+            workspace_id="workspace-1",
+        )
+
+    def test_category_options_payload_merges_historical_categories_case_insensitively(self):
+        connection = object()
+
+        with patch(
+            "app.imports.services.import_service.list_workspace_transaction_categories",
+            return_value=["groceries", "Makanan", "Parkir", "Pacaran", " food "],
+        ) as list_categories_mock:
+            payload = ImportService().get_category_options_payload(
+                connection,
+                workspace_id="workspace-1",
+            )
+
+        self.assertIn("Groceries", payload["categories"])
+        self.assertIn("Food", payload["categories"])
+        self.assertIn("Makanan", payload["categories"])
+        self.assertIn("Parkir", payload["categories"])
+        self.assertIn("Pacaran", payload["categories"])
+        self.assertNotIn("groceries", payload["categories"])
+        self.assertNotIn("food", payload["categories"])
+        self.assertNotIn("Makan Bulanan", payload["categories"])
+        self.assertEqual(
+            sorted(
+                payload["categories"],
+                key=lambda category: (category.casefold(), category),
+            ),
+            payload["categories"],
         )
         list_categories_mock.assert_called_once_with(
             connection,

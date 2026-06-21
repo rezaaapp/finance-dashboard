@@ -79,6 +79,22 @@ MAX_IMPORT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 DEFAULT_IMPORT_REVIEW_PAGE_SIZE = 100
 DEFAULT_IMPORT_HISTORY_PAGE_SIZE = 20
 MAX_IMPORT_PAGE_SIZE = 100
+DEFAULT_IMPORT_CATEGORIES = (
+    "Bills",
+    "Education",
+    "Entertainment",
+    "Family",
+    "Food",
+    "Groceries",
+    "Health",
+    "Household",
+    "Income",
+    "Other",
+    "Saving",
+    "Shopping",
+    "Subscription",
+    "Transport",
+)
 MISSING_SPREADSHEET_TARGET_MESSAGE = (
     "Target Spreadsheet belum dikonfigurasi. "
     "Transaksi sudah tersimpan di Omon dan dapat dikirim setelah Google Sheet terhubung."
@@ -866,10 +882,27 @@ class ImportService:
         }
 
     def get_category_options_payload(self, connection, *, workspace_id: str):
+        historical_categories = list_workspace_transaction_categories(
+            connection,
+            workspace_id=workspace_id,
+        )
+        categories_by_key = {
+            category.casefold(): category
+            for category in DEFAULT_IMPORT_CATEGORIES
+        }
+
+        for category in historical_categories:
+            normalized_category = str(category or "").strip()
+            if normalized_category:
+                categories_by_key.setdefault(
+                    normalized_category.casefold(),
+                    normalized_category,
+                )
+
         return {
-            "categories": list_workspace_transaction_categories(
-                connection,
-                workspace_id=workspace_id,
+            "categories": sorted(
+                categories_by_key.values(),
+                key=lambda category: (category.casefold(), category),
             ),
         }
 
