@@ -210,6 +210,10 @@ class BluPdfParserTestCase(unittest.TestCase):
             cursor.executed[0][0],
         )
         self.assertIsNone(cursor.executed[0][1]["sheet_source_id"])
+        self.assertEqual(
+            "fore coffee makan blu",
+            cursor.executed[0][1]["search_text_normalized"],
+        )
         self.assertEqual(1, cursor.fetchone_calls)
         self.assertEqual(0, cursor.fetchall_calls)
 
@@ -1690,6 +1694,10 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual("Makan", created_row["raw_category"])
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
+        self.assertEqual(
+            "reimburse makan divya makan blu approved manually",
+            created_row["search_text_normalized"],
+        )
         self.assertEqual("Reza", sync_mock.call_args.kwargs["user_name"])
         self.assertEqual("Blu", sync_mock.call_args.kwargs["source_dana"])
         self.assertEqual("job-1", sync_mock.call_args.kwargs["job_id"])
