@@ -218,6 +218,7 @@ const ImportReview = ({
           .filter((row) => selectedIds.includes(row.id))
           .map((row) => ({
             draft_id: row.id,
+            merchant_display: row.merchant_display,
             category: row.category,
             notes: row.notes,
           })),
@@ -646,11 +647,19 @@ const ImportReview = ({
                         <td className="px-4 py-3 text-main">{date}</td>
                         <td className="px-4 py-3 text-muted">{time}</td>
                         <td className="px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-main">
-                              {row.merchant_display}
-                            </p>
-                          </div>
+                          <input
+                            type="text"
+                            value={row.merchant_display}
+                            placeholder="Isi nama transaksi"
+                            aria-label={`Nama transaksi ${row.merchant_display || row.merchant_original || row.id}`}
+                            disabled={isActionLoading && isSelected}
+                            onChange={(event) => handleDraftFieldChange(
+                              row.id,
+                              "merchant_display",
+                              event.target.value
+                            )}
+                            className="form-control w-64 rounded-lg px-3 py-2 text-xs font-semibold"
+                          />
                         </td>
                         <td className="px-4 py-3 font-semibold text-main">
                           {formatAmount(row.amount)}

@@ -1665,6 +1665,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                 sheet_name="Start 1 Juni",
                 item_updates=[{
                     "draft_id": "draft-1",
+                    "merchant_display": "Reimburse makan Divya",
                     "category": "Makan",
                     "notes": "Approved manually",
                 }],
@@ -1673,7 +1674,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         created_row = create_transactions_mock.call_args.kwargs["rows"][0]
         self.assertEqual("sheet-source-1", created_row["sheet_source_id"])
         self.assertEqual("Reza", created_row["user_name"])
-        self.assertEqual("Ayam Gepuk Pak Gembus", created_row["title"])
+        self.assertEqual("Reimburse makan Divya", created_row["title"])
         self.assertEqual("blu_pdf", created_row["source_origin"])
         self.assertEqual("canon-fp-1", created_row["canonical_fingerprint"])
         self.assertEqual(
@@ -1681,9 +1682,11 @@ class BluPdfParserTestCase(unittest.TestCase):
             created_row["raw_payload"]["merchant_original"],
         )
         self.assertEqual(
-            "Ayam Gepuk Pak Gembus",
+            "Reimburse makan Divya",
             created_row["raw_payload"]["merchant_display"],
         )
+        self.assertEqual("fp-1", created_row["import_transaction_fingerprint"])
+        self.assertEqual("canon-fp-1", created_row["canonical_fingerprint"])
         self.assertEqual("Makan", created_row["raw_category"])
         self.assertEqual("Approved manually", created_row["note"])
         self.assertEqual("Blu", created_row["source_fund"])
@@ -1794,6 +1797,42 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(1, result["sync_failed"])
         self.assertEqual("skipped", result["sheet_delivery"]["status"])
         self.assertIn("sudah tersimpan di Omon", result["sync_error_message"])
+
+    def test_review_update_without_merchant_display_keeps_parser_name(self):
+        service = ImportService()
+        draft = {
+            "id": "draft-legacy",
+            "transaction_fingerprint": "fp-legacy",
+            "canonical_fingerprint": "canon-legacy",
+            "canonical_fingerprint_date": "canon-date-legacy",
+            "statement_owner": "Reza",
+            "source_fund": "Blu",
+            "datetime": "01/06/2026 08:00",
+            "merchant_original": "Fore Coffee 61715",
+            "merchant_normalized": "Fore Coffee",
+            "amount": 28000,
+            "direction": "expense",
+            "transaction_type": "DB",
+            "review_group": "Makan Bulanan",
+            "raw_text": "raw-audit-value",
+            "category": "",
+            "notes": "",
+        }
+
+        merged = service._merge_review_item_updates(
+            [draft],
+            item_updates=[{
+                "draft_id": "draft-legacy",
+                "merchant_display": None,
+                "category": "Food",
+                "notes": "",
+            }],
+        )
+
+        self.assertEqual("Fore Coffee", merged[0]["merchant_display"])
+        self.assertEqual("Fore Coffee 61715", merged[0]["merchant_original"])
+        self.assertEqual("raw-audit-value", merged[0]["raw_text"])
+        self.assertEqual("fp-legacy", merged[0]["transaction_fingerprint"])
 
     def test_approve_stale_drafts_skips_approved_and_rejected_registry_rows(self):
         service = ImportService()

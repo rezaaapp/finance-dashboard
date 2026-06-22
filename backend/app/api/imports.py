@@ -21,6 +21,7 @@ router = APIRouter(
 
 class ImportReviewItemUpdateRequest(BaseModel):
     draft_id: str
+    merchant_display: str | None = None
     category: str = ""
     notes: str = ""
 

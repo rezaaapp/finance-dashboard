@@ -1808,6 +1808,10 @@ class ImportService:
         for draft in draft_transactions:
             draft_id = str(draft["id"])
             update = updates_by_id.get(draft_id, {})
+            parsed_merchant_display = self.merchant_normalizer.normalize(
+                draft["merchant_original"]
+            )["merchant_display"]
+            updated_merchant_display = update.get("merchant_display")
             merged_drafts.append({
                 "id": draft_id,
                 "transaction_fingerprint": draft["transaction_fingerprint"],
@@ -1818,9 +1822,11 @@ class ImportService:
                 "datetime": draft["datetime"],
                 "merchant_original": draft["merchant_original"],
                 "merchant_normalized": draft["merchant_normalized"],
-                "merchant_display": self.merchant_normalizer.normalize(
-                    draft["merchant_original"]
-                )["merchant_display"],
+                "merchant_display": str(
+                    parsed_merchant_display
+                    if updated_merchant_display is None
+                    else updated_merchant_display
+                ).strip(),
                 "amount": float(draft["amount"]),
                 "direction": draft["direction"],
                 "transaction_type": draft["transaction_type"],
