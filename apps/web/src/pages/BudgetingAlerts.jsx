@@ -278,6 +278,37 @@ const BudgetingAlerts = ({
       privacyMode
     )
   ), [categories, privacyMode]);
+  const dirtyBudgetCategories = useMemo(() => (
+    categories
+      .filter((item) => {
+        if (!item.is_budgeted) {
+          return false;
+        }
+
+        const savedAmount = Number(item.budget ?? item.forecast_budget ?? 0);
+        const draftAmount = Number(draftBudgets[item.category] ?? savedAmount);
+
+        return draftAmount !== savedAmount;
+      })
+      .map((item) => item.category)
+  ), [categories, draftBudgets]);
+
+  useEffect(() => {
+    if (dirtyBudgetCategories.length === 0) {
+      return undefined;
+    }
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [dirtyBudgetCategories]);
 
   const handleDraftChange = (category, value) => {
     setDraftBudgets((current) => ({
@@ -679,6 +710,12 @@ const BudgetingAlerts = ({
           </div>
         )}
 
+        {dirtyBudgetCategories.length > 0 && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+            Belum disimpan: {dirtyBudgetCategories.join(", ")}. Klik Simpan Perubahan pada kategori terkait sebelum reload.
+          </div>
+        )}
+
         <form
           onSubmit={handleAddCategory}
           className="mt-6 grid grid-cols-1 gap-3 rounded-xl border border-[var(--color-border)] p-4 md:grid-cols-[minmax(0,1fr)_220px_auto]"
@@ -783,7 +820,11 @@ const BudgetingAlerts = ({
             </div>
             {categories.map((item) => {
               const budgetValue = Number(draftBudgets[item.category] ?? item.budget ?? 0);
+              const savedBudgetValue = Number(item.budget ?? item.forecast_budget ?? 0);
               const isSaving = savingKey === item.category;
+              const isDirty = Boolean(
+                item.is_budgeted && budgetValue !== savedBudgetValue
+              );
               const remaining = Number(item.remaining_budget || 0);
               const budgetId = item.budget_id ?? item.id;
               const canDeleteBudget = Boolean(item.is_budgeted && budgetId);
@@ -792,27 +833,16 @@ const BudgetingAlerts = ({
               const recommendation = Number(item.recommended_budget || 0);
               const remainingClassName = remaining < 0 ? "metric-warning" : "text-main";
               const rowActions = canDeleteBudget ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveCategory(item)}
-                    disabled={isSaving}
-                    className="secondary-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Save size={15} />
-                    Simpan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategory(item)}
-                    disabled={isSaving}
-                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
-                    aria-label={`Hapus budget ${item.category}`}
-                  >
-                    <Trash2 size={15} />
-                    Hapus
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteCategory(item)}
+                  disabled={isSaving}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
+                  aria-label={`Hapus budget ${item.category}`}
+                >
+                  <Trash2 size={15} />
+                  Hapus
+                </button>
               ) : (
                 <button
                   type="button"
@@ -847,6 +877,24 @@ const BudgetingAlerts = ({
                         inputMode="numeric"
                         aria-label={`Budget ${item.category}`}
                       />
+                      {canDeleteBudget && (
+                        <div className="mt-2 grid gap-2">
+                          {isDirty && (
+                            <p className="text-xs font-bold text-amber-700 dark:text-amber-200">
+                              Belum disimpan
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleSaveCategory(item)}
+                            disabled={!isDirty || isSaving}
+                            className="primary-button inline-flex min-h-9 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Save size={14} />
+                            {isSaving ? "Menyimpan..." : "Simpan Perubahan"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <p className="break-words text-sm font-semibold text-main">
                       {formatPrivateRupiah(spentValue, privacyMode)}
@@ -901,6 +949,24 @@ const BudgetingAlerts = ({
                           inputMode="numeric"
                           aria-label={`Budget ${item.category}`}
                         />
+                        {canDeleteBudget && (
+                          <div className="mt-2 grid gap-2">
+                            {isDirty && (
+                              <p className="text-xs font-bold text-amber-700 dark:text-amber-200">
+                                Belum disimpan
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleSaveCategory(item)}
+                              disabled={!isDirty || isSaving}
+                              className="primary-button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Save size={15} />
+                              {isSaving ? "Menyimpan..." : "Simpan Perubahan"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                       {renderMetricBlock(
                         "Terpakai",
