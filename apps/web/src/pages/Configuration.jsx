@@ -294,6 +294,7 @@ const Configuration = ({
   const [, setIsLoadingWorkspaceConfiguration] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [spreadsheetUrl, setSpreadsheetUrl] = useState("");
+  const [sourceSheetName, setSourceSheetName] = useState("");
   const [showSaved, setShowSaved] = useState(false);
   const [notification, setNotification] = useState(null);
   const [googleConnection, setGoogleConnection] = useState({
@@ -691,6 +692,13 @@ const Configuration = ({
         return;
       }
 
+      const availableTabs = response?.detected_tabs || response?.tabs || [];
+      setSourceSheetName((currentSheetName) => (
+        currentSheetName && availableTabs.includes(currentSheetName)
+          ? currentSheetName
+          : availableTabs.length === 1 ? availableTabs[0] : ""
+      ));
+
       setNotification({
         type: "success",
         title: "Google Sheet verified",
@@ -721,9 +729,11 @@ const Configuration = ({
 
       const response = await createGoogleSheetSource({
         spreadsheet_url: spreadsheetUrl.trim(),
+        sheet_name: sourceSheetName,
       });
 
       setSpreadsheetUrl("");
+      setSourceSheetName("");
       setSourceTestResult(null);
       setNotification({
         type: "success",
@@ -1337,10 +1347,37 @@ const Configuration = ({
                     onChange={(event) => {
                       setSpreadsheetUrl(event.target.value);
                       setSourceTestResult(null);
+                      setSourceSheetName("");
                     }}
                     placeholder="https://docs.google.com/spreadsheets/d/..."
                     className="form-control w-full rounded-2xl px-4 py-3 text-sm"
                   />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-muted">
+                    Default Destination Tab
+                  </span>
+                  <select
+                    value={sourceSheetName}
+                    onChange={(event) => setSourceSheetName(event.target.value)}
+                    disabled={!sourceTestResult?.valid}
+                    className="form-control w-full rounded-2xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">
+                      {sourceTestResult?.valid
+                        ? "Select default destination tab"
+                        : "Test spreadsheet access first"}
+                    </option>
+                    {(sourceTestResult?.detected_tabs || sourceTestResult?.tabs || []).map((tabName) => (
+                      <option key={tabName} value={tabName}>
+                        {tabName}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    Import Review and Retry Sync use this tab by default. You can override it before delivery.
+                  </p>
                 </label>
 
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
@@ -1371,6 +1408,7 @@ const Configuration = ({
                     disabled={
                       isSavingSource
                       || !sourceTestResult?.valid
+                      || !sourceSheetName
                     }
                     className="primary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >

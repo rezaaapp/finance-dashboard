@@ -26,6 +26,10 @@ const REVIEW_PAGE_SIZE = 100;
 const HISTORY_PAGE_SIZE = 20;
 
 const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null }) => {
+  if (source?.sheet_name && worksheets.includes(source.sheet_name)) {
+    return source.sheet_name;
+  }
+
   const normalizedFilename = String(filename || "").toLowerCase();
 
   if (/(juni|jun)/i.test(normalizedFilename)) {
@@ -36,10 +40,6 @@ const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null 
     if (juneMatch) {
       return juneMatch;
     }
-  }
-
-  if (source?.sheet_name && worksheets.includes(source.sheet_name)) {
-    return source.sheet_name;
   }
 
   if (worksheets.length === 1) {
