@@ -21,6 +21,7 @@ router = APIRouter(
 
 class ImportReviewItemUpdateRequest(BaseModel):
     draft_id: str
+    merchant_display: str | None = None
     category: str = ""
     notes: str = ""
 
@@ -221,6 +222,8 @@ def approve_import_review(
 
     return {
         "approved_count": persistence_result["approved_count"],
+        "skipped_existing_count": persistence_result["skipped_existing_count"],
+        "skipped_rejected_count": persistence_result["skipped_rejected_count"],
         "draft_ids": persistence_result["draft_ids"],
         **result,
         "review": review_payload,

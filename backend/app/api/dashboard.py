@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
-from app.auth import require_auth, require_current_user, require_premium_role
+from app.auth import require_auth, require_current_user
 from app.config import settings
 from app.database import get_db_connection
 from app.repositories.insight_settings_repository import get_effective_insight_settings
@@ -642,7 +642,6 @@ def category_heatmap(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -663,7 +662,6 @@ def transactions(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -684,7 +682,6 @@ def category_trends(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -704,7 +701,6 @@ def source_dana_analytics(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -724,7 +720,6 @@ def monthly_allocation(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -751,7 +746,6 @@ def spending_per_person(
 def personal_analytics(
     year: int | None = None,
     month: int | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -770,7 +764,6 @@ def grocery_vs_food(
     year: int | None = None,
     month: int | None = None,
     name: str | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -789,7 +782,6 @@ def grocery_vs_food(
 def anomalies(
     year: int | None = None,
     month: int | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -813,7 +805,6 @@ def anomalies(
 def latest_insight(
     year: int | None = None,
     month: int | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
@@ -894,7 +885,6 @@ def dashboard_view_model(
 def budget_forecast(
     year: int | None = None,
     month: int | None = None,
-    premium_user=Depends(require_premium_role),
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):

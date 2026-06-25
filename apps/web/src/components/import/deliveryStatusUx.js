@@ -31,13 +31,19 @@ export const isMissingTargetSheetMessage = (message = "") => {
   ].some((keyword) => normalized.includes(keyword));
 };
 
+export const isUnconfiguredSpreadsheetMessage = (message = "") => (
+  normalizeText(message).includes("target spreadsheet belum dikonfigurasi")
+);
+
 export const getSpreadsheetDeliveryStatus = (job = {}) => {
   const approvedCount = Number(job.approved_transactions || 0);
   const syncSuccess = Number(job.sync_success ?? job.sync_success_count ?? 0);
   const syncFailed = Number(job.sync_failed ?? job.sync_failed_count ?? 0);
   const retryableCount = Number(job.retryable_sync_count ?? job.unsynced_count ?? syncFailed ?? 0);
   const needsReconnect = Boolean(job.needs_reconnect);
+  const spreadsheetUnconfigured = Boolean(job.spreadsheet_unconfigured);
   const syncMessages = collectSyncMessages(job);
+  const isUnconfigured = spreadsheetUnconfigured || syncMessages.some((message) => isUnconfiguredSpreadsheetMessage(message));
   const hasMissingTargetSheet = syncMessages.some((message) => isMissingTargetSheetMessage(message));
 
   if (approvedCount <= 0) {
@@ -55,6 +61,15 @@ export const getSpreadsheetDeliveryStatus = (job = {}) => {
       tone: "warning",
       label: "Perlu hubungkan ulang Google",
       summary: "Transaksi sudah tersimpan di Omon, tetapi akses Google perlu dihubungkan ulang sebelum pengiriman Spreadsheet dilanjutkan.",
+    };
+  }
+
+  if (isUnconfigured) {
+    return {
+      key: "not_configured",
+      tone: "warning",
+      label: "Spreadsheet belum terhubung",
+      summary: "Transaksi sudah tersimpan di Omon. Sinkronisasi Spreadsheet dapat dilakukan setelah Google Sheet terhubung.",
     };
   }
 
@@ -105,6 +120,21 @@ export const getSpreadsheetDeliveryStatus = (job = {}) => {
 export const getOmonApprovalStatus = (job = {}) => {
   const approvedCount = Number(job.approved_transactions || 0);
   const rejectedCount = Number(job.rejected_transactions || 0);
+  const transactionsFound = Number(job.transactions_found || 0);
+  const newTransactions = Number(job.new_transactions || 0);
+  const existingTransactions = Number(job.existing_transactions || 0);
+
+  if (
+    transactionsFound > 0
+    && newTransactions === 0
+    && existingTransactions === transactionsFound
+  ) {
+    return {
+      tone: "default",
+      label: "Tidak ada transaksi baru",
+      summary: `${existingTransactions} transaksi dalam file ini sudah pernah diproses atau ditolak.`,
+    };
+  }
 
   if (approvedCount > 0) {
     return {
@@ -130,10 +160,26 @@ export const getOmonApprovalStatus = (job = {}) => {
 };
 
 export const buildApproveFeedback = (response = {}) => {
+  const approvedCount = Number(response.approved_count || 0);
+  const skippedExisting = Number(response.skipped_existing_count || 0);
+  const skippedRejected = Number(response.skipped_rejected_count || 0);
   const syncStatus = response.sync_status;
   const syncSuccess = Number(response.sync_success || 0);
   const syncFailed = Number(response.sync_failed || 0);
   const detail = response.sync_error_message || "";
+  const skipDetail = [
+    skippedExisting > 0 ? `${skippedExisting} sudah disetujui sebelumnya` : "",
+    skippedRejected > 0 ? `${skippedRejected} sudah ditolak sebelumnya` : "",
+  ].filter(Boolean).join(", ");
+
+  if (approvedCount === 0 && (skippedExisting > 0 || skippedRejected > 0)) {
+    return {
+      tone: "warning",
+      title: "Tidak ada transaksi baru yang disimpan.",
+      message: "Pilihan berasal dari review lama dan sudah diproses sebelumnya.",
+      detail: skipDetail,
+    };
+  }
 
   if (syncStatus === "success" && syncFailed === 0) {
     return {
@@ -142,6 +188,15 @@ export const buildApproveFeedback = (response = {}) => {
       message: syncSuccess > 0
         ? "Salinan transaksi juga berhasil dikirim ke Google Spreadsheet."
         : "Tidak ada salinan Spreadsheet yang perlu dikirim untuk approval ini.",
+      detail,
+    };
+  }
+
+  if (syncStatus === "skipped") {
+    return {
+      tone: "warning",
+      title: "Approval selesai dan transaksi tersimpan di Omon.",
+      message: "Sinkronisasi Spreadsheet dapat dilakukan setelah Google Sheet terhubung.",
       detail,
     };
   }
@@ -218,6 +273,10 @@ export const getReadableSyncStatus = (transaction = {}) => {
 
   if (syncStatus === "needs_reconnect" || syncMessage === "needs_reconnect") {
     return "Perlu hubungkan ulang Google";
+  }
+
+  if (isUnconfiguredSpreadsheetMessage(syncMessage)) {
+    return "Spreadsheet belum terhubung";
   }
 
   if (isMissingTargetSheetMessage(syncMessage)) {

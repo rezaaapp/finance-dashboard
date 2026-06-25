@@ -68,8 +68,12 @@ from app.repositories.google_sheet_source_repository import (
 from app.repositories.transaction_repository import (
     get_existing_transactions_by_canonical_fingerprint,
 )
-from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import GoogleSheetsClientError, read_sheet_values
+from app.services.google_token_service import (
+    GoogleOAuthAuthorizationError,
+    GoogleOAuthNeedsReconnectError,
+    get_valid_google_access_token,
+)
 from app.services.sheet_header_validator import canonicalize_header
 
 
@@ -79,6 +83,26 @@ MAX_IMPORT_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 DEFAULT_IMPORT_REVIEW_PAGE_SIZE = 100
 DEFAULT_IMPORT_HISTORY_PAGE_SIZE = 20
 MAX_IMPORT_PAGE_SIZE = 100
+DEFAULT_IMPORT_CATEGORIES = (
+    "Bills",
+    "Education",
+    "Entertainment",
+    "Family",
+    "Food",
+    "Groceries",
+    "Health",
+    "Household",
+    "Income",
+    "Other",
+    "Saving",
+    "Shopping",
+    "Subscription",
+    "Transport",
+)
+MISSING_SPREADSHEET_TARGET_MESSAGE = (
+    "Target Spreadsheet belum dikonfigurasi. "
+    "Transaksi sudah tersimpan di Omon dan dapat dikirim setelah Google Sheet terhubung."
+)
 ALLOWED_IMPORT_EXTENSIONS = {".pdf"}
 ALLOWED_IMPORT_CONTENT_TYPES = {
     "application/pdf",
@@ -568,14 +592,30 @@ class ImportService:
                 transaction for transaction in existing_transactions
                 if transaction.get("registry_status") == "rejected"
             ]
+            no_new_transactions = (
+                len(parsed_result.transactions) > 0
+                and len(new_transactions) == 0
+            )
+            terminal_status = (
+                ImportJobStatus.COMPLETED
+                if no_new_transactions
+                else ImportJobStatus.REVIEW
+            )
             update_import_job_summary(
                 connection,
                 job_id=job_id,
                 transactions_found=len(parsed_result.transactions),
                 new_transactions=len(new_transactions),
                 existing_transactions=len(existing_transactions),
-                status=ImportJobStatus.REVIEW.value,
+                status=terminal_status.value,
             )
+            if no_new_transactions:
+                update_import_job_status(
+                    connection,
+                    job_id=job_id,
+                    status=ImportJobStatus.COMPLETED.value,
+                    completed_at=datetime.now(timezone.utc),
+                )
             self._log_import_event(
                 "smart_import.incremental.completed",
                 job_id=job_id,
@@ -605,12 +645,12 @@ class ImportService:
             provider=parsed_result.provider or job["provider"],
             detection_source=detection_source,
             statement_owner=normalized_statement_owner,
-            status=ImportJobStatus.REVIEW,
+            status=terminal_status,
             transactions_found=len(parsed_result.transactions),
             new_transactions=len(new_transactions),
             existing_transactions=len(existing_transactions),
             rejected_transactions=len(rejected_transactions),
-            no_new_transactions=len(parsed_result.transactions) > 0 and len(new_transactions) == 0,
+            no_new_transactions=no_new_transactions,
             message=(
                 "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak."
                 if len(parsed_result.transactions) > 0 and len(new_transactions) == 0
@@ -862,10 +902,27 @@ class ImportService:
         }
 
     def get_category_options_payload(self, connection, *, workspace_id: str):
+        historical_categories = list_workspace_transaction_categories(
+            connection,
+            workspace_id=workspace_id,
+        )
+        categories_by_key = {
+            category.casefold(): category
+            for category in DEFAULT_IMPORT_CATEGORIES
+        }
+
+        for category in historical_categories:
+            normalized_category = str(category or "").strip()
+            if normalized_category:
+                categories_by_key.setdefault(
+                    normalized_category.casefold(),
+                    normalized_category,
+                )
+
         return {
-            "categories": list_workspace_transaction_categories(
-                connection,
-                workspace_id=workspace_id,
+            "categories": sorted(
+                categories_by_key.values(),
+                key=lambda category: (category.casefold(), category),
             ),
         }
 
@@ -918,6 +975,8 @@ class ImportService:
 
         return {
             "approved_count": persistence_result["approved_count"],
+            "skipped_existing_count": persistence_result["skipped_existing_count"],
+            "skipped_rejected_count": persistence_result["skipped_rejected_count"],
             "draft_ids": persistence_result["draft_ids"],
             **final_sync_result,
         }
@@ -963,14 +1022,36 @@ class ImportService:
                 "final_transaction_rows": [],
             }
 
-        target_sheet = self._resolve_import_target_sheet(
+        fingerprint_statuses = get_registered_transaction_fingerprint_statuses(
             connection,
-            workspace=workspace,
-            current_user=current_user,
             workspace_id=workspace_id,
-            sheet_source_id=sheet_source_id,
-            sheet_name=sheet_name,
+            transaction_fingerprints=[
+                str(draft["transaction_fingerprint"])
+                for draft in merged_drafts
+            ],
         )
+        skipped_existing_drafts = [
+            draft for draft in merged_drafts
+            if fingerprint_statuses.get(str(draft["transaction_fingerprint"])) == "approved"
+        ]
+        skipped_rejected_drafts = [
+            draft for draft in merged_drafts
+            if fingerprint_statuses.get(str(draft["transaction_fingerprint"])) == "rejected"
+        ]
+        approval_drafts = [
+            draft for draft in merged_drafts
+            if str(draft["transaction_fingerprint"]) not in fingerprint_statuses
+        ]
+
+        normalized_source_id = str(sheet_source_id or "").strip()
+        normalized_sheet_name = str(sheet_name or "").strip()
+        target_sheet_source = None
+        if normalized_source_id and normalized_sheet_name:
+            target_sheet_source = get_google_sheet_source(
+                connection,
+                workspace_id=workspace_id,
+                source_id=normalized_source_id,
+            )
         resolved_source_dana = self.spreadsheet_value_resolver.resolve_source_dana_for_append(
             connection,
             workspace_id=workspace_id,
@@ -985,19 +1066,28 @@ class ImportService:
         final_transaction_rows = [
             serialize_import_transaction_row(
                 workspace_id=workspace_id,
-                sheet_source_id=str(target_sheet["source"]["id"]),
+                sheet_source_id=(
+                    str(target_sheet_source["id"])
+                    if target_sheet_source
+                    else None
+                ),
                 import_job_id=import_job_id,
                 user_name=resolved_user_name,
                 source_fund=resolved_source_dana,
                 transaction=draft,
             )
-            for draft in merged_drafts
+            for draft in approval_drafts
         ]
 
         return {
             "review_summary": review_summary,
-            "merged_drafts": merged_drafts,
-            "target_sheet": target_sheet,
+            "selected_drafts": merged_drafts,
+            "approval_drafts": approval_drafts,
+            "skipped_existing_drafts": skipped_existing_drafts,
+            "skipped_rejected_drafts": skipped_rejected_drafts,
+            "target_sheet_source": target_sheet_source,
+            "target_sheet_source_id": normalized_source_id or None,
+            "target_sheet_name": normalized_sheet_name or None,
             "resolved_source_dana": resolved_source_dana,
             "resolved_user_name": resolved_user_name,
             "final_transaction_rows": final_transaction_rows,
@@ -1011,11 +1101,13 @@ class ImportService:
         import_job_id: str,
         approval_plan: dict,
     ):
-        merged_drafts = approval_plan["merged_drafts"]
-        if not merged_drafts:
+        selected_drafts = approval_plan.get("selected_drafts", [])
+        if not selected_drafts:
             return {
                 "approved_count": 0,
                 "draft_ids": [],
+                "skipped_existing_count": 0,
+                "skipped_rejected_count": 0,
                 "transaction_fingerprints": [],
                 "sync_plan": {
                     "approved_transactions": [],
@@ -1027,10 +1119,49 @@ class ImportService:
                 },
             }
 
+        fingerprint_statuses = get_registered_transaction_fingerprint_statuses(
+            connection,
+            workspace_id=workspace_id,
+            transaction_fingerprints=[
+                str(draft["transaction_fingerprint"])
+                for draft in selected_drafts
+            ],
+        )
+        skipped_existing_drafts = [
+            draft for draft in selected_drafts
+            if fingerprint_statuses.get(str(draft["transaction_fingerprint"])) == "approved"
+        ]
+        skipped_rejected_drafts = [
+            draft for draft in selected_drafts
+            if fingerprint_statuses.get(str(draft["transaction_fingerprint"])) == "rejected"
+        ]
+        approval_drafts = [
+            draft for draft in selected_drafts
+            if str(draft["transaction_fingerprint"]) not in fingerprint_statuses
+        ]
+        approval_fingerprints = {
+            str(draft["transaction_fingerprint"])
+            for draft in approval_drafts
+        }
         created_transactions = create_import_transactions(
             connection,
-            rows=approval_plan["final_transaction_rows"],
+            rows=[
+                row for row in approval_plan["final_transaction_rows"]
+                if str(row["import_transaction_fingerprint"]) in approval_fingerprints
+            ],
         )
+        created_fingerprints = {
+            str(transaction["import_transaction_fingerprint"])
+            for transaction in created_transactions
+        }
+        created_drafts = [
+            draft for draft in approval_drafts
+            if str(draft["transaction_fingerprint"]) in created_fingerprints
+        ]
+        race_skipped_existing_drafts = [
+            draft for draft in approval_drafts
+            if str(draft["transaction_fingerprint"]) not in created_fingerprints
+        ]
         register_transaction_fingerprints(
             connection,
             workspace_id=workspace_id,
@@ -1039,17 +1170,17 @@ class ImportService:
                     "transaction_fingerprint": draft["transaction_fingerprint"],
                     "provider": approval_plan["review_summary"]["provider"],
                 }
-                for draft in merged_drafts
+                for draft in created_drafts
             ],
         )
         transaction_fingerprints = [
             draft["transaction_fingerprint"]
-            for draft in merged_drafts
+            for draft in created_drafts
         ]
         delete_import_draft_transactions(
             connection,
             import_job_id=import_job_id,
-            draft_ids=[str(draft["id"]) for draft in merged_drafts],
+            draft_ids=[str(draft["id"]) for draft in selected_drafts],
         )
         self.cleanup_service.delete_temp_pdf_for_job(
             connection,
@@ -1082,12 +1213,18 @@ class ImportService:
 
         return {
             "approved_count": len(created_transactions),
-            "draft_ids": [str(draft["id"]) for draft in merged_drafts],
+            "draft_ids": [str(draft["id"]) for draft in selected_drafts],
+            "skipped_existing_count": (
+                len(skipped_existing_drafts)
+                + len(race_skipped_existing_drafts)
+            ),
+            "skipped_rejected_count": len(skipped_rejected_drafts),
             "transaction_fingerprints": transaction_fingerprints,
             "sync_plan": {
-                "approved_transactions": merged_drafts,
-                "target_sheet_source": approval_plan["target_sheet"]["source"],
-                "target_sheet_name": approval_plan["target_sheet"]["sheet_name"],
+                "approved_transactions": created_drafts,
+                "target_sheet_source": approval_plan["target_sheet_source"],
+                "target_sheet_source_id": approval_plan["target_sheet_source_id"],
+                "target_sheet_name": approval_plan["target_sheet_name"],
                 "user_name": approval_plan["resolved_user_name"],
                 "source_dana": approval_plan["resolved_source_dana"],
                 "job_id": import_job_id,
@@ -1112,11 +1249,53 @@ class ImportService:
                 "error": None,
             }
 
+        target_sheet_source = sync_plan.get("target_sheet_source") or {}
+        target_source_id = str(
+            sync_plan.get("target_sheet_source_id")
+            or target_sheet_source.get("id")
+            or ""
+        ).strip()
+        target_sheet_name = str(sync_plan.get("target_sheet_name") or "").strip()
+        if not target_source_id or not target_sheet_name:
+            return {
+                "status": "skipped",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": None,
+                "error": MISSING_SPREADSHEET_TARGET_MESSAGE,
+            }
+
+        try:
+            target_sheet = self._resolve_import_target_sheet(
+                connection,
+                workspace=workspace,
+                current_user=current_user,
+                workspace_id=str(workspace["id"]),
+                sheet_source_id=target_source_id,
+                sheet_name=target_sheet_name,
+            )
+        except MissingGoogleSheetSourceError as exc:
+            return {
+                "status": "needs_reconnect",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": target_source_id,
+                "error": exc.message,
+            }
+        except (MissingTargetSheetError, InvalidTargetSheetHeaderError) as exc:
+            return {
+                "status": "failed",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": target_source_id or None,
+                "error": exc.message,
+            }
+
         self._log_import_event(
             "smart_import.spreadsheet_sync.started",
             job_id=sync_plan.get("job_id"),
-            sheet_source_id=str(sync_plan["target_sheet_source"]["id"]),
-            sheet_name=sync_plan["target_sheet_name"],
+            sheet_source_id=str(target_sheet["source"]["id"]),
+            sheet_name=target_sheet["sheet_name"],
             row_count=len(approved_transactions),
         )
 
@@ -1126,8 +1305,8 @@ class ImportService:
                 workspace=workspace,
                 current_user=current_user,
                 approved_transactions=approved_transactions,
-                target_sheet_source=sync_plan["target_sheet_source"],
-                target_sheet_name=sync_plan["target_sheet_name"],
+                target_sheet_source=target_sheet["source"],
+                target_sheet_name=target_sheet["sheet_name"],
                 user_name=sync_plan["user_name"],
                 source_dana=sync_plan["source_dana"],
                 job_id=sync_plan.get("job_id"),
@@ -1209,6 +1388,14 @@ class ImportService:
                 sync_status="failed",
                 sync_error_message=sync_result.get("error"),
             )
+        elif sync_result["status"] == "skipped":
+            update_import_transaction_sync_status(
+                connection,
+                workspace_id=workspace_id,
+                transaction_fingerprints=transaction_fingerprints,
+                sync_status="pending",
+                sync_error_message=sync_result.get("error"),
+            )
 
         refresh_import_job_aggregates(
             connection,
@@ -1217,10 +1404,17 @@ class ImportService:
         )
 
         return {
+            "ledger_saved": bool(transaction_fingerprints),
             "sync_success": sync_result["sync_success"],
             "sync_failed": sync_result["sync_failed"],
             "sync_status": sync_result["status"],
             "sync_error_message": sync_result.get("error"),
+            "sheet_delivery": {
+                "status": sync_result["status"],
+                "success_count": sync_result["sync_success"],
+                "pending_or_failed_count": sync_result["sync_failed"],
+                "message": sync_result.get("error"),
+            },
         }
 
     def reject_review_transactions(
@@ -1245,6 +1439,26 @@ class ImportService:
             import_job_id=import_job_id,
             draft_ids=normalized_ids,
         )
+        fingerprint_statuses = get_registered_transaction_fingerprint_statuses(
+            connection,
+            workspace_id=workspace_id,
+            transaction_fingerprints=[
+                str(draft["transaction_fingerprint"])
+                for draft in selected_drafts
+            ],
+        )
+        rejectable_drafts = [
+            draft for draft in selected_drafts
+            if str(draft["transaction_fingerprint"]) not in fingerprint_statuses
+        ]
+        skipped_existing_count = sum(
+            fingerprint_statuses.get(str(draft["transaction_fingerprint"])) == "approved"
+            for draft in selected_drafts
+        )
+        skipped_rejected_count = sum(
+            fingerprint_statuses.get(str(draft["transaction_fingerprint"])) == "rejected"
+            for draft in selected_drafts
+        )
         register_rejected_transaction_fingerprints(
             connection,
             workspace_id=workspace_id,
@@ -1253,7 +1467,7 @@ class ImportService:
                     "transaction_fingerprint": draft["transaction_fingerprint"],
                     "provider": review_summary["provider"],
                 }
-                for draft in selected_drafts
+                for draft in rejectable_drafts
             ],
         )
         deleted_rows = reject_import_draft_transactions(
@@ -1264,7 +1478,7 @@ class ImportService:
         increment_import_job_rejected_count(
             connection,
             job_id=import_job_id,
-            rejected_count=len(deleted_rows),
+            rejected_count=len(rejectable_drafts),
         )
         remaining_draft_count = count_new_import_draft_transactions(
             connection,
@@ -1286,7 +1500,9 @@ class ImportService:
         )
 
         return {
-            "rejected_count": len(deleted_rows),
+            "rejected_count": len(rejectable_drafts),
+            "skipped_existing_count": skipped_existing_count,
+            "skipped_rejected_count": skipped_rejected_count,
             "draft_ids": [str(row["id"]) for row in deleted_rows],
         }
 
@@ -1596,6 +1812,10 @@ class ImportService:
         for draft in draft_transactions:
             draft_id = str(draft["id"])
             update = updates_by_id.get(draft_id, {})
+            parsed_merchant_display = self.merchant_normalizer.normalize(
+                draft["merchant_original"]
+            )["merchant_display"]
+            updated_merchant_display = update.get("merchant_display")
             merged_drafts.append({
                 "id": draft_id,
                 "transaction_fingerprint": draft["transaction_fingerprint"],
@@ -1606,9 +1826,11 @@ class ImportService:
                 "datetime": draft["datetime"],
                 "merchant_original": draft["merchant_original"],
                 "merchant_normalized": draft["merchant_normalized"],
-                "merchant_display": self.merchant_normalizer.normalize(
-                    draft["merchant_original"]
-                )["merchant_display"],
+                "merchant_display": str(
+                    parsed_merchant_display
+                    if updated_merchant_display is None
+                    else updated_merchant_display
+                ).strip(),
                 "amount": float(draft["amount"]),
                 "direction": draft["direction"],
                 "transaction_type": draft["transaction_type"],
@@ -1684,13 +1906,15 @@ class ImportService:
             raise MissingGoogleSheetSourceError()
 
         try:
-            access_token = decrypt_text(oauth_connection["access_token_encrypted"])
+            access_token = get_valid_google_access_token(connection, oauth_connection)
             header_rows = read_sheet_values(
                 access_token=access_token,
                 spreadsheet_id=sheet_source["sheet_id"],
                 range_name=self._build_header_range(normalized_sheet_name),
             )
-        except (GoogleSheetsClientError, ValueError) as exc:
+        except GoogleOAuthNeedsReconnectError as exc:
+            raise MissingGoogleSheetSourceError() from exc
+        except (GoogleSheetsClientError, GoogleOAuthAuthorizationError, ValueError) as exc:
             raise InvalidTargetSheetHeaderError() from exc
 
         self._validate_import_target_header(header_rows[0] if header_rows else [])
@@ -1811,6 +2035,7 @@ class ImportService:
             "unsynced_count": int(job.get("retryable_sync_count", 0) or 0),
             "retryable_sync_count": int(job.get("retryable_sync_count", 0) or 0),
             "needs_reconnect": bool(job.get("needs_reconnect", False)),
+            "spreadsheet_unconfigured": bool(job.get("spreadsheet_unconfigured", False)),
             "pdf_status": (
                 "already_deleted"
                 if job.get("temp_file_deleted_at")

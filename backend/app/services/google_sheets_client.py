@@ -299,3 +299,56 @@ def copy_sheet_row_format_and_validation(
         _raise_safe_google_error(exc)
 
     return response.json()
+
+
+def format_sheet_datetime_column(
+    access_token: str,
+    spreadsheet_id: str,
+    *,
+    sheet_id: int,
+    destination_start_row: int,
+    destination_end_row: int,
+    column_index: int = 1,
+    pattern: str = "yyyy-mm-dd hh:mm",
+):
+    if destination_start_row < 1 or destination_end_row < destination_start_row:
+        raise GoogleSheetsClientError("Destination row range is invalid")
+
+    if column_index < 0:
+        raise GoogleSheetsClientError("Google Sheets column index is invalid")
+
+    requests = [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": destination_start_row - 1,
+                    "endRowIndex": destination_end_row,
+                    "startColumnIndex": column_index,
+                    "endColumnIndex": column_index + 1,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "numberFormat": {
+                            "type": "DATE_TIME",
+                            "pattern": pattern,
+                        },
+                    },
+                },
+                "fields": "userEnteredFormat.numberFormat",
+            },
+        },
+    ]
+
+    try:
+        response = httpx.post(
+            f"{GOOGLE_SHEETS_API_BASE_URL}/{spreadsheet_id}:batchUpdate",
+            headers=_authorization_headers(access_token),
+            json={"requests": requests},
+            timeout=20,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        _raise_safe_google_error(exc)
+
+    return response.json()

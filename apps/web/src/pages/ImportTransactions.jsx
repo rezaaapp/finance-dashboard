@@ -26,6 +26,10 @@ const REVIEW_PAGE_SIZE = 100;
 const HISTORY_PAGE_SIZE = 20;
 
 const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null }) => {
+  if (source?.sheet_name && worksheets.includes(source.sheet_name)) {
+    return source.sheet_name;
+  }
+
   const normalizedFilename = String(filename || "").toLowerCase();
 
   if (/(juni|jun)/i.test(normalizedFilename)) {
@@ -36,10 +40,6 @@ const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null 
     if (juneMatch) {
       return juneMatch;
     }
-  }
-
-  if (source?.sheet_name && worksheets.includes(source.sheet_name)) {
-    return source.sheet_name;
   }
 
   if (worksheets.length === 1) {
@@ -222,9 +222,7 @@ const ImportTransactions = () => {
     const preserveData = Boolean(options.preserveData);
 
     setHistoryLoading(true);
-    if (!preserveData) {
-      setHistoryError("");
-    }
+    setHistoryError("");
     setSheetSourcesLoading(true);
     if (!preserveData) {
       setSheetSourcesError("");
@@ -299,6 +297,11 @@ const ImportTransactions = () => {
   const handleReviewReady = async (uploadResult) => {
     await loadReview(uploadResult.job_id);
     setActiveTab("review");
+  };
+
+  const handleContinueReview = async (jobId) => {
+    setActiveTab("review");
+    await loadReview(jobId);
   };
 
   const handleSwitchTab = async (tabId) => {
@@ -502,6 +505,7 @@ const ImportTransactions = () => {
           })}
           onRetrySync={handleRetrySync}
           onViewDetail={loadHistoryDetail}
+          onContinueReview={handleContinueReview}
           onReconnectGoogle={handleReconnectGoogle}
           sheetSources={sheetSources}
           sheetSourcesLoading={sheetSourcesLoading}

@@ -4,6 +4,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from app.imports.utils.fingerprint import normalize_owner_name
+from app.services.transaction_normalizer import normalize_search_text
 
 
 def create_import_transactions(
@@ -18,6 +19,16 @@ def create_import_transactions(
         inserted_rows = []
 
         for row in rows:
+            search_text_normalized = (
+                str(row.get("search_text_normalized", "")).strip()
+                or normalize_search_text(
+                    row.get("title"),
+                    row.get("raw_category"),
+                    (row.get("raw_payload") or {}).get("_category_normalized"),
+                    row.get("source_fund"),
+                    row.get("note"),
+                )
+            )
             cursor.execute(
                 """
                 insert into transactions (
@@ -43,7 +54,8 @@ def create_import_transactions(
                     canonical_fingerprint,
                     canonical_fingerprint_date,
                     sync_status,
-                    sync_error_message
+                    sync_error_message,
+                    search_text_normalized
                 )
                 values (
                     %(workspace_id)s,
@@ -68,17 +80,18 @@ def create_import_transactions(
                     %(canonical_fingerprint)s,
                     %(canonical_fingerprint_date)s,
                     %(sync_status)s,
-                    %(sync_error_message)s
+                    %(sync_error_message)s,
+                    %(search_text_normalized)s
                 )
                 on conflict (workspace_id, import_transaction_fingerprint)
                 where import_transaction_fingerprint is not null
-                do update set
-                    import_transaction_fingerprint = excluded.import_transaction_fingerprint
+                do nothing
                 returning id, import_transaction_fingerprint, sync_status
                 """,
                 {
                     **row,
                     "raw_payload": Jsonb(row["raw_payload"]),
+                    "search_text_normalized": search_text_normalized,
                 },
             )
             inserted_row = cursor.fetchone()
@@ -271,13 +284,19 @@ def list_workspace_transaction_source_funds(connection, *, workspace_id: str) ->
 def serialize_import_transaction_row(
     *,
     workspace_id: str,
-    sheet_source_id: str,
+    sheet_source_id: str | None,
     import_job_id: str,
     user_name: str,
     source_fund: str = "Blu",
     transaction: dict,
 ) -> dict:
     transaction_time = _parse_transaction_time(transaction.get("datetime", ""))
+    title = str(
+        transaction.get("merchant_display")
+        or transaction.get("merchant_normalized", "")
+    )
+    raw_category = str(transaction.get("category", "")) or None
+    note = str(transaction.get("notes", "")) or None
 
     return {
         "workspace_id": workspace_id,
@@ -286,14 +305,11 @@ def serialize_import_transaction_row(
         "row_number": None,
         "transaction_date": transaction_time.date(),
         "transaction_time": transaction_time,
-        "title": str(
-            transaction.get("merchant_display")
-            or transaction.get("merchant_normalized", "")
-        ),
-        "raw_category": str(transaction.get("category", "")) or None,
+        "title": title,
+        "raw_category": raw_category,
         "amount": transaction.get("amount", 0),
         "source_fund": source_fund,
-        "note": str(transaction.get("notes", "")) or None,
+        "note": note,
         "direction": str(transaction.get("direction", "")) or "expense",
         "raw_payload": {
             "Nama": user_name,
@@ -322,6 +338,13 @@ def serialize_import_transaction_row(
         "canonical_fingerprint_date": str(transaction.get("canonical_fingerprint_date", "")) or None,
         "sync_status": "pending",
         "sync_error_message": None,
+        "search_text_normalized": normalize_search_text(
+            title,
+            raw_category,
+            None,
+            source_fund,
+            note,
+        ),
     }
 
 

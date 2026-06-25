@@ -816,13 +816,6 @@ const Dashboard = ({
   const hasSavedSource = hasActiveGoogleSheet || googleSheetSources.length > 0;
   const hasSyncedSource = googleSheetSources.some((source) => source.last_synced_at)
     || years.length > 0;
-  const onboardingState = !googleConnection.connected
-    ? "google_not_connected"
-    : !hasSavedSource
-      ? "no_data_source"
-      : !hasSyncedSource
-        ? "data_source_not_synced"
-        : "ready";
   const hasDashboardPeriodData = (
     hasSummaryData(summary)
     || hasPositiveTotal(spending)
@@ -839,6 +832,15 @@ const Dashboard = ({
     || Object.keys(personalAnalytics?.kpis || {}).length > 0
     || (personalAnalytics?.comparison || []).length > 0
   );
+  const onboardingState = hasDashboardPeriodData || rawTransactions.length > 0
+    ? "ready"
+    : !googleConnection.connected
+      ? "google_not_connected"
+      : !hasSavedSource
+        ? "no_data_source"
+        : !hasSyncedSource
+          ? "data_source_not_synced"
+          : "ready";
 
   const onboardingCopy = {
     google_not_connected: {

@@ -22,9 +22,6 @@ def create_google_sheet_source(
         )
 
         if existing_source:
-            if existing_source["status"] != "disabled":
-                return None
-
             return reactivate_google_sheet_source(
                 cursor,
                 workspace_id=workspace_id,

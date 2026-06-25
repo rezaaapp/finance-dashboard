@@ -88,6 +88,39 @@ class WorkspacePermissionsTestCase(unittest.TestCase):
             invitations_source,
         )
 
+    def test_dashboard_read_endpoints_use_workspace_access_not_global_premium_role(self):
+        app_root = Path(__file__).resolve().parents[1] / "app"
+        dashboard_source = (app_root / "api" / "dashboard.py").read_text(
+            encoding="utf-8"
+        )
+
+        read_endpoint_names = (
+            "category_heatmap",
+            "transactions",
+            "category_trends",
+            "source_dana_analytics",
+            "monthly_allocation",
+            "personal_analytics",
+            "grocery_vs_food",
+            "anomalies",
+            "latest_insight",
+            "budget_forecast",
+        )
+
+        for endpoint_name in read_endpoint_names:
+            with self.subTest(endpoint_name=endpoint_name):
+                endpoint_block = dashboard_source.split(
+                    f"def {endpoint_name}(",
+                    maxsplit=1,
+                )[1].split("\n@router.", maxsplit=1)[0]
+
+                self.assertIn(
+                    "sheet_context=Depends(get_active_sheet_context)",
+                    endpoint_block,
+                )
+                self.assertNotIn("premium_user=Depends", endpoint_block)
+                self.assertNotIn("require_premium_role", endpoint_block)
+
 
 if __name__ == "__main__":
     unittest.main()

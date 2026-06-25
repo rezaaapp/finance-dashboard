@@ -159,6 +159,46 @@ def get_google_oauth_connection_status(
         return cursor.fetchone()
 
 
+def update_google_oauth_access_token(
+    connection,
+    *,
+    connection_id: str,
+    access_token_encrypted: str,
+    token_expiry,
+    status: str = "active",
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            update google_oauth_connections
+            set
+                access_token_encrypted = %s,
+                token_expiry = %s,
+                status = %s,
+                updated_at = now()
+            where id = %s
+            returning
+                id,
+                workspace_id,
+                user_id,
+                google_email,
+                token_expiry,
+                scopes,
+                status,
+                created_at,
+                updated_at
+            """,
+            (
+                access_token_encrypted,
+                token_expiry,
+                status,
+                connection_id,
+            ),
+        )
+
+        return cursor.fetchone()
+
+
 def disconnect_google_oauth_connection(
     connection,
     *,

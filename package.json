@@ -15,6 +15,7 @@
     "start:replit": "cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
     "db:check": "tsx backend/node/checkDatabaseConnection.ts",
     "db:migrate": "python backend/scripts/run_migrations.py",
+    "db:reset:local": "python backend/scripts/reset_local_database.py",
     "db:seed": "tsx backend/node/seedInitialWorkspace.ts",
     "db:backfill-workspaces": "tsx backend/node/backfillUserWorkspaces.ts",
     "classify:financial-data": "tsx backend/node/runSyncAndClassifyFinancialData.ts"

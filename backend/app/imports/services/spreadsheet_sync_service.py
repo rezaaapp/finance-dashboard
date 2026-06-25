@@ -7,14 +7,19 @@ from app.repositories.google_sheet_source_repository import (
     update_google_sheet_last_synced,
 )
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
-from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     append_sheet_values,
     copy_sheet_row_format_and_validation,
+    format_sheet_datetime_column,
     get_data_validation_values,
     get_spreadsheet_metadata,
     read_sheet_values,
+)
+from app.services.google_token_service import (
+    GoogleOAuthAuthorizationError,
+    GoogleOAuthNeedsReconnectError,
+    get_valid_google_access_token,
 )
 from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 
@@ -90,7 +95,24 @@ class SpreadsheetSyncService:
                 "error": "Google Sheet source is not configured",
             }
 
-        access_token = decrypt_text(oauth_connection["access_token_encrypted"])
+        try:
+            access_token = get_valid_google_access_token(connection, oauth_connection)
+        except GoogleOAuthNeedsReconnectError:
+            return {
+                "status": "needs_reconnect",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": str(sheet_source["id"]),
+                "error": "needs_reconnect",
+            }
+        except GoogleOAuthAuthorizationError as exc:
+            return {
+                "status": "failed",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": str(sheet_source["id"]),
+                "error": str(exc),
+            }
         resolved_user_name = user_name or self.value_resolver.resolve_user_name_for_append(
             connection,
             workspace_id=str(workspace["id"]),
@@ -145,7 +167,7 @@ class SpreadsheetSyncService:
                 rows=rows,
             )
             try:
-                formatting_result = self._copy_template_formatting(
+                formatting_result = self._format_appended_rows(
                     access_token=access_token,
                     spreadsheet_id=sheet_source["sheet_id"],
                     sheet_name=target_sheet_name,
@@ -157,12 +179,14 @@ class SpreadsheetSyncService:
                     extra={
                         "smart_import": {
                             "sheet_name": target_sheet_name,
-                            "template_row": formatting_result["template_row"],
+                            "template_row": formatting_result.get("template_row"),
                             "appended_row_range": formatting_result["appended_row_range"],
                             "row_count": len(rows),
                         },
                     },
                 )
+                if formatting_result.get("warning"):
+                    sync_warnings.append(formatting_result["warning"])
             except GoogleSheetsClientError as formatting_error:
                 formatting_warning = str(formatting_error)
                 sync_warnings.append(formatting_warning)
@@ -359,7 +383,7 @@ class SpreadsheetSyncService:
 
         return resolution["value"]
 
-    def _copy_template_formatting(
+    def _format_appended_rows(
         self,
         *,
         access_token: str,
@@ -373,29 +397,49 @@ class SpreadsheetSyncService:
             spreadsheet_id=spreadsheet_id,
             sheet_name=sheet_name,
         )
-        template_row = self._resolve_template_row(
-            access_token=access_token,
-            spreadsheet_id=spreadsheet_id,
-            sheet_name=sheet_name,
-        )
         destination_start_row, destination_end_row = self._parse_appended_row_range(
             append_result,
             expected_row_count=row_count,
         )
-        copy_sheet_row_format_and_validation(
+        formatting_warnings = []
+
+        try:
+            template_row = self._resolve_template_row(
+                access_token=access_token,
+                spreadsheet_id=spreadsheet_id,
+                sheet_name=sheet_name,
+            )
+            copy_sheet_row_format_and_validation(
+                access_token=access_token,
+                spreadsheet_id=spreadsheet_id,
+                sheet_id=sheet_id,
+                template_row=template_row,
+                destination_start_row=destination_start_row,
+                destination_end_row=destination_end_row,
+                column_count=7,
+            )
+        except GoogleSheetsClientError as exc:
+            template_row = None
+            formatting_warnings.append(str(exc))
+
+        format_sheet_datetime_column(
             access_token=access_token,
             spreadsheet_id=spreadsheet_id,
             sheet_id=sheet_id,
-            template_row=template_row,
             destination_start_row=destination_start_row,
             destination_end_row=destination_end_row,
-            column_count=7,
+            column_index=1,
+            pattern="yyyy-mm-dd hh:mm",
         )
 
-        return {
+        result = {
             "template_row": template_row,
             "appended_row_range": f"{destination_start_row}:{destination_end_row}",
         }
+        if formatting_warnings:
+            result["warning"] = " ".join(dict.fromkeys(formatting_warnings))
+
+        return result
 
     def _resolve_sheet_id(
         self,

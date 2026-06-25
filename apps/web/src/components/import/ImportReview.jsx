@@ -218,6 +218,7 @@ const ImportReview = ({
           .filter((row) => selectedIds.includes(row.id))
           .map((row) => ({
             draft_id: row.id,
+            merchant_display: row.merchant_display,
             category: row.category,
             notes: row.notes,
           })),
@@ -413,7 +414,11 @@ const ImportReview = ({
 
           {(sheetSourcesError || worksheetsError || !hasTargetSheet) && (
             <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-              {sheetSourcesError || worksheetsError || "Pilih spreadsheet dan tab tujuan agar setelah transaksi tersimpan di Omon, sistem bisa mencoba mengirim salinannya ke Google Spreadsheet."}
+              {sheetSourcesError || worksheetsError || (
+                hasTargetSheet
+                  ? "Target Spreadsheet siap digunakan setelah transaksi tersimpan di Omon."
+                  : "Transaksi akan disimpan di Omon. Sinkronisasi Spreadsheet dapat dilakukan setelah Google Sheet terhubung."
+              )}
             </div>
           )}
         </section>
@@ -555,7 +560,7 @@ const ImportReview = ({
                 <button
                   type="button"
                   onClick={handleApproveSelected}
-                  disabled={selectedIds.length === 0 || actionLoading !== "" || !hasTargetSheet}
+                  disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Setujui & Simpan di Omon"}
@@ -642,11 +647,19 @@ const ImportReview = ({
                         <td className="px-4 py-3 text-main">{date}</td>
                         <td className="px-4 py-3 text-muted">{time}</td>
                         <td className="px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-main">
-                              {row.merchant_display}
-                            </p>
-                          </div>
+                          <input
+                            type="text"
+                            value={row.merchant_display}
+                            placeholder="Isi nama transaksi"
+                            aria-label={`Nama transaksi ${row.merchant_display || row.merchant_original || row.id}`}
+                            disabled={isActionLoading && isSelected}
+                            onChange={(event) => handleDraftFieldChange(
+                              row.id,
+                              "merchant_display",
+                              event.target.value
+                            )}
+                            className="form-control w-64 rounded-lg px-3 py-2 text-xs font-semibold"
+                          />
                         </td>
                         <td className="px-4 py-3 font-semibold text-main">
                           {formatAmount(row.amount)}
