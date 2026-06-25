@@ -7,7 +7,6 @@ from app.repositories.google_sheet_source_repository import (
     update_google_sheet_last_synced,
 )
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
-from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     append_sheet_values,
@@ -15,6 +14,11 @@ from app.services.google_sheets_client import (
     get_data_validation_values,
     get_spreadsheet_metadata,
     read_sheet_values,
+)
+from app.services.google_token_service import (
+    GoogleOAuthAuthorizationError,
+    GoogleOAuthNeedsReconnectError,
+    get_valid_google_access_token,
 )
 from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 
@@ -90,7 +94,24 @@ class SpreadsheetSyncService:
                 "error": "Google Sheet source is not configured",
             }
 
-        access_token = decrypt_text(oauth_connection["access_token_encrypted"])
+        try:
+            access_token = get_valid_google_access_token(connection, oauth_connection)
+        except GoogleOAuthNeedsReconnectError:
+            return {
+                "status": "needs_reconnect",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": str(sheet_source["id"]),
+                "error": "needs_reconnect",
+            }
+        except GoogleOAuthAuthorizationError as exc:
+            return {
+                "status": "failed",
+                "sync_success": 0,
+                "sync_failed": len(approved_transactions),
+                "source_id": str(sheet_source["id"]),
+                "error": str(exc),
+            }
         resolved_user_name = user_name or self.value_resolver.resolve_user_name_for_append(
             connection,
             workspace_id=str(workspace["id"]),

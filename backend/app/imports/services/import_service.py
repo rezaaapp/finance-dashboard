@@ -68,8 +68,12 @@ from app.repositories.google_sheet_source_repository import (
 from app.repositories.transaction_repository import (
     get_existing_transactions_by_canonical_fingerprint,
 )
-from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import GoogleSheetsClientError, read_sheet_values
+from app.services.google_token_service import (
+    GoogleOAuthAuthorizationError,
+    GoogleOAuthNeedsReconnectError,
+    get_valid_google_access_token,
+)
 from app.services.sheet_header_validator import canonicalize_header
 
 
@@ -1902,13 +1906,15 @@ class ImportService:
             raise MissingGoogleSheetSourceError()
 
         try:
-            access_token = decrypt_text(oauth_connection["access_token_encrypted"])
+            access_token = get_valid_google_access_token(connection, oauth_connection)
             header_rows = read_sheet_values(
                 access_token=access_token,
                 spreadsheet_id=sheet_source["sheet_id"],
                 range_name=self._build_header_range(normalized_sheet_name),
             )
-        except (GoogleSheetsClientError, ValueError) as exc:
+        except GoogleOAuthNeedsReconnectError as exc:
+            raise MissingGoogleSheetSourceError() from exc
+        except (GoogleSheetsClientError, GoogleOAuthAuthorizationError, ValueError) as exc:
             raise InvalidTargetSheetHeaderError() from exc
 
         self._validate_import_target_header(header_rows[0] if header_rows else [])

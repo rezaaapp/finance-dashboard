@@ -8,6 +8,10 @@ from app.repositories.google_oauth_repository import (
     get_google_oauth_connection_status,
 )
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
+from app.services.google_token_service import (
+    can_refresh_google_access_token,
+    is_google_access_token_expired,
+)
 from app.repositories.workspaces import (
     ensure_default_workspace_for_user,
     get_primary_workspace_for_user,
@@ -87,13 +91,26 @@ def get_connection_status(
     if not connection_status:
         return {"connected": False}
 
+    token_expired = (
+        is_google_access_token_expired(active_connection)
+        if active_connection
+        else False
+    )
+    can_refresh = (
+        can_refresh_google_access_token(active_connection)
+        if active_connection
+        else False
+    )
+    needs_reconnect = sync_service.requires_reconnect(
+        (active_connection or {}).get("scopes") or []
+    ) or (token_expired and not can_refresh)
+
     return {
         "connected": True,
         "google_email": connection_status["google_email"],
         "status": connection_status["status"],
-        "needs_reconnect": sync_service.requires_reconnect(
-            (active_connection or {}).get("scopes") or []
-        ),
+        "needs_reconnect": needs_reconnect,
+        "authorization_failed": token_expired and not can_refresh,
     }
 
 

@@ -1628,7 +1628,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Nama",
                  "Waktu Transaksi",
@@ -1950,7 +1950,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Tanggal",
                  "Deskripsi",
@@ -2023,7 +2023,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Nama",
                  "Waktu Transaksi",
@@ -2085,7 +2085,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Nama",
                  "Waktu Transaksi",
@@ -2149,7 +2149,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Nama",
                  "Waktu Transaksi",
@@ -2238,7 +2238,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             "access_token_encrypted": "encrypted-token",
             "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
         }), \
-             patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.spreadsheet_sync_service.get_data_validation_values", side_effect=[
                  ["Reza", "Divya"],
                  ["BCA", "Blu", "GoPay", "OVO", "SeaBank"],
@@ -2333,7 +2333,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             "access_token_encrypted": "encrypted-token",
             "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
         }), \
-             patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.spreadsheet_sync_service.get_data_validation_values", side_effect=[
                  ["Reza"],
                  ["Blu"],
@@ -2386,7 +2386,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             "access_token_encrypted": "encrypted-token",
             "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
         }), \
-             patch("app.imports.services.spreadsheet_sync_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.spreadsheet_sync_service.get_valid_google_access_token", return_value="access-token"), \
              patch(
                  "app.imports.services.spreadsheet_sync_service.get_data_validation_values",
                  side_effect=GoogleSheetsClientError("Validation metadata unavailable"),
@@ -2810,7 +2810,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Nama",
                  "Waktu Transaksi",
@@ -2889,7 +2889,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "id": "oauth-1",
                  "access_token_encrypted": "encrypted-token",
              }), \
-             patch("app.imports.services.import_service.decrypt_text", return_value="access-token"), \
+             patch("app.imports.services.import_service.get_valid_google_access_token", return_value="access-token"), \
              patch("app.imports.services.import_service.read_sheet_values", return_value=[[
                  "Nama",
                  "Waktu Transaksi",

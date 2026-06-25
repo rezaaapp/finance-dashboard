@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import json
 from uuid import UUID
 
@@ -28,11 +27,15 @@ from app.repositories.sync_job_repository import (
     update_sync_job_progress,
 )
 from app.repositories.transaction_repository import batch_upsert_transactions
-from app.security.encryption import decrypt_text
 from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     get_spreadsheet_metadata,
     read_sheet_values,
+)
+from app.services.google_token_service import (
+    GoogleOAuthAuthorizationError,
+    GoogleOAuthNeedsReconnectError,
+    get_valid_google_access_token,
 )
 from app.services.google_sheet_tab_filter import (
     get_syncable_tabs,
@@ -250,31 +253,17 @@ def _get_access_context(connection, *, workspace_id: str, user_id: str):
             detail="Google account is not connected",
         )
 
-    token_expiry = oauth_connection.get("token_expiry")
-
-    if token_expiry and token_expiry.tzinfo is None:
-        token_expiry = token_expiry.replace(tzinfo=timezone.utc)
-
-    if token_expiry and token_expiry <= datetime.now(timezone.utc):
+    try:
+        access_token = get_valid_google_access_token(connection, oauth_connection)
+    except GoogleOAuthNeedsReconnectError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Google connection expired. Reconnect Google and try again.",
-        )
-
-    encrypted_access_token = oauth_connection.get("access_token_encrypted")
-
-    if not encrypted_access_token:
+        ) from exc
+    except GoogleOAuthAuthorizationError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google connection is missing access. Reconnect Google and try again.",
-        )
-
-    try:
-        access_token = decrypt_text(encrypted_access_token)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google connection could not be used. Reconnect Google and try again.",
+            detail="Google authorization failed. Reconnect Google and try again.",
         ) from exc
 
     return oauth_connection, access_token
