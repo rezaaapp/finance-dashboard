@@ -678,8 +678,16 @@ def get_summary(connection, *, workspace_id: str, year=None, month=None):
     }
 
 
-def get_monthly_totals(connection, *, workspace_id: str, year=None, month=None, direction="expense"):
-    where_clause, params = _filters(year, month, direction)
+def get_monthly_totals(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    direction="expense",
+    name=None,
+):
+    where_clause, params = _filters(year, month, direction, name)
     rows = _fetch_all(
         connection,
         f"""
@@ -1311,6 +1319,7 @@ def get_monthly_allocation(connection, *, workspace_id: str, year=None, month=No
         year=year,
         month=month,
         direction="expense",
+        name=name,
     )
 
     return [
