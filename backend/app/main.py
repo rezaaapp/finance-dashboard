@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from gspread.exceptions import APIError
 from pathlib import Path
+import json
 
 
 from app.api.admin import router as admin_router
@@ -113,6 +114,10 @@ def shutdown_database_pool():
 
 @app.on_event("startup")
 def startup_import_cleanup_scheduler():
+    print(
+        "Omon Dashboard environment summary: "
+        + json.dumps(settings.get_startup_summary(), ensure_ascii=True)
+    )
     start_import_cleanup_scheduler()
 
 # =========================

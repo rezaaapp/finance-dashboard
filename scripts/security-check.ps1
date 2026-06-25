@@ -24,7 +24,7 @@ foreach ($file in $stagedFiles) {
   $normalized = $file -replace "\\", "/"
   $name = Split-Path -Path $normalized -Leaf
 
-  $isEnvFile = $name -like ".env*" -and $name -ne ".env.example"
+  $isEnvFile = $name -like ".env*" -and $name -notlike ".env*.example"
   $isBlockedJson = $name -ieq "credentials.json" `
     -or $name -ilike "service-account*.json" `
     -or $name -ilike "google-service-account*.json" `
@@ -42,7 +42,7 @@ if ($blockedFiles.Count -gt 0) {
   foreach ($file in $blockedFiles) {
     [Console]::Error.WriteLine(" - $file")
   }
-  [Console]::Error.WriteLine("Unstage/remove these files or commit only safe example files such as .env.example.")
+  [Console]::Error.WriteLine("Unstage/remove these files or commit only safe example files such as .env.example or .env.local-dev.example.")
   exit 1
 }
 

@@ -4,10 +4,10 @@ import re
 import shutil
 import uuid
 
-from app.config import BACKEND_ROOT
+from app.config import settings
 
 
-TEMP_IMPORT_DIR = BACKEND_ROOT / "output" / "imports" / "temp"
+TEMP_IMPORT_DIR = Path(settings.IMPORT_TEMP_DIR)
 TEMP_IMPORT_TTL = timedelta(hours=24)
 
 
