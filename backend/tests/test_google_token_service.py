@@ -19,12 +19,8 @@ os.environ.setdefault(
 os.environ.setdefault("GOOGLE_OAUTH_CLIENT_ID", "client-id")
 os.environ.setdefault("GOOGLE_OAUTH_CLIENT_SECRET", "client-secret")
 
-fake_httpx = types.ModuleType("httpx")
-fake_httpx.HTTPError = Exception
-fake_httpx.post = lambda *args, **kwargs: None
 fake_dotenv = types.ModuleType("dotenv")
 fake_dotenv.dotenv_values = lambda _path: {}
-sys.modules.setdefault("httpx", fake_httpx)
 sys.modules.setdefault("dotenv", fake_dotenv)
 fake_psycopg = types.ModuleType("psycopg")
 fake_psycopg_rows = types.ModuleType("psycopg.rows")
@@ -58,7 +54,8 @@ class GoogleTokenServiceTestCase(unittest.TestCase):
             "app.services.google_token_service.decrypt_text",
             return_value="access-token",
         ) as decrypt_mock, patch(
-            "app.services.google_token_service.httpx.post"
+            "app.services.google_token_service.httpx.post",
+            create=True,
         ) as post_mock:
             access_token = get_valid_google_access_token(object(), oauth_connection)
 
@@ -88,6 +85,7 @@ class GoogleTokenServiceTestCase(unittest.TestCase):
         ) as encrypt_mock, patch(
             "app.services.google_token_service.httpx.post",
             return_value=response,
+            create=True,
         ) as post_mock, patch(
             "app.services.google_token_service.update_google_oauth_access_token"
         ) as update_mock:
@@ -119,7 +117,8 @@ class GoogleTokenServiceTestCase(unittest.TestCase):
         }
 
         with self.assertRaises(GoogleOAuthNeedsReconnectError), patch(
-            "app.services.google_token_service.httpx.post"
+            "app.services.google_token_service.httpx.post",
+            create=True,
         ) as post_mock:
             get_valid_google_access_token(object(), oauth_connection)
 
