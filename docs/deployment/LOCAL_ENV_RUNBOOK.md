@@ -26,7 +26,7 @@ Template yang boleh di-commit:
 
 File lokal asli tidak boleh di-commit. `.gitignore` sudah meng-ignore `.env.*` dan mengizinkan hanya file `*.example`.
 
-Backend akan mencoba memuat `.env.local-dev` secara default setelah `.env` dan `backend/.env`. Untuk memakai `local-prod`, set `APP_ENV=local-prod` atau `ENV_PROFILE=local-prod` sebelum backend start agar `.env.local-prod` ikut dimuat. Runner lengkap belum dibuat pada fase pertama ini.
+Backend akan mencoba memuat `.env.local-dev` secara default setelah `.env` dan `backend/.env`. Untuk memakai `local-prod`, set `APP_ENV=local-prod` atau `ENV_PROFILE=local-prod` sebelum backend start agar `.env.local-prod` ikut dimuat. Runner Phase 2 sudah mengatur ini otomatis lewat file `.bat`.
 
 ## Environment Identity
 
@@ -84,9 +84,111 @@ Ini mencegah dua backend lokal berbagi file upload sementara.
 - Pastikan frontend `local-prod` hanya mengarah ke backend `8001`.
 - Pastikan Google OAuth redirect URI sesuai port backend environment yang sedang dipakai.
 
-## Fase Pertama Belum Mengerjakan
+## Runner Scripts
 
-- Runner `.bat` lengkap untuk start semua service.
+Phase 2 menambahkan runner terpisah untuk setiap environment. Runner membaca file env target, memvalidasi identity/port/API URL, menampilkan banner aman tanpa secret, lalu menjalankan server.
+
+| Script | Membuka |
+| --- | --- |
+| `scripts/start-local-dev-backend.bat` | Backend local-dev di `127.0.0.1:8000` |
+| `scripts/start-local-dev-frontend.bat` | Frontend local-dev di `127.0.0.1:5173` |
+| `scripts/start-local-prod-backend.bat` | Backend local-prod di `127.0.0.1:8001` |
+| `scripts/start-local-prod-frontend.bat` | Frontend local-prod di `127.0.0.1:5174` |
+| `scripts/start-local-dev.bat` | Backend dan frontend local-dev |
+| `scripts/start-local-prod.bat` | Backend dan frontend local-prod |
+| `scripts/start-all-local.bat` | Empat terminal: local-dev backend/frontend dan local-prod backend/frontend |
+
+Helper reusable:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-env-runner.ps1 -Target local-dev -Service backend -ValidateOnly
+```
+
+Gunakan `-UseExample` untuk validasi template tanpa membuat file env asli:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-env-runner.ps1 -Target local-dev -Service backend -ValidateOnly -UseExample
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-env-runner.ps1 -Target local-prod -Service frontend -ValidateOnly -UseExample
+```
+
+## Cara Menjalankan local-dev
+
+1. Copy template backend dan frontend:
+
+```powershell
+Copy-Item .env.local-dev.example .env.local-dev
+Copy-Item apps/web/.env.local-dev.example apps/web/.env.local-dev
+```
+
+2. Isi secret dan koneksi PostgreSQL local di `.env.local-dev`.
+3. Jalankan dua service:
+
+```bat
+scripts\start-local-dev.bat
+```
+
+Atau jalankan terpisah:
+
+```bat
+scripts\start-local-dev-backend.bat
+scripts\start-local-dev-frontend.bat
+```
+
+## Cara Menjalankan local-prod
+
+1. Copy template backend dan frontend:
+
+```powershell
+Copy-Item .env.local-prod.example .env.local-prod
+Copy-Item apps/web/.env.local-prod.example apps/web/.env.local-prod
+```
+
+2. Isi secret dan koneksi Supabase di `.env.local-prod`.
+3. Jalankan dua service:
+
+```bat
+scripts\start-local-prod.bat
+```
+
+Atau jalankan terpisah:
+
+```bat
+scripts\start-local-prod-backend.bat
+scripts\start-local-prod-frontend.bat
+```
+
+## Cara Menjalankan Keduanya Bersamaan
+
+Setelah `.env.local-dev`, `.env.local-prod`, dan env frontend masing-masing tersedia:
+
+```bat
+scripts\start-all-local.bat
+```
+
+Script ini membuka empat terminal:
+
+- local-dev backend
+- local-dev frontend
+- local-prod backend
+- local-prod frontend
+
+## Port Mapping
+
+| Environment | Backend | Frontend | Expected API URL di frontend |
+| --- | --- | --- | --- |
+| `local-dev` | `http://127.0.0.1:8000` | `http://127.0.0.1:5173` | `http://127.0.0.1:8000` |
+| `local-prod` | `http://127.0.0.1:8001` | `http://127.0.0.1:5174` | `http://127.0.0.1:8001` |
+
+## Cara Memastikan Frontend Tidak Cross-Connect
+
+- Banner frontend runner harus menampilkan `VITE_API_URL` dan `VITE_API_BASE_URL` sesuai target.
+- Untuk local-dev, keduanya harus `http://127.0.0.1:8000`.
+- Untuk local-prod, keduanya harus `http://127.0.0.1:8001`.
+- Browser devtools Network tab harus menunjukkan request local-dev ke port `8000` dan local-prod ke port `8001`.
+- Jika salah satu runner menolak start karena API URL tidak sesuai, perbaiki file env frontend target sebelum menjalankan ulang.
+
+## Belum Dikerjakan Setelah Phase 2
+
 - Reset Supabase.
 - Migration Supabase.
 - Seed Supabase.
@@ -117,3 +219,7 @@ BACKEND_PORT=8001
 ```
 
 Jika summary startup mencetak target database atau frontend URL yang tidak sesuai, hentikan proses dan perbaiki env sebelum melanjutkan.
+
+## Catatan Phase Berikutnya
+
+Reset Supabase, migration Supabase, dan seed Supabase belum dibuat pada Phase 2. Semua operasi itu akan membutuhkan safety guard dan confirmation phrase sebelum boleh dijalankan.
