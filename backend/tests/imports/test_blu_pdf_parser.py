@@ -59,6 +59,7 @@ from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueReso
 from app.services.google_sheets_client import (
     GoogleSheetsClientError,
     copy_sheet_row_format_and_validation,
+    format_sheet_datetime_column,
     get_data_validation_values,
 )
 from app.services.transaction_normalizer import normalize_transaction_row
@@ -2265,6 +2266,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                  "",
              ]]), \
              patch("app.imports.services.spreadsheet_sync_service.copy_sheet_row_format_and_validation") as copy_format_mock, \
+             patch("app.imports.services.spreadsheet_sync_service.format_sheet_datetime_column") as datetime_format_mock, \
              patch("app.imports.services.spreadsheet_sync_service.update_google_sheet_last_synced") as update_synced_mock:
             result = sync_service.sync_import_transactions(
                 connection=object(),
@@ -2321,6 +2323,15 @@ class BluPdfParserTestCase(unittest.TestCase):
             destination_end_row=12,
             column_count=7,
         )
+        datetime_format_mock.assert_called_once_with(
+            access_token="access-token",
+            spreadsheet_id="sheet-123",
+            sheet_id=321,
+            destination_start_row=12,
+            destination_end_row=12,
+            column_index=1,
+            pattern="yyyy-mm-dd hh:mm",
+        )
         self.assertEqual("success", result["status"])
         self.assertEqual(1, result["sync_success"])
         self.assertEqual("success", result["formatting_status"])
@@ -2346,7 +2357,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              }) as append_values_mock, \
              patch.object(
                  SpreadsheetSyncService,
-                 "_copy_template_formatting",
+                 "_format_appended_rows",
                  side_effect=GoogleSheetsClientError("Formatting copy failed"),
              ), \
              patch("app.imports.services.spreadsheet_sync_service.update_google_sheet_last_synced"):
@@ -2397,7 +2408,7 @@ class BluPdfParserTestCase(unittest.TestCase):
                      "updatedRows": 1,
                  },
              }) as append_values_mock, \
-             patch.object(SpreadsheetSyncService, "_copy_template_formatting", return_value={
+             patch.object(SpreadsheetSyncService, "_format_appended_rows", return_value={
                  "template_row": 2,
                  "appended_row_range": "12:12",
              }), \
@@ -2491,6 +2502,91 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "endColumnIndex": 7,
             },
             requests[0]["copyPaste"]["destination"],
+        )
+
+    def test_google_client_formats_appended_datetime_column(self):
+        response = MagicMock()
+        response.json.return_value = {"replies": [{}]}
+
+        with patch(
+            "app.services.google_sheets_client.httpx.post",
+            return_value=response,
+            create=True,
+        ) as post_mock:
+            format_sheet_datetime_column(
+                access_token="access-token",
+                spreadsheet_id="sheet-123",
+                sheet_id=321,
+                destination_start_row=12,
+                destination_end_row=13,
+            )
+
+        response.raise_for_status.assert_called_once()
+        request = post_mock.call_args.kwargs["json"]["requests"][0]
+        self.assertEqual(
+            {
+                "sheetId": 321,
+                "startRowIndex": 11,
+                "endRowIndex": 13,
+                "startColumnIndex": 1,
+                "endColumnIndex": 2,
+            },
+            request["repeatCell"]["range"],
+        )
+        self.assertEqual(
+            {
+                "type": "DATE_TIME",
+                "pattern": "yyyy-mm-dd hh:mm",
+            },
+            request["repeatCell"]["cell"]["userEnteredFormat"]["numberFormat"],
+        )
+        self.assertEqual(
+            "userEnteredFormat.numberFormat",
+            request["repeatCell"]["fields"],
+        )
+
+    def test_appended_row_datetime_format_does_not_require_template_format(self):
+        sync_service = SpreadsheetSyncService()
+
+        with patch("app.imports.services.spreadsheet_sync_service.get_spreadsheet_metadata", return_value={
+            "sheets": [{
+                "sheet_id": 321,
+                "title": "Start 1 Juni",
+            }],
+        }), \
+             patch(
+                 "app.imports.services.spreadsheet_sync_service.read_sheet_values",
+                 side_effect=GoogleSheetsClientError("Spreadsheet template row was not found"),
+             ), \
+             patch("app.imports.services.spreadsheet_sync_service.copy_sheet_row_format_and_validation") as copy_format_mock, \
+             patch("app.imports.services.spreadsheet_sync_service.format_sheet_datetime_column") as datetime_format_mock:
+            result = sync_service._format_appended_rows(
+                access_token="access-token",
+                spreadsheet_id="sheet-123",
+                sheet_name="Start 1 Juni",
+                append_result={
+                    "updates": {
+                        "updatedRange": "'Start 1 Juni'!A12:G12",
+                    },
+                },
+                row_count=1,
+            )
+
+        copy_format_mock.assert_not_called()
+        datetime_format_mock.assert_called_once_with(
+            access_token="access-token",
+            spreadsheet_id="sheet-123",
+            sheet_id=321,
+            destination_start_row=12,
+            destination_end_row=12,
+            column_index=1,
+            pattern="yyyy-mm-dd hh:mm",
+        )
+        self.assertEqual(None, result["template_row"])
+        self.assertEqual("12:12", result["appended_row_range"])
+        self.assertEqual(
+            "Spreadsheet template row was not found",
+            result["warning"],
         )
 
     def test_spreadsheet_row_uses_merchant_display(self):
