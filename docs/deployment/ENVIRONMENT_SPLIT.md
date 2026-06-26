@@ -1,6 +1,6 @@
 # Environment Split
 
-Tanggal: 2026-06-25
+Tanggal: 2026-06-27
 
 ## Scope Fase Pertama
 
@@ -119,16 +119,41 @@ The backend startup log prints a masked environment summary so operators can con
 
 `IMPORT_TEMP_DIR` separates upload temp files between local-dev and local-prod. This matters when both environments run on the same machine, because import review files should not share one temp directory.
 
+## Database Lifecycle Phase 3
+
+Phase 3 adds one reusable helper, `scripts/database-lifecycle-runner.ps1`, and guarded wrappers for migrate, reset, seed, and verify. The helper loads only the selected backend env file and the Python engine validates the same identity and URL again before any database connection.
+
+| Target | Required identity | Required database |
+| --- | --- | --- |
+| `local-dev` | `APP_ENV=local-dev`, `ENV_PROFILE=local-dev`, `DB_TARGET=postgres-local` | Loopback host and database `finance_dashboard_local` |
+| `local-prod` | `APP_ENV=local-prod`, `ENV_PROFILE=local-prod`, `DB_TARGET=supabase` | Supabase host; loopback is rejected |
+
+Lifecycle scripts:
+
+- `scripts/migrate-local-dev.bat`
+- `scripts/migrate-local-prod.bat`
+- `scripts/reset-local-dev-db.bat`
+- `scripts/reset-local-prod-supabase-db.bat`
+- `scripts/seed-local-dev.bat`
+- `scripts/seed-local-prod.bat`
+- `scripts/verify-local-dev-db.bat`
+- `scripts/verify-local-prod-db.bat`
+
+`local-prod` migration requires `MIGRATE SUPABASE OMON`. Supabase reset requires `RESET SUPABASE OMON` and recreates only schema `public`. Both operations reject missing or incorrect phrases before connecting.
+
+The migration URL selection is explicit: use `DATABASE_MIGRATION_URL` when configured, otherwise validate and use `DATABASE_URL`. No connection string or credential is printed.
+
+Seed upserts the configured owner and workspace using `SEED_USER_EMAIL`, `SEED_USER_NAME`, and `SEED_WORKSPACE_NAME`. It does not delete existing business data. Verify reports migration state and baseline table counts without exposing secrets.
+
 ## Safety Rules
 
-Supabase is currently allowed to be treated as a fresh baseline, but destructive operations are still out of scope for this phase. Do not reset, seed, or migrate Supabase until the dedicated safety scripts exist and require a confirmation phrase.
-
-Required safety direction for the next phase:
-
-- local reset remains local PostgreSQL only.
-- Supabase reset requires explicit `APP_ENV=local-prod`, `DB_TARGET=supabase`, and a confirmation phrase.
-- Supabase migration requires an explicit local-prod migration command.
-- Seed/backfill scripts must refuse accidental Supabase writes unless explicitly guarded.
+- Script availability is not approval to run Supabase operations.
+- Supabase reset, migrate, and seed require explicit operator authorization for the run.
+- Supabase reset and migration require their exact confirmation phrases.
+- local-dev rejects Supabase/remote hosts and wrong database names.
+- local-prod rejects loopback and non-Supabase hosts.
+- Supabase backup is skipped only because this environment is currently a disposable production simulation baseline. Revisit this rule before real production data exists.
+- Use `-ValidateOnly -UseExample` for guard tests that must not connect to a database.
 
 ## Out of Scope for Fase Pertama
 
@@ -142,14 +167,13 @@ Required safety direction for the next phase:
 - Blu PDF import business logic changes.
 - Dashboard analytics logic changes.
 
-## Out of Scope for Phase 2
+## Out of Scope After Phase 3
 
-- Reset Supabase.
-- Migrate Supabase.
-- Seed Supabase.
-- Destructive database operations.
-
-Supabase reset will be handled in a later phase with safety guard and confirmation phrase.
+- Executing Supabase reset, migration, or seed without a separate explicit request.
+- Backing up Supabase during the current disposable-baseline phase.
+- Concurrent full runtime testing of both environments.
+- UI environment badge.
+- Changes to Google OAuth, Blu PDF import, or dashboard analytics business logic.
 
 ## Relationship to Audit
 

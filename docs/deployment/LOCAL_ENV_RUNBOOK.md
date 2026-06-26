@@ -1,6 +1,6 @@
 # Local Environment Runbook
 
-Tanggal: 2026-06-25
+Tanggal: 2026-06-27
 
 ## Kenapa Hanya local-dev dan local-prod
 
@@ -187,11 +187,121 @@ Script ini membuka empat terminal:
 - Browser devtools Network tab harus menunjukkan request local-dev ke port `8000` dan local-prod ke port `8001`.
 - Jika salah satu runner menolak start karena API URL tidak sesuai, perbaiki file env frontend target sebelum menjalankan ulang.
 
-## Belum Dikerjakan Setelah Phase 2
+## Database Lifecycle Phase 3
 
-- Reset Supabase.
-- Migration Supabase.
-- Seed Supabase.
+Phase 3 menyediakan runner terpisah untuk setiap target. Semua runner memuat file env target, memvalidasi `APP_ENV`, `ENV_PROFILE`, `DB_TARGET`, host database, dan nama database sebelum membuka koneksi. Output hanya menampilkan host yang sudah di-mask dan tidak mencetak URL, password, token, atau secret.
+
+| Operasi | local-dev | local-prod |
+| --- | --- | --- |
+| Migrate | `scripts\migrate-local-dev.bat` | `scripts\migrate-local-prod.bat` |
+| Reset | `scripts\reset-local-dev-db.bat` | `scripts\reset-local-prod-supabase-db.bat` |
+| Seed | `scripts\seed-local-dev.bat` | `scripts\seed-local-prod.bat` |
+| Verify | `scripts\verify-local-dev-db.bat` | `scripts\verify-local-prod-db.bat` |
+
+Urutan untuk membuat baseline fresh adalah reset, migrate, seed, lalu verify. Seed bersifat idempotent untuk owner dan workspace, tetapi tidak menghapus data bisnis yang sudah ada. Karena itu, nilai transaksi/import/draft/fingerprint/budget nol hanya dijamin pada database yang baru di-reset.
+
+### Migrate local-dev
+
+```bat
+scripts\migrate-local-dev.bat
+```
+
+Runner hanya menerima loopback `localhost`, `127.0.0.1`, atau `::1` dengan database `finance_dashboard_local`.
+
+### Migrate local-prod
+
+```bat
+scripts\migrate-local-prod.bat
+```
+
+Runner wajib melihat host Supabase dan meminta phrase persis:
+
+```text
+MIGRATE SUPABASE OMON
+```
+
+Migration memakai `DATABASE_MIGRATION_URL` bila tersedia. Fallback ke `DATABASE_URL` hanya dilakukan setelah URL lolos guard target.
+
+### Reset local-dev
+
+Hentikan backend port `8000`, lalu jalankan:
+
+```bat
+scripts\reset-local-dev-db.bat
+```
+
+Reset ditolak bila identity bukan `local-dev`, target bukan `postgres-local`, host bukan loopback, nama database bukan `finance_dashboard_local`, host mengandung `supabase`, atau backend masih aktif.
+
+### Reset local-prod Supabase
+
+```bat
+scripts\reset-local-prod-supabase-db.bat
+```
+
+Runner menampilkan warning besar dan meminta phrase persis:
+
+```text
+RESET SUPABASE OMON
+```
+
+Operasi ini menghapus dan membuat ulang schema `public`; lanjutkan dengan migrate dan seed. Backup/dump sengaja di-skip karena Supabase saat ini adalah production simulation fresh tanpa user production asli. Keputusan ini harus ditinjau ulang sebelum ada data production nyata.
+
+### Seed baseline
+
+Pastikan env berikut terisi:
+
+```text
+SEED_USER_EMAIL
+SEED_USER_NAME
+SEED_WORKSPACE_NAME
+```
+
+Kemudian jalankan runner target. Seed membuat atau memperbarui satu user owner dan workspace. Pada baseline fresh, transaksi, import jobs, drafts, fingerprint registry, dan budgets tetap nol.
+
+```bat
+scripts\seed-local-dev.bat
+scripts\seed-local-prod.bat
+```
+
+### Verify baseline
+
+```bat
+scripts\verify-local-dev-db.bat
+scripts\verify-local-prod-db.bat
+```
+
+Summary mencakup identity, target, host masked, nama database, jumlah/latest migration, user, workspace, transaction, import job, draft, fingerprint registry, dan budget.
+
+### Safety checklist Supabase
+
+- Pastikan terminal dan env file adalah `local-prod`.
+- Pastikan `APP_ENV=local-prod`, `ENV_PROFILE=local-prod`, dan `DB_TARGET=supabase`.
+- Pastikan banner menunjukkan host Supabase masked dan database yang diharapkan.
+- Pastikan tidak ada user production asli; backup memang di-skip hanya untuk baseline saat ini.
+- Tutup backend local-prod sebelum reset.
+- Ketik confirmation phrase secara manual dan hentikan bila ada nilai yang tidak sesuai.
+- Jangan memakai runner local-dev untuk URL Supabase atau sebaliknya.
+
+### Dry-run guard
+
+Mode berikut hanya memvalidasi template dan berhenti sebelum koneksi database:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database-lifecycle-runner.ps1 -Target local-dev -Action reset -ValidateOnly -UseExample
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/database-lifecycle-runner.ps1 -Target local-prod -Action reset -Confirm "RESET SUPABASE OMON" -ValidateOnly -UseExample
+```
+
+### Troubleshooting
+
+- `Required env file is missing`: copy file `.example` target ke file lokal yang di-ignore.
+- `APP_ENV`, `ENV_PROFILE`, atau `DB_TARGET must be`: perbaiki identity pada env target.
+- `database host must be loopback`: local-dev tidak menunjuk PostgreSQL lokal.
+- `database host must be Supabase`: local-prod menunjuk host yang salah.
+- `Confirmation phrase must be exactly`: ulangi dan ketik phrase tanpa perubahan.
+- `database error. Connection details hidden`: cek konektivitas, credential, SSL, dan akses database pada env lokal; runner sengaja menyembunyikan detail koneksi.
+
+## Belum Dikerjakan Setelah Phase 3
+
 - Concurrent run full test untuk dua environment sekaligus.
 - UI environment badge.
 - Perubahan Google OAuth flow.
@@ -220,6 +330,6 @@ BACKEND_PORT=8001
 
 Jika summary startup mencetak target database atau frontend URL yang tidak sesuai, hentikan proses dan perbaiki env sebelum melanjutkan.
 
-## Catatan Phase Berikutnya
+## Catatan Operasional
 
-Reset Supabase, migration Supabase, dan seed Supabase belum dibuat pada Phase 2. Semua operasi itu akan membutuhkan safety guard dan confirmation phrase sebelum boleh dijalankan.
+Script Phase 3 sudah tersedia, tetapi pembuatan script bukan izin untuk menjalankan reset, migration, atau seed Supabase. Operasi Supabase tetap harus diminta secara eksplisit dan confirmation phrase tidak boleh dilewati.
