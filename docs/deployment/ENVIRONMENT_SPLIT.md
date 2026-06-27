@@ -145,6 +145,18 @@ The migration URL selection is explicit: use `DATABASE_MIGRATION_URL` when confi
 
 Seed upserts the configured owner and workspace using `SEED_USER_EMAIL`, `SEED_USER_NAME`, and `SEED_WORKSPACE_NAME`. It does not delete existing business data. Verify reports migration state and baseline table counts without exposing secrets.
 
+## Real Environment Verification Phase 3.5
+
+Connection verification is separated from lifecycle operations:
+
+- `scripts/verify-local-dev-connection.bat`
+- `scripts/verify-local-prod-connection.bat`
+- `scripts/verify-all-local.bat`
+
+The verifier uses runtime `DATABASE_URL`, validates the selected environment identity and target, starts an explicitly read-only transaction with forced rollback, executes `SELECT 1`, and reads migration metadata. Supabase connections require `DATABASE_SSL=true` and force either `sslmode=require` or `sslmode=verify-full` according to `DATABASE_SSL_REJECT_UNAUTHORIZED`.
+
+The 2026-06-27 read-only verification found local-dev at 24 migrations/latest `021`, and local-prod at 21 migrations/latest `018`. Both connections and migration tables passed. No migration was applied during verification.
+
 ## Safety Rules
 
 - Script availability is not approval to run Supabase operations.

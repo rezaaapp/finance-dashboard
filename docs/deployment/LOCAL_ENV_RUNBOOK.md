@@ -191,6 +191,29 @@ Script ini membuka empat terminal:
 
 Phase 3 menyediakan runner terpisah untuk setiap target. Semua runner memuat file env target, memvalidasi `APP_ENV`, `ENV_PROFILE`, `DB_TARGET`, host database, dan nama database sebelum membuka koneksi. Output hanya menampilkan host yang sudah di-mask dan tidak mencetak URL, password, token, atau secret.
 
+## Real Environment Verification Phase 3.5
+
+Gunakan runner berikut sebelum reset, migrate, atau seed:
+
+```bat
+scripts\verify-local-dev-connection.bat
+scripts\verify-local-prod-connection.bat
+scripts\verify-all-local.bat
+```
+
+Verification membuka transaksi dengan `SET TRANSACTION READ ONLY`, memaksa rollback, lalu hanya menjalankan `SHOW` dan `SELECT`. Pemeriksaan mencakup identity env, target host/database, `SELECT 1`, tabel `schema_migrations`, migration count, latest migration, dan SSL wajib untuk Supabase. Output selalu menyembunyikan connection string dan credential.
+
+Untuk Supabase pooler saat ini, konfigurasi lokal yang terverifikasi adalah `DATABASE_SSL=true`. Gunakan `DATABASE_SSL_REJECT_UNAUTHORIZED=false` bila endpoint pooler tidak dapat melewati `verify-full`; verifier tetap memaksa `sslmode=require`, sehingga koneksi tanpa TLS ditolak.
+
+Hasil verifikasi 2026-06-27:
+
+| Environment | Connection | SSL | Migration count | Latest migration |
+| --- | --- | --- | ---: | --- |
+| `local-dev` | PASS | N/A | 24 | `021_backfill_blu_transaction_search_index.sql` |
+| `local-prod` | PASS | PASS | 21 | `018_add_import_owner_and_canonical_fingerprint.sql` |
+
+Perbedaan migration adalah hasil observasi read-only. Jangan menyamakan baseline dengan menjalankan migration tanpa approval fase berikutnya.
+
 | Operasi | local-dev | local-prod |
 | --- | --- | --- |
 | Migrate | `scripts\migrate-local-dev.bat` | `scripts\migrate-local-prod.bat` |

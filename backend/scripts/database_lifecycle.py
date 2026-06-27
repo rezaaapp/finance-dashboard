@@ -61,13 +61,17 @@ def validate_environment(environment, target, action, confirmation=None):
     for key, expected_value in expected.items():
         if str(environment.get(key) or "").strip() != expected_value:
             raise ValueError(f"{key} must be {expected_value}.")
-    selected_key = (
-        "DATABASE_MIGRATION_URL"
-        if str(environment.get("DATABASE_MIGRATION_URL") or "").strip()
-        else "DATABASE_URL"
-    )
+    selected_key = "DATABASE_URL"
+    if action != "connection" and str(
+        environment.get("DATABASE_MIGRATION_URL") or ""
+    ).strip():
+        selected_key = "DATABASE_MIGRATION_URL"
     database_url = str(environment.get(selected_key) or "").strip()
     parsed = parse_database_target(database_url, target)
+    if target == "local-prod" and action == "connection":
+        ssl_enabled = str(environment.get("DATABASE_SSL") or "").lower()
+        if ssl_enabled != "true":
+            raise ValueError("DATABASE_SSL must be true for local-prod verification.")
     required_phrase = None
     if target == "local-prod" and action == "reset":
         required_phrase = SUPABASE_RESET_PHRASE
@@ -189,11 +193,52 @@ def query_database_summary(database_url):
     return summary
 
 
+def verify_database_connection(database_url, target):
+    connection_kwargs = {}
+    if target == "local-prod":
+        reject_unauthorized = str(
+            os.environ.get("DATABASE_SSL_REJECT_UNAUTHORIZED") or ""
+        ).lower() == "true"
+        connection_kwargs["sslmode"] = (
+            "verify-full" if reject_unauthorized else "require"
+        )
+    with psycopg.connect(database_url, **connection_kwargs) as connection:
+        with connection.transaction(force_rollback=True):
+            with connection.cursor() as cursor:
+                cursor.execute("set transaction read only")
+                cursor.execute("show transaction_read_only")
+                if str(cursor.fetchone()[0]).lower() != "on":
+                    raise RuntimeError("Database session is not read-only.")
+
+                cursor.execute("select 1")
+                if cursor.fetchone()[0] != 1:
+                    raise RuntimeError("SELECT 1 did not return the expected result.")
+
+                ssl_active = target == "local-prod"
+
+                cursor.execute("select to_regclass('public.schema_migrations')")
+                if cursor.fetchone()[0] is None:
+                    raise RuntimeError("schema_migrations table was not found.")
+
+                cursor.execute(
+                    "select count(*)::int, max(version) from public.schema_migrations"
+                )
+                migration_count, latest_version = cursor.fetchone()
+
+    return {
+        "ssl_active": ssl_active,
+        "migration_count": migration_count,
+        "latest_migration": latest_version or "none",
+    }
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Guarded Omon database lifecycle.")
     parser.add_argument("--target", required=True, choices=sorted(PROFILES))
     parser.add_argument(
-        "--action", required=True, choices=("migrate", "reset", "seed", "verify")
+        "--action",
+        required=True,
+        choices=("connection", "migrate", "reset", "seed", "verify"),
     )
     parser.add_argument("--confirm")
     parser.add_argument("--backend-port", type=int, default=8000)
@@ -216,6 +261,22 @@ def main(argv=None):
         print("Secrets                 : hidden")
         if args.validate_only:
             print(f"Validation passed for {args.target} {args.action}.")
+            return 0
+        if args.action == "connection":
+            result = verify_database_connection(database_url, args.target)
+            database_label = "Supabase" if args.target == "local-prod" else "PostgreSQL"
+            print("============================================================")
+            print(f"Environment       : {args.target}")
+            print(f"Database          : {database_label}")
+            print(f"Host              : {mask_database_host(parsed.hostname)}")
+            print("Connection        : PASS")
+            if args.target == "local-prod":
+                print(f"SSL               : {'PASS' if result['ssl_active'] else 'FAIL'}")
+            print("Migration table   : PASS")
+            print(f"Migration count   : {result['migration_count']}")
+            print(f"Latest migration  : {result['latest_migration']}")
+            print("Read-only session : PASS")
+            print("============================================================")
             return 0
         if args.action == "migrate":
             return run_migrations(database_url)

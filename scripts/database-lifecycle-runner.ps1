@@ -4,7 +4,7 @@ param(
   [string]$Target,
 
   [Parameter(Mandatory = $true)]
-  [ValidateSet("migrate", "reset", "seed", "verify")]
+  [ValidateSet("connection", "migrate", "reset", "seed", "verify")]
   [string]$Action,
 
   [string]$Confirm,
