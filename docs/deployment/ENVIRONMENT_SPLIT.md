@@ -155,7 +155,11 @@ Connection verification is separated from lifecycle operations:
 
 The verifier uses runtime `DATABASE_URL`, validates the selected environment identity and target, starts an explicitly read-only transaction with forced rollback, executes `SELECT 1`, and reads migration metadata. Supabase connections require `DATABASE_SSL=true` and force either `sslmode=require` or `sslmode=verify-full` according to `DATABASE_SSL_REJECT_UNAUTHORIZED`.
 
-The 2026-06-27 read-only verification found local-dev at 24 migrations/latest `021`, and local-prod at 21 migrations/latest `018`. Both connections and migration tables passed. No migration was applied during verification.
+The initial 2026-06-27 read-only verification found local-dev at 24 migrations/latest `021`, and local-prod at 21 migrations/latest `018`. Both connections and migration tables passed during that verification.
+
+## Database Lifecycle Execution Phase 4
+
+The approved Phase 4 execution then reset, migrated, seeded, and verified both environments. local-dev and local-prod now each have 24 migrations with latest `021_backfill_blu_transaction_search_index.sql`, one owner user, one workspace, and zero transactions, import jobs, drafts, fingerprint registry rows, and budgets. Supabase reset intentionally skipped backup because local-prod remains a disposable production simulation baseline.
 
 ## Safety Rules
 

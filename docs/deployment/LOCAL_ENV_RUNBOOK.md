@@ -210,9 +210,18 @@ Hasil verifikasi 2026-06-27:
 | Environment | Connection | SSL | Migration count | Latest migration |
 | --- | --- | --- | ---: | --- |
 | `local-dev` | PASS | N/A | 24 | `021_backfill_blu_transaction_search_index.sql` |
-| `local-prod` | PASS | PASS | 21 | `018_add_import_owner_and_canonical_fingerprint.sql` |
+| `local-prod` | PASS | PASS | 24 | `021_backfill_blu_transaction_search_index.sql` |
 
-Perbedaan migration adalah hasil observasi read-only. Jangan menyamakan baseline dengan menjalankan migration tanpa approval fase berikutnya.
+## Database Lifecycle Execution Phase 4
+
+Eksekusi guarded pada 2026-06-27 menyelesaikan reset, migrate, seed, dan verify untuk kedua environment. Supabase di-reset tanpa backup sesuai keputusan bahwa local-prod masih berupa production simulation disposable. Confirmation phrase reset dan migration digunakan.
+
+| Environment | Reset | Migrate | Seed | Verify | Users | Workspaces | Transactions | Import jobs | Drafts | Fingerprints | Budgets |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `local-dev` | PASS | 24 / `021` | PASS | PASS | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+| `local-prod` | PASS | 24 / `021` | PASS | PASS | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+Kedua environment sekarang memakai fresh baseline yang sama. File env asli tetap ignored dan tidak dicatat di Git.
 
 | Operasi | local-dev | local-prod |
 | --- | --- | --- |
