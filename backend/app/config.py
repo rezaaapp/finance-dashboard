@@ -2,6 +2,7 @@ from dotenv import dotenv_values
 from pathlib import Path
 import json
 import os
+from urllib.parse import unquote, urlparse
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -27,10 +28,34 @@ def safe_load_dotenv(path, override=False):
         os.environ[key] = value
 
 
+def load_environment_profile():
+    profile = os.getenv("ENV_PROFILE") or os.getenv("APP_ENV") or "local-dev"
+
+    if profile not in {"local-dev", "local-prod"}:
+        return
+
+    safe_load_dotenv(REPO_ROOT / f".env.{profile}", override=True)
+    safe_load_dotenv(BACKEND_ROOT / f".env.{profile}", override=True)
+
+
 safe_load_dotenv(REPO_ROOT / ".env")
 safe_load_dotenv(BACKEND_ROOT / ".env", override=True)
+load_environment_profile()
 
 class Settings:
+    APP_ENV = os.getenv("APP_ENV", "local-dev")
+    ENV_PROFILE = os.getenv("ENV_PROFILE", APP_ENV)
+    DB_TARGET = os.getenv(
+        "DB_TARGET",
+        "supabase" if APP_ENV == "local-prod" else "postgres-local",
+    )
+    BACKEND_PORT = int(
+        os.getenv(
+            "BACKEND_PORT",
+            os.getenv("PORT", "8001" if APP_ENV == "local-prod" else "8000"),
+        )
+    )
+
     DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL")
     DATABASE_MIGRATION_URL = (
         os.getenv("DATABASE_MIGRATION_URL")
@@ -130,6 +155,10 @@ class Settings:
         ).split(",")
         if origin.strip()
     ]
+    IMPORT_TEMP_DIR = os.getenv(
+        "IMPORT_TEMP_DIR",
+        str(BACKEND_ROOT / "output" / "imports" / "temp" / APP_ENV),
+    )
 
     try:
         _raw_registry = json.loads(GOOGLE_SHEET_REGISTRY_JSON)
@@ -181,6 +210,80 @@ class Settings:
             "TOKEN_ENCRYPTION_SECRET, JWT_SECRET, atau DASHBOARD_AUTH_TOKEN "
             "belum diset di .env"
         )
+
+    if APP_ENV not in {"local-dev", "local-prod"}:
+        raise ValueError("APP_ENV harus bernilai local-dev atau local-prod")
+
+    if APP_ENV == "local-dev" and DB_TARGET != "postgres-local":
+        raise ValueError("local-dev harus memakai DB_TARGET=postgres-local")
+
+    if APP_ENV == "local-prod" and DB_TARGET != "supabase":
+        raise ValueError("local-prod harus memakai DB_TARGET=supabase")
+
+    if APP_ENV == "local-dev" and BACKEND_PORT != 8000:
+        raise ValueError("local-dev default backend port harus 8000")
+
+    if APP_ENV == "local-prod" and BACKEND_PORT != 8001:
+        raise ValueError("local-prod default backend port harus 8001")
+
+    _database_host = (urlparse(DATABASE_URL or "").hostname or "").lower()
+
+    if DATABASE_URL and APP_ENV == "local-dev" and _database_host not in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }:
+        raise ValueError("local-dev harus memakai database PostgreSQL local")
+
+    if (
+        DATABASE_URL
+        and APP_ENV == "local-prod"
+        and "supabase" not in _database_host
+    ):
+        raise ValueError("local-prod harus memakai database Supabase")
+
+    def get_database_summary(self):
+        parsed = urlparse(self.DATABASE_URL or "")
+        host = parsed.hostname or ""
+        database_name = unquote(parsed.path.lstrip("/")) if parsed.path else ""
+
+        return {
+            "host": self._mask_host(host),
+            "database": database_name or "(not configured)",
+        }
+
+    def get_startup_summary(self):
+        database = self.get_database_summary()
+
+        return {
+            "APP_ENV": self.APP_ENV,
+            "ENV_PROFILE": self.ENV_PROFILE,
+            "DB_TARGET": self.DB_TARGET,
+            "backend_port": self.BACKEND_PORT,
+            "database_host": database["host"],
+            "database_name": database["database"],
+            "cors_origins": self.CORS_ALLOWED_ORIGINS,
+            "frontend_url": self.FRONTEND_URL,
+            "import_temp_dir": self.IMPORT_TEMP_DIR,
+        }
+
+    @staticmethod
+    def _mask_host(host):
+        if not host:
+            return "(not configured)"
+
+        if host in {"localhost", "127.0.0.1", "::1"}:
+            return host
+
+        parts = host.split(".")
+
+        if len(parts) >= 3:
+            return f"{parts[0][:2]}***.{'.'.join(parts[-2:])}"
+
+        if len(host) <= 4:
+            return "***"
+
+        return f"{host[:2]}***{host[-2:]}"
 
     def require_google_oauth_settings(self):
         missing_keys = [
