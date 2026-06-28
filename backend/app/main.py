@@ -23,7 +23,11 @@ from app.api.sync_jobs import router as sync_jobs_router
 from app.api.workspace_invitations import router as workspace_invitations_router
 from app.api.workspaces import router as workspaces_router
 from app.config import settings
-from app.database import check_database_connection, close_database_pool
+from app.database import (
+    check_database_connection,
+    close_database_pool,
+    get_migration_status,
+)
 from app.imports.services.cleanup_service import (
     start_import_cleanup_scheduler,
     stop_import_cleanup_scheduler,
@@ -118,6 +122,25 @@ def startup_import_cleanup_scheduler():
         "Omon Dashboard environment summary: "
         + json.dumps(settings.get_startup_summary(), ensure_ascii=True)
     )
+
+
+@app.get("/api/system/info")
+def system_info():
+    database = settings.get_database_summary()
+    migration = get_migration_status()
+
+    return {
+        "app_env": settings.APP_ENV,
+        "env_profile": settings.ENV_PROFILE,
+        "db_target": settings.DB_TARGET,
+        "backend_port": settings.BACKEND_PORT,
+        "database_host": database["host"],
+        "database_name": database["database"],
+        "import_temp_dir": settings.IMPORT_TEMP_DIR,
+        "migration_table_found": migration["table_found"],
+        "migration_count": migration["count"],
+        "latest_migration": migration["latest"],
+    }
     start_import_cleanup_scheduler()
 
 # =========================

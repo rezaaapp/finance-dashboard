@@ -161,6 +161,14 @@ The initial 2026-06-27 read-only verification found local-dev at 24 migrations/l
 
 The approved Phase 4 execution then reset, migrated, seeded, and verified both environments. local-dev and local-prod now each have 24 migrations with latest `021_backfill_blu_transaction_search_index.sql`, one owner user, one workspace, and zero transactions, import jobs, drafts, fingerprint registry rows, and budgets. Supabase reset intentionally skipped backup because local-prod remains a disposable production simulation baseline.
 
+## Concurrent Environment Testing Phase 5
+
+`scripts/start-all-local.bat` starts both backend/frontend pairs, while `scripts/verify-concurrent-local.bat` verifies the live four-port topology. The verifier rejects frontend API cross-connects, backend database target mismatches, shared import temp directories, wrong CORS origins, missing migration metadata, and baseline count drift.
+
+The safe read-only endpoint `GET /api/system/info` exposes only `APP_ENV`, `ENV_PROFILE`, `DB_TARGET`, backend port, masked database host, database name, import temp directory, and migration metadata. It never returns connection URLs or credentials.
+
+The 2026-06-28 concurrent run passed on ports `8000`, `8001`, `5173`, and `5174`. local-dev resolved to PostgreSQL local, local-prod resolved to Supabase, frontend API mappings stayed isolated, temp directories differed, CORS passed for each matching frontend, and both fresh baselines remained unchanged.
+
 ## Safety Rules
 
 - Script availability is not approval to run Supabase operations.

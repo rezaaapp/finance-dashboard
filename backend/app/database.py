@@ -102,3 +102,30 @@ def check_database_connection():
             "ok": False,
             "message": "database connection failed",
         }
+
+
+def get_migration_status():
+    with get_db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("select to_regclass('public.schema_migrations')")
+
+            if cursor.fetchone()[0] is None:
+                return {
+                    "table_found": False,
+                    "count": 0,
+                    "latest": None,
+                }
+
+            cursor.execute(
+                """
+                select count(*)::int, max(version)
+                from public.schema_migrations
+                """
+            )
+            count, latest = cursor.fetchone()
+
+    return {
+        "table_found": True,
+        "count": count,
+        "latest": latest,
+    }

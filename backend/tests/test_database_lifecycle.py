@@ -2,11 +2,13 @@ import unittest
 from unittest.mock import patch
 
 from backend.scripts.database_lifecycle import (
+    EXPECTED_FRESH_BASELINE,
     LOCAL_DATABASE,
     SUPABASE_MIGRATE_PHRASE,
     SUPABASE_RESET_PHRASE,
     parse_database_target,
     validate_environment,
+    validate_fresh_baseline,
     verify_database_connection,
 )
 
@@ -104,6 +106,15 @@ class DatabaseLifecycleGuardTestCase(unittest.TestCase):
         environment["DATABASE_SSL"] = "false"
         with self.assertRaisesRegex(ValueError, "DATABASE_SSL must be true"):
             validate_environment(environment, "local-prod", "connection")
+
+    def test_fresh_baseline_accepts_expected_counts(self):
+        validate_fresh_baseline(dict(EXPECTED_FRESH_BASELINE))
+
+    def test_fresh_baseline_rejects_business_data(self):
+        summary = dict(EXPECTED_FRESH_BASELINE)
+        summary["transaction count"] = 1
+        with self.assertRaisesRegex(RuntimeError, "transaction count"):
+            validate_fresh_baseline(summary)
 
 
 class FakeCursor:

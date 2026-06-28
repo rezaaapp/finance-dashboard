@@ -223,6 +223,53 @@ Eksekusi guarded pada 2026-06-27 menyelesaikan reset, migrate, seed, dan verify 
 
 Kedua environment sekarang memakai fresh baseline yang sama. File env asli tetap ignored dan tidak dicatat di Git.
 
+## Concurrent Environment Testing Phase 5
+
+Jalankan kedua environment dalam empat terminal:
+
+```bat
+scripts\start-all-local.bat
+```
+
+Setelah semua service siap, jalankan:
+
+```bat
+scripts\verify-concurrent-local.bat
+```
+
+Validasi konfigurasi tanpa server dapat dijalankan dengan:
+
+```bat
+scripts\verify-concurrent-local.bat -ValidateOnly
+```
+
+Expected mapping:
+
+| Environment | Backend | Frontend | Frontend API | Database target | Import temp |
+| --- | --- | --- | --- | --- | --- |
+| `local-dev` | `127.0.0.1:8000` | `127.0.0.1:5173` | `http://127.0.0.1:8000` | `postgres-local` | `backend/output/imports/temp/local-dev` |
+| `local-prod` | `127.0.0.1:8001` | `127.0.0.1:5174` | `http://127.0.0.1:8001` | `supabase` | `backend/output/imports/temp/local-prod` |
+
+Verifier memeriksa empat listener, `/api/health/db`, `/api/system/info`, CORS origin yang sesuai, API URL frontend, migration `021`, serta fresh baseline kedua database. Endpoint system info hanya menampilkan identity environment, port, host database masked, nama database, temp directory, dan metadata migration. Endpoint tidak menampilkan connection string, password, token, JWT, atau OAuth secret.
+
+Hasil 2026-06-28: kedua backend, kedua frontend, CORS, API mapping, database target, temp isolation, migration metadata, dan baseline PASS saat berjalan bersamaan. Kedua frontend juga berhasil dimuat melalui browser pada port masing-masing.
+
+### Troubleshooting Port Conflict
+
+Lihat listener port:
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 8000,8001,5173,5174
+```
+
+Hentikan service dari terminal runner dengan `Ctrl+C`. Bila terminal sudah tertutup tetapi listener tertinggal, identifikasi `OwningProcess`, pastikan proses tersebut memang runner Omon, lalu hentikan secara eksplisit:
+
+```powershell
+Stop-Process -Id <OwningProcess>
+```
+
+Jangan menghentikan PID yang belum diidentifikasi. Jalankan verifier ulang setelah semua expected port aktif atau setelah port conflict dibersihkan.
+
 | Operasi | local-dev | local-prod |
 | --- | --- | --- |
 | Migrate | `scripts\migrate-local-dev.bat` | `scripts\migrate-local-prod.bat` |

@@ -25,6 +25,15 @@ COUNT_TABLES = {
     "fingerprint registry count": "import_transaction_registry",
     "budget count": "budgets",
 }
+EXPECTED_FRESH_BASELINE = {
+    "user count": 1,
+    "workspace count": 1,
+    "transaction count": 0,
+    "import job count": 0,
+    "draft count": 0,
+    "fingerprint registry count": 0,
+    "budget count": 0,
+}
 
 
 def parse_database_target(database_url, target):
@@ -193,6 +202,17 @@ def query_database_summary(database_url):
     return summary
 
 
+def validate_fresh_baseline(summary):
+    mismatches = []
+    for label, expected in EXPECTED_FRESH_BASELINE.items():
+        actual = summary.get(label)
+        if actual != expected:
+            mismatches.append(f"{label}: expected {expected}, got {actual}")
+
+    if mismatches:
+        raise RuntimeError("Fresh baseline mismatch: " + "; ".join(mismatches))
+
+
 def verify_database_connection(database_url, target):
     connection_kwargs = {}
     if target == "local-prod":
@@ -238,7 +258,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--action",
         required=True,
-        choices=("connection", "migrate", "reset", "seed", "verify"),
+        choices=("baseline", "connection", "migrate", "reset", "seed", "verify"),
     )
     parser.add_argument("--confirm")
     parser.add_argument("--backend-port", type=int, default=8000)
@@ -292,8 +312,12 @@ def main(argv=None):
             email, workspace = seed_baseline(database_url, os.environ)
             print(f"Baseline seed ready: owner {email}, workspace {workspace}.")
             return 0
-        for label, value in query_database_summary(database_url).items():
+        summary = query_database_summary(database_url)
+        for label, value in summary.items():
             print(f"{label:<25}: {value}")
+        if args.action == "baseline":
+            validate_fresh_baseline(summary)
+            print("Fresh baseline             : PASS")
         return 0
     except (ValueError, RuntimeError) as error:
         print(f"Lifecycle refused: {error}", file=sys.stderr)
