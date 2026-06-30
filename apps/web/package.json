@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/validate-env.mjs && vite build",
+    "build:local-dev": "node scripts/validate-env.mjs --mode local-dev && vite build --mode local-dev",
+    "build:local-prod": "node scripts/validate-env.mjs --mode local-prod && vite build --mode local-prod",
     "lint": "eslint .",
+    "test": "node --test src/utils/environment.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

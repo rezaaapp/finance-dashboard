@@ -169,6 +169,16 @@ The safe read-only endpoint `GET /api/system/info` exposes only `APP_ENV`, `ENV_
 
 The 2026-06-28 concurrent run passed on ports `8000`, `8001`, `5173`, and `5174`. local-dev resolved to PostgreSQL local, local-prod resolved to Supabase, frontend API mappings stayed isolated, temp directories differed, CORS passed for each matching frontend, and both fresh baselines remained unchanged.
 
+## Environment Awareness UI Phase 6
+
+Environment identity is now visible before and after authentication. Login renders an `EnvironmentCard`; the authenticated shell renders an `EnvironmentBadge` across every main view; Settings renders a reusable `SystemInfoPanel`.
+
+The frontend fetches `GET /api/system/info` through one reusable helper and normalizes only allowlisted fields. local-dev uses a green identity, local-prod uses orange, and endpoint failure falls back to a gray `UNKNOWN / Offline` state derived from `VITE_API_URL` or `VITE_API_BASE_URL`. System-info failure never blocks authentication.
+
+Allowed UI metadata is limited to environment/profile, DB target/type, safe API origin, frontend/backend port, version, masked database host, database name, import temp directory, and migration metadata. Database URLs, passwords, tokens, JWT/OAuth secrets, and credentials are discarded by the frontend normalization layer.
+
+Local builds use `build:local-dev` or `build:local-prod`. The regular production build keeps its existing rejection of localhost API targets.
+
 ## Safety Rules
 
 - Script availability is not approval to run Supabase operations.
