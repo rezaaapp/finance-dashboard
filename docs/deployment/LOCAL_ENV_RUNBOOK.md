@@ -270,6 +270,35 @@ Stop-Process -Id <OwningProcess>
 
 Jangan menghentikan PID yang belum diidentifikasi. Jalankan verifier ulang setelah semua expected port aktif atau setelah port conflict dibersihkan.
 
+## Environment Awareness UI Phase 6
+
+Halaman login menampilkan environment card sebelum credential dimasukkan. Setelah login, badge kecil tetap terlihat di header semua view utama. Klik badge untuk membuka detail aman; Settings juga memiliki panel System Information lengkap.
+
+| Environment | Badge | Warna | Database label | Expected API |
+| --- | --- | --- | --- | --- |
+| `local-dev` | `LOCAL-DEV` | Hijau | PostgreSQL Local | `http://127.0.0.1:8000` |
+| `local-prod` | `LOCAL-PROD` | Oranye | Supabase | `http://127.0.0.1:8001` |
+| Endpoint gagal | `UNKNOWN` | Abu-abu | Unknown | Fallback dari frontend env |
+
+UI hanya boleh menampilkan environment/profile, DB target/type, API origin aman, frontend/backend port, version, masked database host, database name, import temp directory, dan metadata migration. Password, token, JWT, OAuth secret, credential, dan full database URL tidak boleh ditampilkan atau diteruskan ke model UI.
+
+Frontend mengambil data dari `GET /api/system/info` satu kali saat aplikasi dimuat. Kegagalan endpoint tidak memblokir form login atau dashboard; card berubah menjadi `UNKNOWN / Offline` dan tetap menampilkan API origin serta version dari frontend env.
+
+Untuk memastikan badge benar:
+
+1. Jalankan `scripts\start-local-dev.bat`, buka `http://127.0.0.1:5173`, dan pastikan login card serta badge pascalogin menampilkan `LOCAL-DEV`.
+2. Jalankan `scripts\start-local-prod.bat`, buka `http://127.0.0.1:5174`, dan pastikan keduanya menampilkan `LOCAL-PROD`.
+3. Cocokkan API, database type, backend port, dan latest migration di detail badge/Settings.
+
+Jika card tetap `Checking`, tunggu koneksi database system-info selesai. Jika berubah `Offline`, periksa backend target, port, CORS, dan `/api/system/info`; jangan menyalin secret ke browser console atau screenshot.
+
+Build lokal yang mempertahankan validator production:
+
+```powershell
+npm.cmd --prefix apps/web run build:local-dev
+npm.cmd --prefix apps/web run build:local-prod
+```
+
 | Operasi | local-dev | local-prod |
 | --- | --- | --- |
 | Migrate | `scripts\migrate-local-dev.bat` | `scripts\migrate-local-prod.bat` |

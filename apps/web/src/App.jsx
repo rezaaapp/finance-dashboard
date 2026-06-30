@@ -2,8 +2,10 @@ import Dashboard from "./pages/Dashboard";
 import GoogleAuthCallback from "./pages/GoogleAuthCallback";
 import Login from "./pages/Login";
 import { useState } from "react";
+import useSystemInfo from "./hooks/useSystemInfo";
 
 function App() {
+  const systemInfoState = useSystemInfo();
   const [auth, setAuth] = useState(() => {
     const token = localStorage.getItem("finance-dashboard-token");
     const username = localStorage.getItem("finance-dashboard-username");
@@ -131,7 +133,7 @@ function App() {
   }
 
   if (!auth) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} systemInfoState={systemInfoState} />;
   }
 
   return (
@@ -140,6 +142,7 @@ function App() {
       onExitImpersonation={handleExitImpersonation}
       onImpersonate={handleLogin}
       onLogout={handleLogout}
+      systemInfoState={systemInfoState}
     />
   );
 }

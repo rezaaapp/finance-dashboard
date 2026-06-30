@@ -1,8 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+const modeIndex = process.argv.indexOf("--mode");
+const mode = modeIndex >= 0 ? process.argv[modeIndex + 1] : "production";
+const isLocalMode = mode === "local-dev" || mode === "local-prod";
 const localEnv = {};
-const envPath = resolve(process.cwd(), ".env");
+const envPath = resolve(
+  process.cwd(),
+  isLocalMode ? `.env.${mode}` : ".env",
+);
 
 if (existsSync(envPath)) {
   const envFile = readFileSync(envPath, "utf-8");
@@ -34,7 +40,7 @@ if (!apiUrl) {
   process.exit(1);
 }
 
-if (/localhost|127\.0\.0\.1|0\.0\.0\.0/.test(apiUrl)) {
+if (!isLocalMode && /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(apiUrl)) {
   console.error(
     `Production API URL must not point to localhost: ${apiUrl}`
   );
@@ -48,4 +54,4 @@ try {
   process.exit(1);
 }
 
-console.log(`Using production API URL: ${apiUrl}`);
+console.log(`Using ${mode} API URL: ${apiUrl}`);

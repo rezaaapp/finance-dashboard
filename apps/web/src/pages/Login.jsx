@@ -2,8 +2,9 @@ import { KeyRound, Lock, LogIn, User } from "lucide-react";
 import { useState } from "react";
 
 import { getGoogleLoginUrl, login } from "../api/authApi";
+import EnvironmentCard from "../components/environment/EnvironmentCard";
 
-const Login = ({ onLogin }) => {
+const Login = ({ onLogin, systemInfoState }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -49,10 +50,13 @@ const Login = ({ onLogin }) => {
 
   return (
     <div className="dashboard-screen min-h-screen flex items-center justify-center p-6">
-      <form
-        onSubmit={handleSubmit}
-        className="panel w-full max-w-md rounded-2xl p-6 shadow-lg"
-      >
+      <div className="w-full max-w-md space-y-3">
+        <EnvironmentCard systemInfoState={systemInfoState} />
+
+        <form
+          onSubmit={handleSubmit}
+          className="panel w-full rounded-lg p-6 shadow-lg"
+        >
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-main">
             Finance AI
@@ -131,7 +135,8 @@ const Login = ({ onLogin }) => {
           <KeyRound size={18} />
           Login dengan Google
         </button>
-      </form>
+        </form>
+      </div>
     </div>
   );
 };

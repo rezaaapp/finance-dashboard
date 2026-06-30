@@ -44,6 +44,7 @@ import {
 
 import { PRIVACY_MODES } from "../utils/privacy";
 import { getActiveWorkspaceId } from "../api/workspaceContext";
+import SystemInfoPanel from "../components/environment/SystemInfoPanel";
 
 const privacyOptions = [
   { label: "Normal", value: PRIVACY_MODES.normal },
@@ -271,6 +272,7 @@ const Configuration = ({
   userRole = "user",
   onSaveChanges,
   onUnauthorized,
+  systemInfoState,
 }) => {
   const [draftAutoBudget, setDraftAutoBudget] = useState(autoBudget);
   const [draftPaydayStartDay, setDraftPaydayStartDay] = useState(paydayStartDay);
@@ -1129,6 +1131,10 @@ const Configuration = ({
         <CheckCircle2 size={16} />
         All changes saved to Google Sheets
       </div>
+    </div>
+
+    <div className="mt-6">
+      <SystemInfoPanel systemInfoState={systemInfoState} />
     </div>
 
     <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">

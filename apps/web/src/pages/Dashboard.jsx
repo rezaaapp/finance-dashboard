@@ -35,6 +35,7 @@ import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTre
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
 import WorkspaceInvitationNotification from "../components/WorkspaceInvitationNotification";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
+import EnvironmentBadge from "../components/environment/EnvironmentBadge";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
 import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
@@ -210,6 +211,7 @@ const Dashboard = ({
   onExitImpersonation,
   onImpersonate,
   onLogout,
+  systemInfoState,
 }) => {
   // =========================
   // STATE
@@ -1221,6 +1223,8 @@ const Dashboard = ({
             <p className="text-muted mt-1 text-sm sm:text-base">
               Apa atuh ya namanya? 🥲
             </p>
+
+            <EnvironmentBadge systemInfoState={systemInfoState} />
           </div>
 
           <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto_auto]">
@@ -1621,6 +1625,7 @@ const Dashboard = ({
             userRole={auth?.role}
             onSaveChanges={handleSaveConfiguration}
             onUnauthorized={onLogout}
+            systemInfoState={systemInfoState}
           />
         )}
       </main>
