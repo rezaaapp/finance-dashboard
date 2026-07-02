@@ -1,5 +1,9 @@
+import logging
+
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+
+logger = logging.getLogger(__name__)
 
 
 def _chunk_rows(rows: list[dict], chunk_size: int):
@@ -310,6 +314,7 @@ def batch_upsert_transactions(
     rows_to_rekey = []
     skipped_count = 0
     skipped_duplicate_count = 0
+    pending_canonical_fingerprints = set()
     existing_canonical_matches = get_existing_transactions_by_canonical_fingerprint(
         connection,
         workspace_id=workspace_id,
@@ -346,11 +351,36 @@ def batch_upsert_transactions(
                 else:
                     skipped_duplicate_count += 1
             else:
-                rows_to_insert.append(row)
+                canonical_fingerprint = row["payload"].get("canonical_fingerprint")
+                batch_fingerprint_key = (
+                    str(row.get("workspace_id") or workspace_id),
+                    canonical_fingerprint,
+                )
+                if (
+                    canonical_fingerprint
+                    and batch_fingerprint_key in pending_canonical_fingerprints
+                ):
+                    skipped_duplicate_count += 1
+                else:
+                    rows_to_insert.append(row)
+                    if canonical_fingerprint:
+                        pending_canonical_fingerprints.add(batch_fingerprint_key)
         elif existing_hash == row["payload"]["normalized_hash"]:
             skipped_count += 1
         else:
             rows_to_update.append(row)
+
+    if skipped_duplicate_count:
+        logger.info(
+            "google_sheet_sync.batch_duplicates_skipped",
+            extra={
+                "sync_diagnostic": {
+                    "workspace_id": workspace_id,
+                    "sheet_source_id": sheet_source_id,
+                    "duplicate_count": skipped_duplicate_count,
+                },
+            },
+        )
 
     inserted_count = bulk_insert_transactions(
         connection,

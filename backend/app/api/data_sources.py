@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -55,6 +56,8 @@ router = APIRouter(
     prefix="/api/data-sources",
     tags=["Data Sources"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSheetTestRequest(BaseModel):
@@ -708,7 +711,31 @@ def sync_google_sheet_source(
                             batch_result.get("updated_transaction_ids", [])
                         )
                         processed_tabs.append(tab_name)
-                    except Exception:
+                    except Exception as exc:
+                        diag = getattr(exc, "diag", None)
+                        logger.exception(
+                            "google_sheet_sync.database_write_failed",
+                            extra={
+                                "database_diagnostic": {
+                                    "sqlstate": getattr(exc, "sqlstate", None),
+                                    "exception_class": exc.__class__.__name__,
+                                    "constraint": (
+                                        getattr(diag, "constraint_name", None)
+                                        if diag else None
+                                    ),
+                                    "table": (
+                                        getattr(diag, "table_name", None)
+                                        if diag else None
+                                    ),
+                                    "column": (
+                                        getattr(diag, "column_name", None)
+                                        if diag else None
+                                    ),
+                                    "sheet_name": tab_name,
+                                    "normalized_row_count": len(normalized_rows),
+                                },
+                            },
+                        )
                         failed_rows += len(normalized_rows)
                         failed_tabs.append(tab_name)
                         _record_sync_diagnostic(
