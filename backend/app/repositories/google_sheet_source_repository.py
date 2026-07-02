@@ -1,4 +1,58 @@
+import json
+
 from psycopg.rows import dict_row
+
+
+def get_google_sheet_source_tab_preferences(connection, *, workspace_id: str, source_id: str):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            "select google_sheet_sources from workspace_configurations where workspace_id = %s",
+            (workspace_id,),
+        )
+        row = cursor.fetchone() or {}
+    for item in row.get("google_sheet_sources") or []:
+        if str(item.get("source_id") or item.get("id") or "") == str(source_id):
+            return {
+                "selected_tabs": list(item.get("selected_tabs") or []),
+                "default_tab": item.get("default_tab"),
+            }
+    return {"selected_tabs": [], "default_tab": None}
+
+
+def save_google_sheet_source_tab_preferences(
+    connection, *, workspace_id: str, source_id: str,
+    selected_tabs: list[str], default_tab: str | None,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            "select google_sheet_sources from workspace_configurations where workspace_id = %s",
+            (workspace_id,),
+        )
+        row = cursor.fetchone() or {}
+        sources = list(row.get("google_sheet_sources") or [])
+        preference = {
+            "id": str(source_id),
+            "source_id": str(source_id),
+            "label": "Google Sheet source",
+            "status": "active",
+            "selected_tabs": list(dict.fromkeys(selected_tabs)),
+            "default_tab": default_tab,
+        }
+        for index, item in enumerate(sources):
+            if str(item.get("source_id") or item.get("id") or "") == str(source_id):
+                sources[index] = {**item, **preference}
+                break
+        else:
+            sources.append(preference)
+        cursor.execute(
+            """
+            insert into workspace_configurations (workspace_id, google_sheet_sources)
+            values (%s, %s::jsonb)
+            on conflict (workspace_id) do update
+            set google_sheet_sources = excluded.google_sheet_sources, updated_at = now()
+            """,
+            (workspace_id, json.dumps(sources)),
+        )
 
 
 def create_google_sheet_source(

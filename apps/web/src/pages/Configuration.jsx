@@ -45,6 +45,7 @@ import {
 import { PRIVACY_MODES } from "../utils/privacy";
 import { getActiveWorkspaceId } from "../api/workspaceContext";
 import SystemInfoPanel from "../components/environment/SystemInfoPanel";
+import ImportResultDetailsModal from "../components/import/ImportResultDetailsModal";
 
 const privacyOptions = [
   { label: "Normal", value: PRIVACY_MODES.normal },
@@ -296,7 +297,7 @@ const Configuration = ({
   const [, setIsLoadingWorkspaceConfiguration] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [spreadsheetUrl, setSpreadsheetUrl] = useState("");
-  const [sourceSheetName, setSourceSheetName] = useState("");
+  const [sourceSelectedTabs, setSourceSelectedTabs] = useState([]);
   const [showSaved, setShowSaved] = useState(false);
   const [notification, setNotification] = useState(null);
   const [googleConnection, setGoogleConnection] = useState({
@@ -306,6 +307,7 @@ const Configuration = ({
   const [sourceTestResult, setSourceTestResult] = useState(null);
   const [sourceError, setSourceError] = useState("");
   const [syncResults, setSyncResults] = useState({});
+  const [detailResult, setDetailResult] = useState(null);
   const [googleConnectionError, setGoogleConnectionError] = useState("");
   const [workspaceConfigurationError, setWorkspaceConfigurationError] = useState("");
   const [insightThresholds, setInsightThresholds] = useState(
@@ -695,11 +697,7 @@ const Configuration = ({
       }
 
       const availableTabs = response?.detected_tabs || response?.tabs || [];
-      setSourceSheetName((currentSheetName) => (
-        currentSheetName && availableTabs.includes(currentSheetName)
-          ? currentSheetName
-          : availableTabs.length === 1 ? availableTabs[0] : ""
-      ));
+      setSourceSelectedTabs(availableTabs.length === 1 ? availableTabs : []);
 
       setNotification({
         type: "success",
@@ -731,11 +729,11 @@ const Configuration = ({
 
       const response = await createGoogleSheetSource({
         spreadsheet_url: spreadsheetUrl.trim(),
-        sheet_name: sourceSheetName,
+        selected_tabs: sourceSelectedTabs,
       });
 
       setSpreadsheetUrl("");
-      setSourceSheetName("");
+      setSourceSelectedTabs([]);
       setSourceTestResult(null);
       setNotification({
         type: "success",
@@ -1315,7 +1313,7 @@ const Configuration = ({
               Google Sheet Data Sources
             </h3>
             <p className="text-sm leading-6 text-muted">
-              Paste a spreadsheet URL, test access, then sync all valid monthly tabs.
+              Paste a spreadsheet URL, test access, then choose monthly tabs to sync.
             </p>
           </div>
 
@@ -1353,42 +1351,37 @@ const Configuration = ({
                     onChange={(event) => {
                       setSpreadsheetUrl(event.target.value);
                       setSourceTestResult(null);
-                      setSourceSheetName("");
+                      setSourceSelectedTabs([]);
                     }}
                     placeholder="https://docs.google.com/spreadsheets/d/..."
                     className="form-control w-full rounded-2xl px-4 py-3 text-sm"
                   />
                 </label>
 
-                <label className="block">
+                <fieldset className="block">
                   <span className="mb-2 block text-sm font-semibold text-muted">
-                    Default Destination Tab
+                    Monthly Sheet Selection
                   </span>
-                  <select
-                    value={sourceSheetName}
-                    onChange={(event) => setSourceSheetName(event.target.value)}
-                    disabled={!sourceTestResult?.valid}
-                    className="form-control w-full rounded-2xl px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="">
-                      {sourceTestResult?.valid
-                        ? "Select default destination tab"
-                        : "Test spreadsheet access first"}
-                    </option>
-                    {(sourceTestResult?.detected_tabs || sourceTestResult?.tabs || []).map((tabName) => (
-                      <option key={tabName} value={tabName}>
-                        {tabName}
-                      </option>
-                    ))}
-                  </select>
+                  {sourceTestResult?.valid ? (
+                    <div className="space-y-2 rounded-2xl border border-gray-200 p-4 dark:border-[var(--color-border)]">
+                      {(() => {
+                        const tabs = sourceTestResult?.detected_tabs || sourceTestResult?.tabs || [];
+                        const allSelected = tabs.length > 0 && sourceSelectedTabs.length === tabs.length;
+                        return <>
+                          <label className="flex items-center gap-3 font-bold text-main"><input type="checkbox" checked={allSelected} onChange={() => setSourceSelectedTabs(allSelected ? [] : tabs)} /> Select All</label>
+                          {tabs.map((tabName) => <label key={tabName} className="flex items-center gap-3 text-sm text-main"><input type="checkbox" checked={sourceSelectedTabs.includes(tabName)} onChange={() => setSourceSelectedTabs((current) => current.includes(tabName) ? current.filter((name) => name !== tabName) : [...current, tabName])} /> {tabName}</label>)}
+                        </>;
+                      })()}
+                    </div>
+                  ) : <div className="rounded-2xl border border-gray-200 px-4 py-3 text-sm text-muted dark:border-[var(--color-border)]">Test spreadsheet access first</div>}
                   <p className="mt-2 text-xs leading-5 text-muted">
-                    Import Review and Retry Sync use this tab by default. You can override it before delivery.
+                    {sourceSelectedTabs.length} {sourceSelectedTabs.length === 1 ? "sheet" : "sheets"} selected
                   </p>
-                </label>
+                </fieldset>
 
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
                   <p>Your spreadsheet should contain the required transaction columns.</p>
-                  <p>This spreadsheet will sync all valid monthly tabs.</p>
+                  <p>This spreadsheet will sync only the selected monthly tabs.</p>
                   <p>Transaction year will be detected from Waktu Transaksi.</p>
                   <p>Transactions are classified automatically after sync.</p>
                 </div>
@@ -1414,7 +1407,7 @@ const Configuration = ({
                     disabled={
                       isSavingSource
                       || !sourceTestResult?.valid
-                      || !sourceSheetName
+                      || sourceSelectedTabs.length === 0
                     }
                     className="primary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -1517,10 +1510,12 @@ const Configuration = ({
                                   Spreadsheet-level sync - {sourceStatus}
                                 </p>
                                 <div className="mt-2 space-y-1 text-xs leading-5 text-muted">
-                                  <p>Syncs all valid monthly tabs.</p>
+                                  <p>Syncs selected monthly tabs.</p>
                                   <p>Year is detected from Waktu Transaksi.</p>
-                                  {source.sheet_name && (
-                                    <p>Selected tab: {source.sheet_name}</p>
+                                  {(source.selected_tabs || []).length > 0 ? (
+                                    <p>Selected tabs: {source.selected_tabs.join(", ")}</p>
+                                  ) : source.sheet_name && (
+                                    <p>Legacy default tab: {source.sheet_name}</p>
                                   )}
                                 </div>
                                 <p className="mt-2 text-xs text-muted">
@@ -1586,6 +1581,17 @@ const Configuration = ({
                                     </div>
                                   ))}
                                 </div>
+
+                                {(
+                                  (syncResult.inserted_rows || 0)
+                                  + (syncResult.updated_rows || 0)
+                                  + (syncResult.skipped_rows || 0)
+                                  + (syncResult.failed_rows || 0)
+                                ) > 0 && (
+                                  <button type="button" onClick={() => setDetailResult(syncResult)} className="secondary-button mt-3 min-h-10 rounded-xl px-4 py-2 text-sm font-bold">
+                                    <Eye size={16} /> View Details
+                                  </button>
+                                )}
 
                                 <div className="mt-3 space-y-1 text-xs leading-5 text-muted">
                                   {syncResult.classification && (
@@ -2035,6 +2041,9 @@ const Configuration = ({
         {isSaving ? "Saving..." : "Save Changes"}
       </button>
     </div>
+    {detailResult && (
+      <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} />
+    )}
   </div>
   );
 };

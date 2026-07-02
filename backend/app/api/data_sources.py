@@ -1,8 +1,9 @@
 import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.google_connection import get_current_workspace
 from app.auth import require_current_user
@@ -15,8 +16,10 @@ from app.repositories.google_sheet_source_repository import (
     delete_google_sheet_source,
     get_google_sheet_source,
     get_google_sheet_source_by_id,
+    get_google_sheet_source_tab_preferences,
     get_google_sheet_sources,
     mark_google_sheet_source_error,
+    save_google_sheet_source_tab_preferences,
     update_google_sheet_last_synced,
 )
 from app.repositories.sync_job_repository import (
@@ -48,6 +51,12 @@ from app.services.transaction_normalizer import (
     normalize_transaction_row,
     RowNormalizationError,
 )
+from app.services.import_transparency import (
+    ImportReason,
+    empty_import_details,
+    limited_details,
+    transaction_detail,
+)
 from app.utils.google_sheet_parser import extract_spreadsheet_id
 
 
@@ -55,6 +64,8 @@ router = APIRouter(
     prefix="/api/data-sources",
     tags=["Data Sources"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSheetTestRequest(BaseModel):
@@ -66,6 +77,7 @@ class GoogleSheetCreateRequest(BaseModel):
     spreadsheet_url: str
     sheet_name: str | None = None
     year: int | None = None
+    selected_tabs: list[str] = Field(default_factory=list)
 
 
 def _serialize_source(source):
@@ -78,6 +90,7 @@ def _serialize_source(source):
         "status": source["status"],
         "last_synced_at": source["last_synced_at"],
         "created_at": source["created_at"],
+        "selected_tabs": source.get("selected_tabs") or [],
     }
 
 
@@ -93,6 +106,7 @@ def _serialize_sync_response(
     skipped_samples: list[dict] | None = None,
     classification: dict | None = None,
     warnings: list[str] | None = None,
+    details: dict | None = None,
 ):
     response = {
         "job_id": str(job["id"]),
@@ -119,6 +133,13 @@ def _serialize_sync_response(
     response["skipped_samples"] = skipped_samples or []
     response["classification"] = classification
     response["warnings"] = warnings or []
+    response["summary"] = {
+        "inserted": job["inserted_rows"],
+        "updated": job["updated_rows"],
+        "skipped": job["skipped_rows"],
+        "failed": job["failed_rows"],
+    }
+    response["details"] = limited_details(details or empty_import_details())
 
     return response
 
@@ -303,7 +324,20 @@ def _get_tabs_for_source(
     access_token: str,
     spreadsheet_id: str,
     sheet_name: str | None,
+    selected_tabs: list[str] | None = None,
 ):
+    normalized_selected_tabs = list(dict.fromkeys(
+        str(tab).strip() for tab in (selected_tabs or []) if str(tab).strip()
+    ))
+    if normalized_selected_tabs:
+        metadata = _fetch_spreadsheet_metadata(
+            access_token=access_token,
+            spreadsheet_id=spreadsheet_id,
+        )
+        syncable_tabs = get_syncable_tabs(metadata.get("sheet_names", []))
+        selected = [tab for tab in normalized_selected_tabs if tab in syncable_tabs]
+        return selected, [tab for tab in syncable_tabs if tab not in selected]
+
     normalized_sheet_name = (sheet_name or "").strip()
 
     if normalized_sheet_name:
@@ -340,6 +374,12 @@ def list_data_sources(
             connection,
             workspace_id=str(workspace["id"]),
         )
+        for source in sources:
+            source.update(get_google_sheet_source_tab_preferences(
+                connection,
+                workspace_id=str(workspace["id"]),
+                source_id=str(source["id"]),
+            ))
 
     return {
         "sources": [_serialize_source(source) for source in sources],
@@ -361,7 +401,6 @@ def list_google_sheet_source_worksheets(
             workspace_id=workspace_id,
             source_id=source_id,
         )
-
         _oauth_connection, access_token = _get_access_context(
             connection,
             workspace_id=workspace_id,
@@ -442,7 +481,12 @@ def create_google_sheet_data_source(
             detail="Invalid Google spreadsheet URL or ID",
         ) from exc
 
+    selected_tabs = list(dict.fromkeys(
+        str(tab).strip() for tab in payload.selected_tabs if str(tab).strip()
+    ))
     sheet_name = (payload.sheet_name or "").strip() or None
+    if selected_tabs:
+        sheet_name = selected_tabs[0]
     year = _validate_optional_year(payload.year)
 
     with get_db_connection() as connection:
@@ -471,6 +515,14 @@ def create_google_sheet_data_source(
                 year=year,
                 status="active",
             )
+            if source:
+                save_google_sheet_source_tab_preferences(
+                    connection,
+                    workspace_id=str(workspace["id"]),
+                    source_id=str(source["id"]),
+                    selected_tabs=selected_tabs,
+                    default_tab=sheet_name,
+                )
 
     if not source:
         raise HTTPException(
@@ -485,6 +537,7 @@ def create_google_sheet_data_source(
         "sheet_name": source["sheet_name"],
         "year": source["year"],
         "status": source["status"],
+        "selected_tabs": selected_tabs,
     }
 
 
@@ -499,6 +552,11 @@ def sync_google_sheet_source(
 
     with get_db_connection() as connection:
         source = _get_workspace_source_or_raise(
+            connection,
+            workspace_id=workspace_id,
+            source_id=source_id,
+        )
+        tab_preferences = get_google_sheet_source_tab_preferences(
             connection,
             workspace_id=workspace_id,
             source_id=source_id,
@@ -525,6 +583,7 @@ def sync_google_sheet_source(
                 access_token=access_token,
                 spreadsheet_id=source["sheet_id"],
                 sheet_name=source["sheet_name"],
+                selected_tabs=tab_preferences["selected_tabs"],
             )
             processed_tabs = []
             failed_tabs = []
@@ -540,6 +599,7 @@ def sync_google_sheet_source(
             synced_transaction_ids = []
             classification_summary = None
             sync_warnings = []
+            import_details = empty_import_details()
 
             if not tabs_to_sync:
                 raise ValueError("Spreadsheet has no syncable tabs")
@@ -668,6 +728,15 @@ def sync_google_sheet_source(
                                 row_number=row_number,
                                 category=exc.category,
                             )
+                            import_details["failed"].append({
+                                "sheet_name": tab_name,
+                                "date": None,
+                                "merchant": None,
+                                "amount": None,
+                                "owner": None,
+                                "status": "failed",
+                                "reason": ImportReason.VALIDATION_FAILED.value,
+                            })
                     except (KeyError, TypeError, ValueError):
                         failed_rows += 1
                         tab_failed_rows += 1
@@ -678,6 +747,15 @@ def sync_google_sheet_source(
                             sheet_name=tab_name,
                             row_number=row_number,
                         )
+                        import_details["failed"].append({
+                            "sheet_name": tab_name,
+                            "date": None,
+                            "merchant": None,
+                            "amount": None,
+                            "owner": None,
+                            "status": "failed",
+                            "reason": ImportReason.VALIDATION_FAILED.value,
+                        })
 
                 if normalized_rows:
                     try:
@@ -693,6 +771,8 @@ def sync_google_sheet_source(
                         updated_rows += batch_result["updated"]
                         skipped_rows += batch_result["skipped"]
                         failed_rows += batch_result["failed"]
+                        for detail_status, detail_rows in batch_result.get("details", {}).items():
+                            import_details[detail_status].extend(detail_rows)
                         if batch_result.get("skipped_duplicates", 0):
                             _record_sync_diagnostic(
                                 skipped_reasons,
@@ -708,8 +788,40 @@ def sync_google_sheet_source(
                             batch_result.get("updated_transaction_ids", [])
                         )
                         processed_tabs.append(tab_name)
-                    except Exception:
+                    except Exception as exc:
+                        diag = getattr(exc, "diag", None)
+                        logger.exception(
+                            "google_sheet_sync.database_write_failed",
+                            extra={
+                                "database_diagnostic": {
+                                    "sqlstate": getattr(exc, "sqlstate", None),
+                                    "exception_class": exc.__class__.__name__,
+                                    "constraint": (
+                                        getattr(diag, "constraint_name", None)
+                                        if diag else None
+                                    ),
+                                    "table": (
+                                        getattr(diag, "table_name", None)
+                                        if diag else None
+                                    ),
+                                    "column": (
+                                        getattr(diag, "column_name", None)
+                                        if diag else None
+                                    ),
+                                    "sheet_name": tab_name,
+                                    "normalized_row_count": len(normalized_rows),
+                                },
+                            },
+                        )
                         failed_rows += len(normalized_rows)
+                        import_details["failed"].extend(
+                            transaction_detail(
+                                row,
+                                status="failed",
+                                reason=ImportReason.DATABASE_WRITE_FAILED,
+                            )
+                            for row in normalized_rows
+                        )
                         failed_tabs.append(tab_name)
                         _record_sync_diagnostic(
                             failed_reasons,
@@ -824,6 +936,7 @@ def sync_google_sheet_source(
         skipped_samples=skipped_samples,
         classification=classification_summary,
         warnings=sync_warnings,
+        details=import_details,
     )
 
 
