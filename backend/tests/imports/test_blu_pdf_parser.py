@@ -17,6 +17,7 @@ os.environ.setdefault(
     "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
 )
 fake_psycopg = types.ModuleType("psycopg")
+fake_psycopg_errors = types.ModuleType("psycopg.errors")
 fake_psycopg_rows = types.ModuleType("psycopg.rows")
 fake_psycopg_types = types.ModuleType("psycopg.types")
 fake_psycopg_types_json = types.ModuleType("psycopg.types.json")
@@ -24,12 +25,18 @@ fake_psycopg_pool = types.ModuleType("psycopg_pool")
 fake_dotenv = types.ModuleType("dotenv")
 fake_httpx = types.ModuleType("httpx")
 fake_psycopg_rows.dict_row = object()
+fake_psycopg.connect = lambda *args, **kwargs: None
+fake_psycopg.DatabaseError = type("DatabaseError", (Exception,), {})
+fake_psycopg_errors.UndefinedTable = type("UndefinedTable", (Exception,), {})
+fake_psycopg_errors.NotSupportedError = type("NotSupportedError", (Exception,), {})
+fake_psycopg.errors = fake_psycopg_errors
 fake_psycopg_types_json.Jsonb = lambda value: value
 fake_dotenv.dotenv_values = lambda _path: {}
 fake_httpx.HTTPError = Exception
 fake_httpx.HTTPStatusError = Exception
 fake_psycopg_pool.ConnectionPool = object
 sys.modules.setdefault("psycopg", fake_psycopg)
+sys.modules.setdefault("psycopg.errors", fake_psycopg_errors)
 sys.modules.setdefault("psycopg.rows", fake_psycopg_rows)
 sys.modules.setdefault("psycopg.types", fake_psycopg_types)
 sys.modules.setdefault("psycopg.types.json", fake_psycopg_types_json)
