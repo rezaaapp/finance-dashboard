@@ -17,30 +17,24 @@ const EnvironmentCard = ({ systemInfoState }) => {
 
   return (
     <section
-      className={`w-full rounded-lg border p-4 ${toneClasses[presentation.tone]}`}
+      className={`w-full rounded-lg border px-4 py-3 ${toneClasses[presentation.tone]}`}
       aria-label="Current environment"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-xs font-bold uppercase">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex shrink-0 items-center rounded-full border border-current/20 bg-white/50 px-2.5 py-1 text-xs font-bold dark:bg-black/10">
             {presentation.badgeLabel}
-          </p>
-          <h2 className="mt-1 text-sm font-bold sm:text-base">
+          </span>
+
+          <p className="min-w-0 truncate text-xs font-semibold sm:text-sm">
             {presentation.title}
-          </h2>
+          </p>
         </div>
 
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold">
           {data.connected ? <Server size={14} /> : <CircleOff size={14} />}
           {statusLabel}
         </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2 sm:text-sm">
-        <p>Database: <strong>{presentation.databaseLabel}</strong></p>
-        <p className="sm:text-right">API: <strong>{data.apiUrl}</strong></p>
-        <p>Migration: <strong>{data.latestMigration}</strong></p>
-        <p className="sm:text-right">Version: <strong>{data.version}</strong></p>
       </div>
     </section>
   );

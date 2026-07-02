@@ -136,6 +136,10 @@ const Login = ({ onLogin, systemInfoState }) => {
           Login dengan Google
         </button>
         </form>
+
+        <p className="text-center text-xs text-subtle">
+          {systemInfoState.data.version}
+        </p>
       </div>
     </div>
   );
