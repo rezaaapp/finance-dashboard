@@ -64,6 +64,7 @@ class BatchUpsertTransactionsTestCase(unittest.TestCase):
         self.assertEqual(1, result["skipped"])
         self.assertEqual(1, result["skipped_duplicates"])
         self.assertEqual(0, result["failed"])
+        self.assertEqual("DUPLICATE_BATCH", result["details"]["skipped"][0]["reason"])
 
     @patch("app.repositories.transaction_repository.get_transaction_ids_by_external_row_keys", return_value=[])
     @patch("app.repositories.transaction_repository.bulk_update_transactions_by_id", return_value=1)

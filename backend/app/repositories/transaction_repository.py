@@ -3,6 +3,8 @@ import logging
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.services.import_transparency import ImportReason, transaction_detail
+
 logger = logging.getLogger(__name__)
 
 
@@ -314,6 +316,7 @@ def batch_upsert_transactions(
     rows_to_rekey = []
     skipped_count = 0
     skipped_duplicate_count = 0
+    details = {"inserted": [], "updated": [], "skipped": [], "failed": []}
     pending_canonical_fingerprints = set()
     existing_canonical_matches = get_existing_transactions_by_canonical_fingerprint(
         connection,
@@ -350,6 +353,9 @@ def batch_upsert_transactions(
                     })
                 else:
                     skipped_duplicate_count += 1
+                    details["skipped"].append(transaction_detail(
+                        row, status="skipped", reason=ImportReason.EXISTING_TRANSACTION,
+                    ))
             else:
                 canonical_fingerprint = row["payload"].get("canonical_fingerprint")
                 batch_fingerprint_key = (
@@ -361,12 +367,18 @@ def batch_upsert_transactions(
                     and batch_fingerprint_key in pending_canonical_fingerprints
                 ):
                     skipped_duplicate_count += 1
+                    details["skipped"].append(transaction_detail(
+                        row, status="skipped", reason=ImportReason.DUPLICATE_BATCH,
+                    ))
                 else:
                     rows_to_insert.append(row)
                     if canonical_fingerprint:
                         pending_canonical_fingerprints.add(batch_fingerprint_key)
         elif existing_hash == row["payload"]["normalized_hash"]:
             skipped_count += 1
+            details["skipped"].append(transaction_detail(
+                row, status="skipped", reason=ImportReason.ALREADY_IMPORTED,
+            ))
         else:
             rows_to_update.append(row)
 
@@ -419,6 +431,15 @@ def batch_upsert_transactions(
         ],
     )
 
+    details["inserted"] = [
+        transaction_detail(row, status="inserted", reason=ImportReason.IMPORTED)
+        for row in rows_to_insert[:inserted_count]
+    ]
+    details["updated"] = [
+        transaction_detail(row, status="updated", reason=ImportReason.UPDATED)
+        for row in (rows_to_update + rows_to_rekey)[:updated_count]
+    ]
+
     return {
         "inserted": inserted_count,
         "updated": updated_count,
@@ -427,6 +448,7 @@ def batch_upsert_transactions(
         "failed": 0,
         "inserted_transaction_ids": inserted_transaction_ids,
         "updated_transaction_ids": updated_transaction_ids,
+        "details": details,
     }
 
 
