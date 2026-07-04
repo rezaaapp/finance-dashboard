@@ -32,10 +32,10 @@ import {
 } from "../api/googleOAuthApi";
 import {
   createGoogleSheetSource,
-  deleteGoogleSheetSource,
   getGoogleSheetSources,
   syncGoogleSheetSource,
   testGoogleSheetSource,
+  resetGoogleSheetSourceData,
 } from "../api/googleSheetSourcesApi";
 import {
   getInsightThresholds,
@@ -291,7 +291,8 @@ const Configuration = ({
   const [isTestingSource, setIsTestingSource] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
   const [syncingSourceId, setSyncingSourceId] = useState("");
-  const [deletingSourceId, setDeletingSourceId] = useState("");
+  const [resettingSourceId, setResettingSourceId] = useState("");
+  const [resetSource, setResetSource] = useState(null);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [cancelingInvitationId, setCancelingInvitationId] = useState("");
   const [, setIsLoadingWorkspaceConfiguration] = useState(true);
@@ -818,35 +819,26 @@ const Configuration = ({
     }
   };
 
-  const handleDeleteSource = async (sourceId) => {
-    const shouldDelete = window.confirm(
-      "Delete this Google Sheet source? Existing synced transactions will stay in the database."
-    );
-
-    if (!shouldDelete) {
-      return;
-    }
-
+  const handleResetSourceData = async () => {
+    if (!resetSource?.source_id) return;
     try {
-      setDeletingSourceId(sourceId);
+      setResettingSourceId(resetSource.source_id);
       setSourceError("");
       setNotification(null);
-
-      await deleteGoogleSheetSource(sourceId);
-
-      setSyncResults((currentResults) => {
-        const nextResults = { ...currentResults };
-        delete nextResults[sourceId];
-        return nextResults;
-      });
+      const response = await resetGoogleSheetSourceData(resetSource.source_id);
+      setSyncResults((currentResults) => ({
+        ...currentResults,
+        [resetSource.source_id]: null,
+      }));
       setNotification({
         type: "success",
-        title: "Source deleted",
-        message: "Google Sheet source was removed from saved sources.",
+        title: "Synced data reset",
+        message: `Data hasil sinkronisasi Google Sheet berhasil dihapus dari Omon (${response.deleted_transactions || 0} transaksi). Google Sheet asli tidak berubah.`,
       });
+      setResetSource(null);
       await loadGoogleSheetSources();
     } catch (err) {
-      console.error("Failed to save insight thresholds.");
+      console.error("Failed to reset synced Google Sheet data.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
@@ -854,16 +846,16 @@ const Configuration = ({
       }
 
       const message = err?.response?.data?.detail
-        || "Google Sheet source could not be deleted.";
+        || "Synced Google Sheet data could not be reset.";
 
       setSourceError(message);
       setNotification({
         type: "error",
-        title: "Delete source failed",
+        title: "Reset synced data failed",
         message,
       });
     } finally {
-      setDeletingSourceId("");
+      setResettingSourceId("");
     }
   };
 
@@ -1529,7 +1521,7 @@ const Configuration = ({
                                   onClick={() => handleSyncSource(source.source_id)}
                                   disabled={
                                     syncingSourceId === source.source_id
-                                    || deletingSourceId === source.source_id
+                                    || resettingSourceId === source.source_id
                                   }
                                   className="primary-button min-h-10 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                                 >
@@ -1543,19 +1535,19 @@ const Configuration = ({
 
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteSource(source.source_id)}
+                                  onClick={() => setResetSource(source)}
                                   disabled={
-                                    deletingSourceId === source.source_id
+                                    resettingSourceId === source.source_id
                                     || syncingSourceId === source.source_id
                                   }
                                   className="secondary-button min-h-10 rounded-2xl border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400/30 dark:text-red-300 dark:hover:bg-red-500/10"
                                 >
-                                  {deletingSourceId === source.source_id ? (
+                                  {resettingSourceId === source.source_id ? (
                                     <LoaderCircle size={16} className="animate-spin" />
                                   ) : (
                                     <Trash2 size={16} />
                                   )}
-                                  {deletingSourceId === source.source_id ? "Deleting..." : "Delete"}
+                                  {resettingSourceId === source.source_id ? "Resetting..." : "Reset Synced Data"}
                                 </button>
                               </div>
                             </div>
@@ -2043,6 +2035,25 @@ const Configuration = ({
     </div>
     {detailResult && (
       <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} />
+    )}
+    {resetSource && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Hasil Sinkronisasi">
+        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]">
+          <h2 className="text-xl font-bold text-main">Reset Data Hasil Sinkronisasi</h2>
+          <div className="mt-4 space-y-3 text-sm leading-6 text-muted">
+            <p>Seluruh transaksi yang berasal dari Google Sheet ini akan dihapus dari database Omon.</p>
+            <p className="font-bold text-main">Data asli di Google Sheet tidak akan dihapus ataupun diubah.</p>
+            <p>Anda dapat melakukan sinkronisasi kembali kapan saja menggunakan tombol Sync Now.</p>
+          </div>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => setResetSource(null)} disabled={Boolean(resettingSourceId)} className="secondary-button rounded-xl px-4 py-2 font-bold">Cancel</button>
+            <button type="button" onClick={handleResetSourceData} disabled={Boolean(resettingSourceId)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">
+              {resettingSourceId && <LoaderCircle size={16} className="animate-spin" />}
+              {resettingSourceId ? "Resetting..." : "Reset Synced Data"}
+            </button>
+          </div>
+        </div>
+      </div>
     )}
   </div>
   );

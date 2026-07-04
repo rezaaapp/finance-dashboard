@@ -82,6 +82,15 @@ export const deleteGoogleSheetSource = async (sourceId) => {
   );
 };
 
+export const resetGoogleSheetSourceData = async (sourceId) => {
+  const response = await axios.post(
+    `${DATA_SOURCES_API_URL}/${sourceId}/reset-synced-data`,
+    {},
+    { headers: getAuthHeaders() }
+  );
+  return response.data;
+};
+
 export const getSyncJob = async (jobId) => {
   const response = await axios.get(
     `${SYNC_JOBS_API_URL}/${jobId}`,
