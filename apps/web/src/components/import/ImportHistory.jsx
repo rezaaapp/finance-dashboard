@@ -82,6 +82,7 @@ const ImportHistory = ({
   onRetrySync,
   onViewDetail,
   onContinueReview,
+  onUpload,
   onReconnectGoogle,
   sheetSources = [],
   sheetSourcesLoading = false,
@@ -157,8 +158,10 @@ const ImportHistory = ({
               Memuat riwayat import...
             </div>
           ) : historyRows.length === 0 ? (
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-5 text-sm text-muted">
-              Belum ada riwayat import.
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-6 text-center">
+              <p className="font-semibold text-main">Belum ada riwayat Import.</p>
+              <p className="mt-2 text-sm text-muted">Upload PDF Blu untuk memulai Import pertama.</p>
+              <button type="button" onClick={onUpload} className="primary-button mt-4 rounded-lg px-5 py-2.5 text-sm font-semibold">Upload PDF</button>
             </div>
           ) : (
             <div className="overflow-x-auto">

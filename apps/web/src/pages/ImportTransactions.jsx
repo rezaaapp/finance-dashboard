@@ -478,10 +478,10 @@ const ImportTransactions = () => {
             }}
           />
         ) : (
-          <div className="panel rounded-lg p-6 shadow-lg">
-            <p className="text-sm text-muted">
-              Belum ada job review aktif. Upload PDF dulu untuk mulai review.
-            </p>
+          <div className="panel rounded-lg p-8 text-center shadow-lg">
+            <h2 className="text-lg font-bold text-main">Belum ada transaksi untuk di-Review</h2>
+            <p className="mt-2 text-sm text-muted">Upload PDF Blu untuk menyiapkan transaksi sebelum disimpan ke Omon.</p>
+            <button type="button" onClick={() => setActiveTab("upload")} className="primary-button mt-5 rounded-lg px-5 py-2.5 font-semibold">Upload PDF</button>
           </div>
         )
       )}
@@ -506,6 +506,7 @@ const ImportTransactions = () => {
           onRetrySync={handleRetrySync}
           onViewDetail={loadHistoryDetail}
           onContinueReview={handleContinueReview}
+          onUpload={() => setActiveTab("upload")}
           onReconnectGoogle={handleReconnectGoogle}
           sheetSources={sheetSources}
           sheetSourcesLoading={sheetSourcesLoading}

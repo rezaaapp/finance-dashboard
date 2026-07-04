@@ -21,7 +21,7 @@ const Login = ({ onLogin, systemInfoState }) => {
 
       onLogin(authData);
     } catch (err) {
-      console.error("Google login failed.");
+      console.error("Login failed.");
 
       if (err?.response?.status === 401) {
         setError("Username atau password salah.");
@@ -29,16 +29,16 @@ const Login = ({ onLogin, systemInfoState }) => {
       }
 
       if (err?.response?.status === 404) {
-        setError("Endpoint login tidak ditemukan. Periksa VITE_API_URL.");
+        setError("Login belum tersedia. Silakan coba lagi beberapa saat lagi.");
         return;
       }
 
       if (err?.response?.status >= 500) {
-        setError("Backend login sedang bermasalah. Periksa environment backend.");
+        setError("Layanan Login sedang bermasalah. Silakan coba lagi beberapa saat lagi.");
         return;
       }
 
-      setError("Tidak bisa terhubung ke backend login.");
+      setError("Omon belum dapat terhubung ke layanan Login. Periksa koneksi, lalu coba lagi.");
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ const Login = ({ onLogin, systemInfoState }) => {
         >
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-main">
-            Finance AI
+            Belum ada namanya
           </h1>
 
           <p className="text-muted mt-2">
@@ -105,7 +105,7 @@ const Login = ({ onLogin, systemInfoState }) => {
         </div>
 
         {error && (
-          <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </p>
         )}

@@ -84,6 +84,9 @@ const GoogleAuthCallback = ({ onLogin }) => {
             <p className="mt-3 text-sm text-muted">
               {error}
             </p>
+            <a href="/" className="primary-button mt-6 inline-flex rounded-xl px-5 py-2.5 font-bold">
+              Kembali ke Login
+            </a>
           </>
         ) : (
           <>
