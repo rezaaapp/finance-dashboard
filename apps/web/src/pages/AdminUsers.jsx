@@ -1,5 +1,8 @@
 import {
   Check,
+  Copy,
+  Eye,
+  EyeOff,
   Pencil,
   Plus,
   PlayCircle,
@@ -13,13 +16,18 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-  createAdminUser,
   deleteAdminUser,
   getAdminUsers,
   impersonateAdminUser,
   updateAdminUser,
   updateAdminUserRole,
+  provisionAdminTestUser,
 } from "../api/adminApi";
+import {
+  buildCredentialText,
+  defaultWorkspaceName,
+  generateUatPassword,
+} from "../utils/uatCredentials";
 
 const ROLE_OPTIONS = [
   {
@@ -122,10 +130,12 @@ const CapabilityIcon = ({ state }) => {
 const EMPTY_FORM = {
   email: "",
   name: "",
-  role: "user",
+  role: "owner",
+  password: "",
+  workspaceName: "",
 };
 
-const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
+const AdminUsers = ({ onImpersonate, onUnauthorized, systemInfoState }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState("");
@@ -135,6 +145,14 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [createdCredential, setCreatedCredential] = useState(null);
+  const [copyNotice, setCopyNotice] = useState("");
+  const canProvisionTestUser = ["local-dev", "dev", "uat"].includes(
+    systemInfoState?.data?.appEnv
+  ) || ["local-dev", "dev", "uat"].includes(
+    systemInfoState?.data?.envProfile
+  );
 
   const totalByRole = useMemo(() => (
     ROLE_OPTIONS.reduce((accumulator, role) => {
@@ -177,11 +195,13 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
   }, [loadUsers]);
 
   const openCreateForm = () => {
+    if (!canProvisionTestUser) return;
     setFormMode("create");
     setEditingUserId("");
     setFormData(EMPTY_FORM);
     setNotice("");
     setError("");
+    setShowPassword(false);
   };
 
   const openEditForm = (user) => {
@@ -206,7 +226,21 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
     setFormData((currentFormData) => ({
       ...currentFormData,
       [field]: value,
+      ...(field === "name" && (
+        !currentFormData.workspaceName
+        || currentFormData.workspaceName === defaultWorkspaceName(currentFormData.name)
+      ) ? { workspaceName: defaultWorkspaceName(value) } : {}),
     }));
+  };
+
+  const handleCopyCredential = async () => {
+    if (!createdCredential) return;
+    try {
+      await navigator.clipboard.writeText(buildCredentialText(createdCredential));
+      setCopyNotice("Credential berhasil disalin.");
+    } catch {
+      setCopyNotice("Credential belum dapat disalin. Salin detail secara manual.");
+    }
   };
 
   const handleSaveUser = async (event) => {
@@ -218,17 +252,32 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
       role: formData.role,
     };
 
+    if (formMode === "create") {
+      payload.password = formData.password;
+      payload.workspace_name = formData.workspaceName.trim();
+      if (!payload.password || !payload.workspace_name) {
+        setError("Password dan Workspace Name wajib diisi.");
+        return;
+      }
+    }
+
     try {
       setSavingUserId(editingUserId || "new");
       setError("");
       setNotice("");
 
       if (formMode === "create") {
-        const data = await createAdminUser(payload);
+        const data = await provisionAdminTestUser(payload);
 
         setUsers((currentUsers) => [data.user, ...currentUsers]);
+        setCreatedCredential({
+          url: window.location.origin,
+          email: data.email,
+          password: formData.password,
+          workspace: data.workspace_name,
+        });
+        setCopyNotice("");
         setNotice(`User ${data.user.email} berhasil dibuat.`);
-        window.alert(`User ${data.user.email} berhasil dibuat.`);
       } else {
         const data = await updateAdminUser(editingUserId, payload);
 
@@ -251,7 +300,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
       }
 
       if (err?.response?.status === 403) {
-        setError("Sesi Anda tidak punya akses super admin.");
+        setError(err?.response?.data?.detail || "Sesi Anda tidak punya akses provisioning.");
         return;
       }
 
@@ -395,14 +444,16 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={openCreateForm}
-            className="primary-button h-11 rounded-lg px-4 font-semibold"
-          >
-            <Plus size={18} />
-            Create User
-          </button>
+          {canProvisionTestUser && (
+            <button
+              type="button"
+              onClick={openCreateForm}
+              className="primary-button h-11 rounded-lg px-4 font-semibold"
+            >
+              <Plus size={18} />
+              Provision UAT User
+            </button>
+          )}
 
           <button
             type="button"
@@ -415,6 +466,12 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
           </button>
         </div>
       </div>
+
+      {!canProvisionTestUser && (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
+          Provisioning user tester hanya tersedia di LOCAL DEV, DEV, atau UAT.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {ROLE_OPTIONS.map((role) => (
@@ -448,7 +505,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
         <section className="panel rounded-lg p-4 shadow-lg">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h3 className="text-lg font-bold text-main">
-              {formMode === "create" ? "Create User" : "Modify User"}
+              {formMode === "create" ? "Provision UAT User" : "Modify User"}
             </h3>
 
             <button
@@ -462,7 +519,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
 
           <form
             onSubmit={handleSaveUser}
-            className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_220px_auto]"
+            className="grid grid-cols-1 gap-4 lg:grid-cols-2"
           >
             <label className="block">
               <span className="mb-2 block text-sm font-bold text-soft">
@@ -477,6 +534,43 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
                 required
               />
             </label>
+
+            {formMode === "create" && (
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-soft">Workspace Name</span>
+                <input
+                  value={formData.workspaceName}
+                  onChange={(event) => handleFormChange("workspaceName", event.target.value)}
+                  className="form-control w-full rounded-lg px-3 py-2"
+                  placeholder="Andi's Household"
+                  required
+                />
+              </label>
+            )}
+
+            {formMode === "create" && (
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-soft">Password</span>
+                <div className="flex gap-2">
+                  <div className="form-control flex min-w-0 flex-1 items-center rounded-lg pr-2">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={(event) => handleFormChange("password", event.target.value)}
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
+                      autoComplete="new-password"
+                      minLength={10}
+                      required
+                    />
+                    <button type="button" onClick={() => setShowPassword((value) => !value)} className="rounded-lg p-2 text-muted" aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}>
+                      {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => handleFormChange("password", generateUatPassword())} className="secondary-button rounded-lg px-3 py-2 text-sm font-semibold">Generate</button>
+                </div>
+                <span className="mt-2 block text-xs text-muted">Minimal 10 karakter dengan huruf besar, huruf kecil, angka, dan simbol.</span>
+              </label>
+            )}
 
             <label className="block">
               <span className="mb-2 block text-sm font-bold text-soft">
@@ -500,7 +594,9 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
                 onChange={(event) => handleFormChange("role", event.target.value)}
                 className="form-control w-full rounded-lg px-3 py-2"
               >
-                {ROLE_OPTIONS.map((role) => (
+                {ROLE_OPTIONS.filter((role) => (
+                  formMode !== "create" || role.value !== "super_admin"
+                )).map((role) => (
                   <option key={role.value} value={role.value}>
                     {role.label}
                   </option>
@@ -508,7 +604,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
               </select>
             </label>
 
-            <div className="flex items-end">
+            <div className="flex items-end lg:col-span-2 lg:justify-end">
               <button
                 type="submit"
                 className="primary-button h-11 w-full rounded-lg px-4 font-semibold lg:w-auto"
@@ -517,7 +613,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
                   || (Boolean(editingUserId) && savingUserId === editingUserId)
                 }
               >
-                {formMode === "create" ? "Create" : "Save"}
+                {formMode === "create" ? "Create User" : "Save"}
               </button>
             </div>
           </form>
@@ -668,6 +764,27 @@ const AdminUsers = ({ onImpersonate, onUnauthorized }) => {
           </table>
         </div>
       </section>
+
+      {createdCredential && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]" role="dialog" aria-modal="true" aria-labelledby="credential-title">
+            <h2 id="credential-title" className="text-xl font-bold text-main">User berhasil dibuat.</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">Password hanya ditampilkan sekarang. Simpan credential sebelum menutup panel ini.</p>
+            <dl className="mt-5 grid gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4 text-sm">
+              <div><dt className="font-bold text-muted">URL</dt><dd className="mt-1 break-all text-main">{createdCredential.url}</dd></div>
+              <div><dt className="font-bold text-muted">Email</dt><dd className="mt-1 break-all text-main">{createdCredential.email}</dd></div>
+              <div><dt className="font-bold text-muted">Password</dt><dd className="mt-1 break-all font-mono text-main">{createdCredential.password}</dd></div>
+              <div><dt className="font-bold text-muted">Workspace</dt><dd className="mt-1 text-main">{createdCredential.workspace}</dd></div>
+            </dl>
+            <p className="mt-4 text-sm leading-6 text-muted">Silakan Login, buka Settings, Connect Google, tambahkan URL spreadsheet, Test Connection, Save Source, lalu Sync Now. Setelah itu buka Dashboard.</p>
+            {copyNotice && <p className="mt-3 text-sm font-semibold text-accent" role="status">{copyNotice}</p>}
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => { setCreatedCredential(null); setCopyNotice(""); }} className="secondary-button rounded-xl px-4 py-2 font-bold">Selesai</button>
+              <button type="button" onClick={handleCopyCredential} className="primary-button rounded-xl px-4 py-2 font-bold"><Copy size={17} />Copy Credential</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -14,7 +14,9 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import get_db_connection
+from app.repositories.password_credentials import get_password_login_user
 from app.repositories.users import upsert_user, upsert_user_tokens
+from app.security.passwords import verify_password
 from app.repositories.workspaces import ensure_default_workspace_for_user
 from app.services.google_oauth import (
     build_google_authorization_url,
@@ -65,32 +67,41 @@ def _derive_local_login_name(username: str) -> str:
 
 @router.post("/login")
 def login(payload: LoginRequest):
-    if not authenticate_user(payload.username, payload.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-        )
-
-    email = _derive_local_login_email(payload.username)
-    role = (
-        "super_admin"
-        if (
-            payload.username.strip().lower() == settings.DASHBOARD_USERNAME.strip().lower()
-            and "@" not in payload.username
-        )
-        or email in settings.SUPER_ADMIN_EMAILS
-        else "user"
-    )
+    is_local_admin = authenticate_user(payload.username, payload.password)
 
     with get_db_connection() as connection:
         with connection.transaction():
-            user = upsert_user(
-                connection,
-                email=email,
-                name=_derive_local_login_name(payload.username),
-                avatar_url=None,
-                role=role,
-            )
+            if is_local_admin:
+                email = _derive_local_login_email(payload.username)
+                role = (
+                    "super_admin"
+                    if (
+                        payload.username.strip().lower() == settings.DASHBOARD_USERNAME.strip().lower()
+                        and "@" not in payload.username
+                    )
+                    or email in settings.SUPER_ADMIN_EMAILS
+                    else "user"
+                )
+                user = upsert_user(
+                    connection,
+                    email=email,
+                    name=_derive_local_login_name(payload.username),
+                    avatar_url=None,
+                    role=role,
+                )
+            else:
+                user = get_password_login_user(
+                    connection,
+                    email=payload.username,
+                )
+                if not user or not verify_password(
+                    payload.password,
+                    user["password_hash"],
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid username or password",
+                    )
             workspace = ensure_default_workspace_for_user(
                 connection,
                 user_id=str(user["id"]),

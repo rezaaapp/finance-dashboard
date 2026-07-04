@@ -1641,6 +1641,7 @@ const Dashboard = ({
           <AdminUsers
             onImpersonate={onImpersonate}
             onUnauthorized={onLogout}
+            systemInfoState={systemInfoState}
           />
         ) : activeView === "import" ? (
           <ImportTransactions />
