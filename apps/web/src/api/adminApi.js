@@ -33,6 +33,15 @@ export const createAdminUser = async (payload) => {
   return response.data;
 };
 
+export const provisionAdminTestUser = async (payload) => {
+  const response = await axios.post(
+    `${ADMIN_API_URL}/users/provision-test-user`,
+    payload,
+    { headers: getAuthHeaders() }
+  );
+  return response.data;
+};
+
 export const updateAdminUser = async (userId, payload) => {
   const response = await axios.put(
     `${ADMIN_API_URL}/users/${userId}`,
