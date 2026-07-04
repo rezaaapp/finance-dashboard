@@ -57,6 +57,7 @@ from app.services.import_transparency import (
     limited_details,
     transaction_detail,
 )
+from app.services.workspace_reset_service import reset_google_sheet_synced_data
 from app.utils.google_sheet_parser import extract_spreadsheet_id
 
 
@@ -967,3 +968,31 @@ def delete_google_sheet_data_source(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Google Sheet source not found",
         )
+
+
+@router.post("/{source_id}/reset-synced-data")
+def reset_google_sheet_source_data(
+    source_id: str,
+    current_user=Depends(require_current_user),
+    workspace=Depends(get_current_workspace),
+):
+    source_id = _parse_source_id(source_id)
+    workspace_id = str(workspace["id"])
+    with get_db_connection() as connection:
+        _get_workspace_source_or_raise(
+            connection,
+            workspace_id=workspace_id,
+            source_id=source_id,
+        )
+        with connection.transaction():
+            deleted_transactions = reset_google_sheet_synced_data(
+                connection,
+                workspace_id=workspace_id,
+                source_id=source_id,
+            )
+    return {
+        "deleted_transactions": deleted_transactions,
+        "google_sheet_untouched": True,
+        "workspace_id": workspace_id,
+        "source_id": source_id,
+    }

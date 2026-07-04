@@ -21,6 +21,7 @@ from app.api.inquiry import router as inquiry_router
 from app.api.settings import router as settings_router
 from app.api.sync_jobs import router as sync_jobs_router
 from app.api.workspace_invitations import router as workspace_invitations_router
+from app.api.workspace_resets import router as workspace_resets_router
 from app.api.workspaces import router as workspaces_router
 from app.config import settings
 from app.database import (
@@ -176,6 +177,7 @@ app.include_router(settings_router)
 app.include_router(budgets_router)
 app.include_router(workspaces_router)
 app.include_router(workspace_invitations_router)
+app.include_router(workspace_resets_router)
 
 app.include_router(admin_router)
 
