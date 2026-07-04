@@ -252,7 +252,25 @@ const Dashboard = ({
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
-  const [activeView, setActiveView] = useState(() => getInitialView());
+  const [activeView, commitActiveView] = useState(() => getInitialView());
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [pendingSettingsNavigation, setPendingSettingsNavigation] = useState("");
+  const setActiveView = (nextView) => {
+    if (
+      activeView === "configuration"
+      && settingsDirty
+      && nextView !== "configuration"
+    ) {
+      setPendingSettingsNavigation(nextView);
+      return;
+    }
+    commitActiveView(nextView);
+  };
+  const finishSettingsNavigation = () => {
+    if (pendingSettingsNavigation) commitActiveView(pendingSettingsNavigation);
+    setPendingSettingsNavigation("");
+    setSettingsDirty(false);
+  };
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1626,6 +1644,11 @@ const Dashboard = ({
             onSaveChanges={handleSaveConfiguration}
             onUnauthorized={onLogout}
             systemInfoState={systemInfoState}
+            pendingNavigation={pendingSettingsNavigation}
+            onDirtyStateChange={setSettingsDirty}
+            onCancelNavigation={() => setPendingSettingsNavigation("")}
+            onDiscardAndNavigate={finishSettingsNavigation}
+            onSaveAndNavigate={finishSettingsNavigation}
           />
         )}
       </main>
