@@ -29,6 +29,7 @@ import {
   maskChartRows,
 } from "../utils/privacy";
 import { dashboardChartPalette } from "../theme/chartTheme";
+import ConfirmationDialog from "../components/ConfirmationDialog";
 
 const parseRupiahInput = (value) => (
   Number(String(value || "").replace(/\D/g, ""))
@@ -175,6 +176,7 @@ const BudgetingAlerts = ({
   const [newAmount, setNewAmount] = useState("");
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [isMobileChart, setIsMobileChart] = useState(() => (
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 767px)").matches
@@ -427,19 +429,12 @@ const BudgetingAlerts = ({
       return;
     }
 
-    const confirmed = window.confirm(
-      "Hapus budget kategori ini?\n\nBudget akan dihapus tetapi transaksi tetap tersimpan."
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
     try {
       setSavingKey(item.category);
       setError("");
       await deleteBudget(budgetId);
       await refreshBudgeting();
+      setPendingDelete(null);
     } catch (err) {
       console.error("Failed to delete budget.");
       setError(err?.response?.data?.detail || "Budget belum berhasil dihapus.");
@@ -453,17 +448,12 @@ const BudgetingAlerts = ({
       return;
     }
 
-    const message = "Reset seluruh budget periode ini?\n\nBudget akan dihapus.\n\nTransaksi tetap aman dan tidak akan dihapus.";
-
-    if (!window.confirm(message)) {
-      return;
-    }
-
     try {
       setSavingKey("delete-all-budgets");
       setError("");
       await deleteBudgetsByPeriod(Number(selectedYear), Number(selectedMonth));
       await refreshBudgeting();
+      setPendingDelete(null);
     } catch (err) {
       console.error("Failed to delete budgets by period.");
       setError(err?.response?.data?.detail || "Semua budget belum berhasil dihapus.");
@@ -792,18 +782,18 @@ const BudgetingAlerts = ({
             </p>
             <button
               type="button"
-              onClick={handleDeleteAllBudgets}
+              onClick={() => setPendingDelete({ type: "all" })}
               disabled={!hasSavedBudgets || savingKey === "delete-all-budgets"}
               className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
             >
-              Reset Budget Bulan Ini
+              Hapus Anggaran Bulan Ini
             </button>
           </div>
         </div>
 
         {categories.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-muted">
-            Belum ada budget atau transaksi expense untuk bulan ini.
+            Belum ada anggaran atau transaksi Pengeluaran untuk bulan ini. Tambahkan anggaran pada form di atas untuk mulai memantau batas pengeluaran.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-[var(--color-border)]">
@@ -835,7 +825,7 @@ const BudgetingAlerts = ({
               const rowActions = canDeleteBudget ? (
                 <button
                   type="button"
-                  onClick={() => handleDeleteCategory(item)}
+                  onClick={() => setPendingDelete({ type: "category", item })}
                   disabled={isSaving}
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
                   aria-label={`Hapus budget ${item.category}`}
@@ -1138,6 +1128,18 @@ const BudgetingAlerts = ({
           </div>
         )}
       </section>
+
+      <ConfirmationDialog
+        open={Boolean(pendingDelete)}
+        title={pendingDelete?.type === "all" ? "Hapus semua anggaran bulan ini?" : `Hapus anggaran ${pendingDelete?.item?.category || "ini"}?`}
+        description="Tindakan ini menghapus anggaran tersimpan untuk periode yang dipilih."
+        affectedItems={pendingDelete?.type === "all" ? ["Semua anggaran pada periode ini"] : ["Anggaran kategori yang dipilih"]}
+        safeItems={["Seluruh transaksi Pemasukan dan Pengeluaran", "Data Google Sheet", "Anggaran periode lain"]}
+        confirmLabel="Hapus Anggaran"
+        isLoading={savingKey === "delete-all-budgets" || Boolean(pendingDelete?.item && savingKey === pendingDelete.item.category)}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => pendingDelete?.type === "all" ? handleDeleteAllBudgets() : handleDeleteCategory(pendingDelete.item)}
+      />
     </div>
   );
 };

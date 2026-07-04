@@ -638,7 +638,7 @@ const Search = ({
         return;
       }
 
-      setError(err?.response?.data?.detail || "Search is not available.");
+      setError("Pencarian belum dapat dilakukan. Periksa koneksi, lalu coba lagi.");
     } finally {
       setLoading(false);
     }
@@ -814,7 +814,7 @@ const Search = ({
       <form onSubmit={handleSubmit} className="panel rounded-lg p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row">
           <label className="relative min-w-0 flex-1">
-            <span className="sr-only">Search query</span>
+            <span className="sr-only">Kata kunci transaksi</span>
             <SearchIcon
               size={18}
               className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-subtle"
@@ -839,7 +839,7 @@ const Search = ({
             disabled={!isQueryValid || loading}
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : <SearchIcon size={18} />}
-            Search
+            Cari Transaksi
           </button>
         </div>
 
@@ -861,7 +861,7 @@ const Search = ({
       {recentSearches.length > 0 && (
         <section className="panel rounded-lg p-4 sm:p-5">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
-            Recent Search
+            Pencarian Terakhir
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {recentSearches.map((recentSearch) => (
@@ -884,7 +884,7 @@ const Search = ({
       )}
 
       {error && (
-        <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">
+        <div role="alert" className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm font-semibold text-[var(--color-danger)]">
           {error}
         </div>
       )}

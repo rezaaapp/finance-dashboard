@@ -46,6 +46,7 @@ import { PRIVACY_MODES } from "../utils/privacy";
 import { getActiveWorkspaceId } from "../api/workspaceContext";
 import SystemInfoPanel from "../components/environment/SystemInfoPanel";
 import ImportResultDetailsModal from "../components/import/ImportResultDetailsModal";
+import ConfirmationDialog from "../components/ConfirmationDialog";
 import { factoryResetWorkspaceData } from "../api/workspaceResetApi";
 import {
   changedValues,
@@ -302,6 +303,8 @@ const Configuration = ({
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  const [insightResetConfirmOpen, setInsightResetConfirmOpen] = useState(false);
   const [isLoadingGoogleConnection, setIsLoadingGoogleConnection] = useState(true);
   const [isLoadingSources, setIsLoadingSources] = useState(false);
   const [isTestingSource, setIsTestingSource] = useState(false);
@@ -710,7 +713,7 @@ const Configuration = ({
       }
       setSavedConfiguration(draftConfiguration);
       setShowSaved(true);
-      setNotification({ type: "success", title: "Configuration saved", message: "Configuration saved successfully." });
+      setNotification({ type: "success", title: "Perubahan tersimpan", message: "Semua perubahan berhasil disimpan." });
       return true;
     } catch (err) {
       console.error("Failed to save configuration.");
@@ -950,17 +953,10 @@ const Configuration = ({
   };
 
   const handleResetInsightThresholds = () => {
-    const shouldReset = window.confirm(
-      "Load default insight severity values? Click Save Settings afterward to apply them."
-    );
-
-    if (!shouldReset) {
-      return;
-    }
-
+    setInsightResetConfirmOpen(false);
     setInsightThresholds(settingsToForm(defaultInsightThresholds));
     setInsightThresholdError("");
-    setInsightThresholdSuccess("Default values loaded. Click Save Settings to apply.");
+    setInsightThresholdSuccess("Nilai default dimuat. Klik Save Changes untuk menyimpannya.");
   };
 
   const handleConnectGoogle = async () => {
@@ -1009,9 +1005,10 @@ const Configuration = ({
       setGoogleConnection(response || { connected: false });
       setNotification({
         type: "success",
-        title: "Google disconnected",
-        message: "Google account access has been disconnected.",
+        title: "Google berhasil diputuskan",
+        message: "Akses akun Google telah diputuskan. Data Omon dan konfigurasi source tetap aman.",
       });
+      setDisconnectConfirmOpen(false);
     } catch (err) {
       console.error("Failed to sync Google Sheet source.");
 
@@ -1026,8 +1023,8 @@ const Configuration = ({
       setGoogleConnectionError(message);
       setNotification({
         type: "error",
-        title: "Disconnect failed",
-        message,
+        title: "Disconnect gagal",
+        message: "Akses Google belum dapat diputuskan. Silakan coba lagi.",
       });
     } finally {
       setIsDisconnectingGoogle(false);
@@ -1319,7 +1316,7 @@ const Configuration = ({
 
               <button
                 type="button"
-                onClick={handleDisconnectGoogle}
+                onClick={() => setDisconnectConfirmOpen(true)}
                 disabled={
                   isLoadingGoogleConnection
                   || isDisconnectingGoogle
@@ -1518,7 +1515,7 @@ const Configuration = ({
 
                   {isLoadingSources ? (
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-                      Loading sources...
+                      Memuat source...
                     </div>
                   ) : googleSheetSources.length > 0 ? (
                     <ul className="space-y-3">
@@ -1702,7 +1699,7 @@ const Configuration = ({
                     </ul>
                   ) : (
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-                      No Google Sheet sources saved yet. Add a source above, then run Sync Now to populate the dashboard.
+                      Belum ada source tersimpan. Tambahkan URL spreadsheet, jalankan Test Connection, pilih Save Source, lalu Sync Now untuk mengisi Dashboard.
                     </div>
                   )}
                 </div>
@@ -1917,7 +1914,7 @@ const Configuration = ({
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={handleResetInsightThresholds}
+                  onClick={() => setInsightResetConfirmOpen(true)}
                   disabled={isSaving}
                   className="secondary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -1996,7 +1993,7 @@ const Configuration = ({
               </ul>
             ) : (
               <p className="text-sm text-muted">
-                Belum ada member di workspace ini.
+                Belum ada member lain di workspace ini. Gunakan form di atas untuk mengirim undangan pertama.
               </p>
             )}
           </div>
@@ -2048,7 +2045,7 @@ const Configuration = ({
               </ul>
             ) : (
               <p className="text-sm text-muted">
-                No pending invitations.
+                Tidak ada undangan yang sedang menunggu.
               </p>
             )}
           </div>
@@ -2066,8 +2063,8 @@ const Configuration = ({
     {hasDirtySettings && (
       <div className="fixed inset-x-4 bottom-20 z-[70] mx-auto max-w-3xl animate-[fadeIn_180ms_ease-out] rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-xl lg:bottom-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="font-bold text-main">You have unsaved changes</p><p className="text-sm text-muted">{dirtySummary.count} {dirtySummary.count === 1 ? "setting" : "settings"} modified</p></div>
-          <div className="flex gap-2"><button type="button" onClick={handleDiscard} disabled={isSaving} className="secondary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">Discard</button><button type="button" onClick={handleSave} disabled={isSaving || Boolean(insightValidationError && dirtySummary.insightFields.length)} className="primary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">{isSaving && <LoaderCircle size={16} className="animate-spin" />}{isSaving ? "Saving..." : "Save Changes"}</button></div>
+          <div><p className="font-bold text-main">Ada perubahan yang belum disimpan</p><p className="text-sm text-muted">{dirtySummary.count} pengaturan telah diubah</p></div>
+          <div className="flex gap-2"><button type="button" onClick={handleDiscard} disabled={isSaving} className="secondary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">Batalkan Perubahan</button><button type="button" onClick={handleSave} disabled={isSaving || Boolean(insightValidationError && dirtySummary.insightFields.length)} className="primary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">{isSaving && <LoaderCircle size={16} className="animate-spin" />}{isSaving ? "Menyimpan..." : "Save Changes"}</button></div>
         </div>
       </div>
     )}
@@ -2101,6 +2098,27 @@ const Configuration = ({
         </div>
       </div>
     )}
+    <ConfirmationDialog
+      open={disconnectConfirmOpen}
+      title="Disconnect akun Google?"
+      description="Omon tidak akan dapat melakukan Sync Now sampai akun Google dihubungkan kembali."
+      affectedItems={["Akses Omon ke akun Google akan diputuskan", "Sinkronisasi baru tidak dapat dijalankan"]}
+      safeItems={["Data yang sudah tersimpan di Omon", "Google Sheet asli", "Source dan konfigurasi workspace"]}
+      confirmLabel="Disconnect"
+      isLoading={isDisconnectingGoogle}
+      onCancel={() => setDisconnectConfirmOpen(false)}
+      onConfirm={handleDisconnectGoogle}
+    />
+    <ConfirmationDialog
+      open={insightResetConfirmOpen}
+      title="Muat nilai insight default?"
+      description="Nilai default hanya dimuat ke form dan belum disimpan sampai kamu memilih Save Changes."
+      affectedItems={["Perubahan insight yang belum disimpan akan diganti"]}
+      safeItems={["Pengaturan tersimpan tetap aman sampai Save Changes dipilih"]}
+      confirmLabel="Muat Nilai Default"
+      onCancel={() => setInsightResetConfirmOpen(false)}
+      onConfirm={handleResetInsightThresholds}
+    />
   </div>
   );
 };

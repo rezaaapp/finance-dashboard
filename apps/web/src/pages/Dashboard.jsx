@@ -541,7 +541,7 @@ const Dashboard = ({
         return;
       }
 
-      setError("Failed to refresh dashboard data.");
+      setError("Dashboard belum dapat diperbarui. Periksa koneksi, lalu coba lagi.");
     } finally {
       setLoading(false);
     }
@@ -602,7 +602,7 @@ const Dashboard = ({
         return;
       }
 
-      setError("Failed to fetch dashboard data.");
+      setError("Data Dashboard belum dapat dimuat. Periksa koneksi, lalu coba lagi.");
     } finally {
       setFinancialInsightsLoading(false);
       setLoading(false);
@@ -686,7 +686,7 @@ const Dashboard = ({
         return;
       }
 
-      setError("Failed to load available years.");
+      setError("Dashboard belum dapat disiapkan. Periksa koneksi, lalu coba lagi.");
     } finally {
       setLoading(false);
     }
@@ -816,8 +816,12 @@ const Dashboard = ({
   // =========================
   if (loading) {
     return (
-      <div className="dashboard-screen h-screen flex items-center justify-center text-2xl">
-        Loading Dashboard...
+      <div className="dashboard-screen flex min-h-screen items-center justify-center p-6" role="status" aria-live="polite">
+        <div className="panel w-full max-w-md rounded-2xl p-8 text-center shadow-lg">
+          <RefreshCw size={28} className="mx-auto animate-spin text-accent" />
+          <h1 className="mt-4 text-2xl font-bold text-main">Belum ada namanya</h1>
+          <p className="mt-2 text-sm text-muted">Omon sedang menyiapkan Dashboard kamu...</p>
+        </div>
       </div>
     );
   }
@@ -827,8 +831,16 @@ const Dashboard = ({
   // =========================
   if (error) {
     return (
-      <div className="dashboard-screen h-screen flex items-center justify-center text-red-500 text-xl">
-        {error}
+      <div className="dashboard-screen flex min-h-screen items-center justify-center p-6" role="alert">
+        <div className="panel w-full max-w-lg rounded-2xl p-8 text-center shadow-lg">
+          <h1 className="text-2xl font-bold text-main">Dashboard belum dapat dibuka</h1>
+          <p className="mt-3 text-sm leading-6 text-muted">{error}</p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button type="button" onClick={() => { setError(""); loadInitialData(); }} className="primary-button rounded-xl px-5 py-2.5 font-bold">Coba Lagi</button>
+            <button type="button" onClick={() => { setError(""); commitActiveView("configuration"); }} className="secondary-button rounded-xl px-5 py-2.5 font-bold">Buka Settings</button>
+            <button type="button" onClick={onLogout} className="secondary-button rounded-xl px-5 py-2.5 font-bold">Logout</button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1239,7 +1251,7 @@ const Dashboard = ({
             </h1>
 
             <p className="text-muted mt-1 text-sm sm:text-base">
-              Apa atuh ya namanya? 🥲
+              Ringkasan keuanganmu dalam satu tempat.
             </p>
 
             <EnvironmentBadge systemInfoState={systemInfoState} />

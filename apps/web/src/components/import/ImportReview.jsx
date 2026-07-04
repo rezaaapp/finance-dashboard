@@ -7,6 +7,7 @@ import {
   Search,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import ConfirmationDialog from "../ConfirmationDialog";
 
 const formatAmount = (amount) => new Intl.NumberFormat("id-ID", {
   style: "currency",
@@ -90,6 +91,7 @@ const ImportReview = ({
   ));
   const [searchTerm, setSearchTerm] = useState("");
   const [actionLoading, setActionLoading] = useState("");
+  const [rejectConfirmOpen, setRejectConfirmOpen] = useState(false);
 
   const normalizedCategoryOptions = useMemo(() => {
     const options = new Set();
@@ -239,6 +241,7 @@ const ImportReview = ({
         draft_ids: selectedIds,
         item_updates: [],
       });
+      setRejectConfirmOpen(false);
     } finally {
       setActionLoading("");
     }
@@ -555,7 +558,7 @@ const ImportReview = ({
                   disabled={isActionLoading}
                   className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)]"
                 >
-                  {allFilteredSelected ? "Hapus Pilihan" : "Pilih Semua"}
+                  {allFilteredSelected ? "Batalkan Pilihan" : "Pilih Semua"}
                 </button>
                 <button
                   type="button"
@@ -563,15 +566,15 @@ const ImportReview = ({
                   disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Setujui & Simpan di Omon"}
+                  {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Simpan ke Omon"}
                 </button>
                 <button
                   type="button"
-                  onClick={handleRejectSelected}
+                  onClick={() => setRejectConfirmOpen(true)}
                   disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="inline-flex min-h-11 items-center justify-center rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
                 >
-                  {actionLoading === "reject-selected" ? "Menolak..." : "Tolak Pilihan"}
+                  Tolak
                 </button>
               </div>
             </div>
@@ -603,8 +606,9 @@ const ImportReview = ({
               </div>
             </div>
           ) : filteredRows.length === 0 ? (
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-5 text-sm text-muted">
-              Tidak ada transaksi baru yang perlu direview untuk filter ini.
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-5 text-center text-sm text-muted">
+              <p>Tidak ditemukan transaksi untuk filter atau pencarian ini.</p>
+              <button type="button" onClick={() => { setActiveFilter("all"); setSearchTerm(""); }} className="secondary-button mt-4 rounded-lg px-4 py-2 font-semibold">Clear Filter</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -718,6 +722,17 @@ const ImportReview = ({
             </div>
           )}
         </section>
+        <ConfirmationDialog
+          open={rejectConfirmOpen}
+          title={`Tolak ${selectedIds.length} transaksi?`}
+          description="Transaksi yang ditolak akan dikeluarkan dari Review ini dan tidak disimpan ke Omon."
+          affectedItems={[`${selectedIds.length} transaksi akan ditandai ditolak`, "Transaksi tidak akan disimpan ke Omon atau dikirim ke Google Sheet"]}
+          safeItems={["Transaksi lain di Review", "Data yang sudah tersimpan di Omon", "Google Sheet asli"]}
+          confirmLabel="Tolak"
+          isLoading={actionLoading === "reject-selected"}
+          onCancel={() => setRejectConfirmOpen(false)}
+          onConfirm={handleRejectSelected}
+        />
     </div>
   );
 };
