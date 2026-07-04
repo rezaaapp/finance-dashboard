@@ -13,7 +13,7 @@ import {
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   getWorkspaceConfiguration,
@@ -46,6 +46,12 @@ import { PRIVACY_MODES } from "../utils/privacy";
 import { getActiveWorkspaceId } from "../api/workspaceContext";
 import SystemInfoPanel from "../components/environment/SystemInfoPanel";
 import ImportResultDetailsModal from "../components/import/ImportResultDetailsModal";
+import { factoryResetWorkspaceData } from "../api/workspaceResetApi";
+import {
+  changedValues,
+  dirtySettingsSummary,
+  SETTINGS_FIELDS,
+} from "../utils/settingsDirtyState";
 
 const privacyOptions = [
   { label: "Normal", value: PRIVACY_MODES.normal },
@@ -274,10 +280,20 @@ const Configuration = ({
   onSaveChanges,
   onUnauthorized,
   systemInfoState,
+  pendingNavigation,
+  onDirtyStateChange,
+  onCancelNavigation,
+  onDiscardAndNavigate,
+  onSaveAndNavigate,
 }) => {
   const [draftAutoBudget, setDraftAutoBudget] = useState(autoBudget);
   const [draftPaydayStartDay, setDraftPaydayStartDay] = useState(paydayStartDay);
   const [draftPrivacyMode, setDraftPrivacyMode] = useState(privacyMode);
+  const [savedConfiguration, setSavedConfiguration] = useState({
+    payday_start_day: paydayStartDay,
+    auto_budget: autoBudget,
+    privacy_mode: privacyMode,
+  });
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
   const [workspaceRole, setWorkspaceRole] = useState("");
@@ -293,6 +309,8 @@ const Configuration = ({
   const [syncingSourceId, setSyncingSourceId] = useState("");
   const [resettingSourceId, setResettingSourceId] = useState("");
   const [resetSource, setResetSource] = useState(null);
+  const [factoryResetOpen, setFactoryResetOpen] = useState(false);
+  const [isFactoryResetting, setIsFactoryResetting] = useState(false);
   const [isInvitingMember, setIsInvitingMember] = useState(false);
   const [cancelingInvitationId, setCancelingInvitationId] = useState("");
   const [, setIsLoadingWorkspaceConfiguration] = useState(true);
@@ -314,8 +332,10 @@ const Configuration = ({
   const [insightThresholds, setInsightThresholds] = useState(
     settingsToForm(defaultInsightThresholds)
   );
+  const [savedInsightThresholds, setSavedInsightThresholds] = useState(
+    settingsToForm(defaultInsightThresholds)
+  );
   const [isLoadingInsightThresholds, setIsLoadingInsightThresholds] = useState(false);
-  const [isSavingInsightThresholds, setIsSavingInsightThresholds] = useState(false);
   const [insightThresholdError, setInsightThresholdError] = useState("");
   const [insightThresholdSuccess, setInsightThresholdSuccess] = useState("");
   const canInviteMembers = (
@@ -388,6 +408,33 @@ const Configuration = ({
   }, []);
 
   const insightValidationError = validateInsightThresholds(insightThresholds);
+  const draftConfiguration = useMemo(() => ({
+    payday_start_day: draftPaydayStartDay,
+    auto_budget: draftAutoBudget,
+    privacy_mode: draftPrivacyMode,
+  }), [draftAutoBudget, draftPaydayStartDay, draftPrivacyMode]);
+  const dirtySummary = useMemo(() => dirtySettingsSummary({
+    configuration: draftConfiguration,
+    savedConfiguration,
+    insights: insightThresholds,
+    savedInsights: savedInsightThresholds,
+  }), [draftConfiguration, insightThresholds, savedConfiguration, savedInsightThresholds]);
+  const hasDirtySettings = dirtySummary.count > 0;
+
+  useEffect(() => {
+    onDirtyStateChange?.(hasDirtySettings);
+    return () => onDirtyStateChange?.(false);
+  }, [hasDirtySettings, onDirtyStateChange]);
+
+  useEffect(() => {
+    if (!hasDirtySettings) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasDirtySettings]);
 
   const loadInsightThresholds = useCallback(async () => {
     try {
@@ -396,13 +443,15 @@ const Configuration = ({
 
       const response = await getInsightThresholds();
 
-      setInsightThresholds(settingsToForm(response || defaultInsightThresholds));
+      const loadedThresholds = settingsToForm(response || defaultInsightThresholds);
+      setInsightThresholds(loadedThresholds);
+      setSavedInsightThresholds(loadedThresholds);
     } catch (err) {
       console.error("Failed to load insight thresholds.");
 
       if (err?.response?.status === 401) {
         onUnauthorized();
-        return;
+        return false;
       }
 
       setInsightThresholdError("Insight severity settings are not available.");
@@ -435,14 +484,17 @@ const Configuration = ({
 
   useEffect(() => {
     setDraftAutoBudget(autoBudget);
+    setSavedConfiguration((current) => ({ ...current, auto_budget: autoBudget }));
   }, [autoBudget]);
 
   useEffect(() => {
     setDraftPaydayStartDay(paydayStartDay);
+    setSavedConfiguration((current) => ({ ...current, payday_start_day: paydayStartDay }));
   }, [paydayStartDay]);
 
   useEffect(() => {
     setDraftPrivacyMode(privacyMode);
+    setSavedConfiguration((current) => ({ ...current, privacy_mode: privacyMode }));
   }, [privacyMode]);
 
   useEffect(() => {
@@ -626,33 +678,40 @@ const Configuration = ({
   }, [loadGoogleSheetSources]);
 
   const handleSave = async () => {
+    if (!hasDirtySettings) return true;
+    if (dirtySummary.insightFields.length > 0 && insightValidationError) {
+      setInsightThresholdError(insightValidationError);
+      return false;
+    }
     try {
       setIsSaving(true);
       setNotification(null);
       setWorkspaceConfigurationError("");
 
-      const payload = {
-        year: selectedYear,
-        payday_start_day: draftPaydayStartDay,
-        auto_budget: draftAutoBudget,
-        privacy_mode: draftPrivacyMode,
-      };
-
-      const response = await saveConfiguration(payload);
-
-      if (response?.status === "ok") {
+      const changedConfiguration = changedValues(
+        draftConfiguration,
+        savedConfiguration,
+        SETTINGS_FIELDS
+      );
+      if (dirtySummary.configurationFields.length > 0) {
+        const response = await saveConfiguration({ year: selectedYear, ...changedConfiguration });
+        if (response?.status !== "ok") return false;
         onSaveChanges({
           paydayStartDay: draftPaydayStartDay,
           autoBudget: draftAutoBudget,
           privacyMode: draftPrivacyMode,
         });
-        setShowSaved(true);
-        setNotification({
-          type: "success",
-          title: "Configuration saved",
-          message: "Financial cycle, budgeting, and privacy settings were saved.",
-        });
       }
+      if (dirtySummary.insightFields.length > 0) {
+        const response = await updateInsightThresholds(formToPayload(insightThresholds));
+        const savedThresholds = settingsToForm(response || insightThresholds);
+        setInsightThresholds(savedThresholds);
+        setSavedInsightThresholds(savedThresholds);
+      }
+      setSavedConfiguration(draftConfiguration);
+      setShowSaved(true);
+      setNotification({ type: "success", title: "Configuration saved", message: "Configuration saved successfully." });
+      return true;
     } catch (err) {
       console.error("Failed to save configuration.");
 
@@ -674,9 +733,19 @@ const Configuration = ({
         title: "Google Sheet ID gagal",
         message,
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleDiscard = () => {
+    setDraftPaydayStartDay(savedConfiguration.payday_start_day);
+    setDraftAutoBudget(savedConfiguration.auto_budget);
+    setDraftPrivacyMode(savedConfiguration.privacy_mode);
+    setInsightThresholds(savedInsightThresholds);
+    setInsightThresholdError("");
+    setInsightThresholdSuccess("");
   };
 
   const handleTestGoogleSheetSource = async () => {
@@ -859,42 +928,24 @@ const Configuration = ({
     }
   };
 
-  const handleSaveInsightThresholds = async () => {
-    const validationMessage = validateInsightThresholds(insightThresholds);
-
-    if (validationMessage) {
-      setInsightThresholdError(validationMessage);
-      return;
-    }
-
+  const handleFactoryResetWorkspace = async () => {
     try {
-      setIsSavingInsightThresholds(true);
-      setInsightThresholdError("");
-      setInsightThresholdSuccess("");
-
-      const response = await updateInsightThresholds(
-        formToPayload(insightThresholds)
-      );
-
-      setInsightThresholds(settingsToForm(response || {
-        ...defaultInsightThresholds,
-        source: "workspace",
-      }));
-      setInsightThresholdSuccess("Insight severity settings saved.");
+      setIsFactoryResetting(true);
+      const response = await factoryResetWorkspaceData();
+      setFactoryResetOpen(false);
+      setNotification({
+        type: "success",
+        title: "Workspace data reset",
+        message: `${Object.values(response.deleted || {}).reduce((sum, count) => sum + Number(count || 0), 0)} operational rows deleted. Identity and integrations were preserved.`,
+      });
     } catch (err) {
-      console.error("Failed to disconnect Google account.");
-
-      if (err?.response?.status === 401) {
-        onUnauthorized();
-        return;
-      }
-
-      setInsightThresholdError(
-        err?.response?.data?.detail
-        || "Insight severity settings could not be saved."
-      );
+      setNotification({
+        type: "error",
+        title: "Factory reset failed",
+        message: err?.response?.data?.detail || "Workspace data could not be reset.",
+      });
     } finally {
-      setIsSavingInsightThresholds(false);
+      setIsFactoryResetting(false);
     }
   };
 
@@ -1074,7 +1125,7 @@ const Configuration = ({
   };
 
   return (
-  <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden">
+  <div className={`mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden ${hasDirtySettings ? "pb-28" : ""}`}>
     {notification && (
       <div
         className={`fixed right-4 top-4 z-[80] flex w-[calc(100vw-2rem)] max-w-sm items-start gap-3 rounded-lg border px-4 py-3 shadow-lg ${
@@ -1105,10 +1156,10 @@ const Configuration = ({
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         <h1 className="text-2xl font-bold text-main sm:text-3xl">
-          Configuration
+          Settings
         </h1>
         <p className="mt-1 text-sm text-muted sm:text-base">
-          Centralized settings for financial cycles, budgeting behavior, and integrations.
+          Persistent configuration and immediate workspace actions, clearly separated.
         </p>
       </div>
 
@@ -1119,15 +1170,12 @@ const Configuration = ({
         aria-live="polite"
       >
         <CheckCircle2 size={16} />
-        All changes saved to Google Sheets
+          All configuration changes saved
       </div>
     </div>
 
-    <div className="mt-6">
-      <SystemInfoPanel systemInfoState={systemInfoState} />
-    </div>
-
-    <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="mt-6"><p className="text-xs font-bold uppercase tracking-wider text-muted">Configuration</p></div>
+    <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-2">
       <ConfigurationCard
         icon={CalendarDays}
         title="Financial Cycle Settings"
@@ -1198,7 +1246,7 @@ const Configuration = ({
 
       <ConfigurationCard
         icon={Link2}
-        title="System & Integration"
+        title="Integrations — Google Account & Sources"
         description="Workspace-level Google Sheets source and account controls."
         className="lg:col-span-2"
       >
@@ -1728,28 +1776,28 @@ const Configuration = ({
                     helperText="Warning when Need spending reaches this percentage of total expense."
                     valuePercent={insightThresholds.need_warning_ratio}
                     onChangePercent={(value) => updateInsightField("need_warning_ratio", value)}
-                    disabled={isSavingInsightThresholds}
+                    disabled={isSaving}
                   />
                   <ThresholdSlider
                     label="Need danger threshold"
                     helperText="Danger when Need spending reaches this percentage of total expense."
                     valuePercent={insightThresholds.need_danger_ratio}
                     onChangePercent={(value) => updateInsightField("need_danger_ratio", value)}
-                    disabled={isSavingInsightThresholds}
+                    disabled={isSaving}
                   />
                   <ThresholdSlider
                     label="Want warning threshold"
                     helperText="Warning when Want spending reaches this percentage of total expense."
                     valuePercent={insightThresholds.want_warning_ratio}
                     onChangePercent={(value) => updateInsightField("want_warning_ratio", value)}
-                    disabled={isSavingInsightThresholds}
+                    disabled={isSaving}
                   />
                   <ThresholdSlider
                     label="Want danger threshold"
                     helperText="Danger when Want spending reaches this percentage of total expense."
                     valuePercent={insightThresholds.want_danger_ratio}
                     onChangePercent={(value) => updateInsightField("want_danger_ratio", value)}
-                    disabled={isSavingInsightThresholds}
+                    disabled={isSaving}
                   />
                 </div>
               </div>
@@ -1764,14 +1812,14 @@ const Configuration = ({
                     helperText="Warning when Saving allocation is below this percentage of income."
                     valuePercent={insightThresholds.saving_warning_ratio}
                     onChangePercent={(value) => updateInsightField("saving_warning_ratio", value)}
-                    disabled={isSavingInsightThresholds}
+                    disabled={isSaving}
                   />
                   <ThresholdSlider
                     label="Saving good threshold"
                     helperText="Positive when Saving allocation reaches this percentage of income."
                     valuePercent={insightThresholds.saving_good_ratio}
                     onChangePercent={(value) => updateInsightField("saving_good_ratio", value)}
-                    disabled={isSavingInsightThresholds}
+                    disabled={isSaving}
                   />
                 </div>
               </div>
@@ -1806,7 +1854,7 @@ const Configuration = ({
                           step="1"
                           value={insightThresholds[field]}
                           onChange={(event) => updateInsightField(field, event.target.value)}
-                          disabled={isSavingInsightThresholds}
+                          disabled={isSaving}
                           className="form-control mt-3 w-full rounded-xl px-3 py-2 text-sm"
                         />
                       </label>
@@ -1843,7 +1891,7 @@ const Configuration = ({
                           step="0.1"
                           value={insightThresholds[field]}
                           onChange={(event) => updateInsightField(field, event.target.value)}
-                          disabled={isSavingInsightThresholds}
+                          disabled={isSaving}
                           className="form-control mt-3 w-full rounded-xl px-3 py-2 text-sm"
                         />
                       </label>
@@ -1870,24 +1918,10 @@ const Configuration = ({
                 <button
                   type="button"
                   onClick={handleResetInsightThresholds}
-                  disabled={isSavingInsightThresholds}
+                  disabled={isSaving}
                   className="secondary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Reset to Defaults
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveInsightThresholds}
-                  disabled={
-                    isSavingInsightThresholds
-                    || Boolean(insightValidationError)
-                  }
-                  className="primary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingInsightThresholds && (
-                    <LoaderCircle size={16} className="animate-spin" />
-                  )}
-                  {isSavingInsightThresholds ? "Saving..." : "Save Settings"}
                 </button>
               </div>
             </>
@@ -2022,17 +2056,29 @@ const Configuration = ({
       </ConfigurationCard>
     </div>
 
-    <div className="mt-8 flex justify-stretch sm:justify-end">
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={isSaving}
-        className="primary-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-2.5 font-medium shadow-sm disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-      >
-        {isSaving && <LoaderCircle size={16} className="animate-spin" />}
-        {isSaving ? "Saving..." : "Save Changes"}
-      </button>
-    </div>
+    {systemInfoState?.data?.appEnv === "local-dev" && (
+      <div className="mt-8">
+        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Developer</p>
+        <SystemInfoPanel systemInfoState={systemInfoState} />
+        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5 dark:border-red-400/20 dark:bg-red-500/10"><h3 className="font-bold text-main">Factory Reset Workspace Data</h3><p className="mt-2 text-sm leading-6 text-muted">Deletes operational data in this workspace only. User identity, membership, OAuth, and Google Sheet configuration remain.</p><button type="button" onClick={() => setFactoryResetOpen(true)} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white">Factory Reset Workspace Data</button></div>
+      </div>
+    )}
+    {hasDirtySettings && (
+      <div className="fixed inset-x-4 bottom-20 z-[70] mx-auto max-w-3xl animate-[fadeIn_180ms_ease-out] rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-xl lg:bottom-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="font-bold text-main">You have unsaved changes</p><p className="text-sm text-muted">{dirtySummary.count} {dirtySummary.count === 1 ? "setting" : "settings"} modified</p></div>
+          <div className="flex gap-2"><button type="button" onClick={handleDiscard} disabled={isSaving} className="secondary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">Discard</button><button type="button" onClick={handleSave} disabled={isSaving || Boolean(insightValidationError && dirtySummary.insightFields.length)} className="primary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">{isSaving && <LoaderCircle size={16} className="animate-spin" />}{isSaving ? "Saving..." : "Save Changes"}</button></div>
+        </div>
+      </div>
+    )}
+    {pendingNavigation && (
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Unsaved Changes">
+        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Unsaved Changes</h2><p className="mt-3 text-sm leading-6 text-muted">You have unsaved configuration changes.</p><p className="mt-2 text-sm leading-6 text-muted">If you leave this page, those changes will be lost.</p><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={onCancelNavigation} className="secondary-button rounded-xl px-4 py-2 font-bold">Stay</button><button type="button" onClick={() => { handleDiscard(); onDiscardAndNavigate?.(); }} className="secondary-button rounded-xl px-4 py-2 font-bold text-red-600">Discard Changes</button><button type="button" onClick={async () => { if (await handleSave()) onSaveAndNavigate?.(); }} disabled={isSaving} className="primary-button rounded-xl px-4 py-2 font-bold">Save &amp; Leave</button></div></div>
+      </div>
+    )}
+    {factoryResetOpen && (
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Factory Reset Workspace Data"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Factory Reset Workspace Data</h2><div className="mt-4 space-y-3 text-sm leading-6 text-muted"><p>This will delete all Omon operational data for the current workspace, including transactions, import drafts, import history, fingerprints, budgets, and sync history.</p><p className="font-bold text-main">This will not delete or modify the original Google Sheet.</p><p>This will not delete your user, workspace, membership, OAuth connection, or Google Sheet configuration.</p></div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setFactoryResetOpen(false)} disabled={isFactoryResetting} className="secondary-button rounded-xl px-4 py-2 font-bold">Cancel</button><button type="button" onClick={handleFactoryResetWorkspace} disabled={isFactoryResetting} className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">{isFactoryResetting ? "Resetting..." : "Factory Reset Workspace Data"}</button></div></div></div>
+    )}
     {detailResult && (
       <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} />
     )}
