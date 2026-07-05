@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.scripts.run_migrations import apply_migration, select_migration_database_url
+from backend.scripts.run_migrations import (
+    apply_migration,
+    safe_error_message,
+    select_migration_database_url,
+)
 
 
 class FakeTransaction:
@@ -154,6 +158,59 @@ class MigrationRunnerTestCase(unittest.TestCase):
         selected = select_migration_database_url(environment)
 
         self.assertEqual(environment["SUPABASE_MIGRATION_DATABASE_URL"], selected)
+
+    def test_safe_diagnostic_exposes_connectivity_message_without_credentials(self):
+        database_url = (
+            "postgresql://sensitive-user:sensitive-password@"
+            "db.projectref.supabase.co:5432/postgres"
+        )
+        underlying = OSError("Network unreachable")
+        error = RuntimeError(
+            'password authentication failed for user "sensitive-user"'
+        )
+        error.__cause__ = underlying
+
+        message = safe_error_message(
+            "Migration runner",
+            error,
+            database_url=database_url,
+            environment={
+                "DATABASE_SSL": "true",
+                "DATABASE_SSL_REJECT_UNAUTHORIZED": "true",
+            },
+        )
+
+        self.assertIn("Migration host: db***.supabase.co", message)
+        self.assertIn("Migration port: 5432", message)
+        self.assertIn("SSL enabled: yes", message)
+        self.assertIn("SSL reject unauthorized: yes", message)
+        self.assertIn("Exception (RuntimeError)", message)
+        self.assertIn('password authentication failed for user "***"', message)
+        self.assertIn("Caused by 1 (OSError): Network unreachable", message)
+        self.assertNotIn("sensitive-user", message)
+        self.assertNotIn("sensitive-password", message)
+        self.assertNotIn(database_url, message)
+
+    def test_safe_diagnostic_redacts_dsn_style_credentials(self):
+        error = RuntimeError(
+            "connection failed user=postgres password=super-secret "
+            "host=db.projectref.supabase.co"
+        )
+
+        message = safe_error_message(
+            "Migration runner",
+            error,
+            database_url=(
+                "postgresql://postgres:super-secret@"
+                "db.projectref.supabase.co:5432/postgres"
+            ),
+            environment={},
+        )
+
+        self.assertIn("user=***", message)
+        self.assertIn("password=***", message)
+        self.assertNotIn("super-secret", message)
+        self.assertNotIn("user=postgres", message)
 
 
 if __name__ == "__main__":
