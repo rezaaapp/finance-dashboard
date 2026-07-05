@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
+import re
 import sys
+from urllib.parse import unquote, urlparse
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -18,11 +20,87 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 """
 
 
-def safe_error_message(action, error):
-    return (
-        f"{action} failed: {error.__class__.__name__}. "
-        "Details hidden to avoid exposing database connection information."
+def _env_bool(environment, key, default="true"):
+    return str(environment.get(key, default)).strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def _mask_host(host):
+    normalized = str(host or "").strip()
+    if not normalized:
+        return "(not configured)"
+    if normalized in {"localhost", "127.0.0.1", "::1"}:
+        return normalized
+
+    parts = normalized.split(".")
+    if len(parts) >= 3:
+        return f"{parts[0][:2]}***.{'.'.join(parts[-2:])}"
+    return "***"
+
+
+def _sanitize_exception_message(message, database_url=None):
+    sanitized = str(message or "").strip() or "(no message)"
+    parsed = urlparse(database_url or "")
+
+    if database_url:
+        sanitized = sanitized.replace(database_url, "<redacted-database-url>")
+    for credential in (parsed.username, parsed.password):
+        if credential:
+            sanitized = sanitized.replace(unquote(credential), "***")
+
+    sanitized = re.sub(
+        r"(?i)\b(user(?:name)?|password|passfile)\s*=\s*([^\s]+)",
+        r"\1=***",
+        sanitized,
     )
+    sanitized = re.sub(
+        r'(?i)\bfor user\s+["\']?[^"\'\s]+["\']?',
+        'for user "***"',
+        sanitized,
+    )
+    sanitized = re.sub(
+        r"(?i)(postgres(?:ql)?://)[^\s/@:]+(?::[^\s/@]*)?@",
+        r"\1***:***@",
+        sanitized,
+    )
+    return sanitized
+
+
+def _exception_chain(error):
+    chain = []
+    seen = set()
+    current = error
+    while current is not None and id(current) not in seen and len(chain) < 5:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def safe_error_message(action, error, database_url=None, environment=None):
+    configured = environment if environment is not None else os.environ
+    selected_url = database_url or select_migration_database_url(configured)
+    parsed = urlparse(selected_url or "")
+    try:
+        port = parsed.port or 5432
+    except ValueError:
+        port = "invalid"
+
+    lines = [
+        f"{action} failed.",
+        f"Migration host: {_mask_host(parsed.hostname)}",
+        f"Migration port: {port}",
+        f"SSL enabled: {'yes' if _env_bool(configured, 'DATABASE_SSL') else 'no'}",
+        "SSL reject unauthorized: "
+        + ("yes" if _env_bool(configured, "DATABASE_SSL_REJECT_UNAUTHORIZED") else "no"),
+    ]
+    for index, exception in enumerate(_exception_chain(error)):
+        label = "Exception" if index == 0 else f"Caused by {index}"
+        message = _sanitize_exception_message(exception, selected_url)
+        lines.append(f"{label} ({exception.__class__.__name__}): {message}")
+
+    return "\n".join(lines)
 
 
 def select_migration_database_url(environment=None):
