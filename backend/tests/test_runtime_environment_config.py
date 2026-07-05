@@ -2,6 +2,8 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 
 os.environ.setdefault("DASHBOARD_USERNAME", "admin")
@@ -14,11 +16,16 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+import app.config as config
 from app.config import validate_runtime_environment
 
 
 LOCAL_URL = "postgresql://postgres:secret@127.0.0.1:5432/finance_dashboard_local"
 SUPABASE_URL = "postgresql://postgres:secret@db.project.supabase.co:5432/postgres"
+SUPABASE_POOLER_URL = (
+    "postgresql://postgres.project:secret@aws-0-ap-southeast-1."
+    "pooler.supabase.com:6543/postgres"
+)
 
 
 class RuntimeEnvironmentConfigTestCase(unittest.TestCase):
@@ -41,8 +48,20 @@ class RuntimeEnvironmentConfigTestCase(unittest.TestCase):
     def test_uat_with_supabase_and_replit_port_passes(self):
         self.validate("uat", "supabase", 3127, SUPABASE_URL)
 
+    def test_uat_with_supabase_migration_url_passes(self):
+        migration_url = (
+            "postgresql://postgres:secret@db.uatproject.supabase.co:5432/postgres"
+        )
+        self.validate("uat", "supabase", 3127, migration_url)
+
+    def test_uat_with_supabase_pooler_passes(self):
+        self.validate("uat", "supabase", 3127, SUPABASE_POOLER_URL)
+
     def test_prod_with_supabase_passes(self):
         self.validate("prod", "supabase", 8443, SUPABASE_URL)
+
+    def test_local_prod_with_supabase_passes(self):
+        self.validate("local-prod", "supabase", 8001, SUPABASE_URL)
 
     def test_invalid_environment_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "APP_ENV"):
@@ -64,6 +83,25 @@ class RuntimeEnvironmentConfigTestCase(unittest.TestCase):
     def test_uat_requires_supabase_host(self):
         with self.assertRaisesRegex(ValueError, "database Supabase"):
             self.validate("uat", "supabase", 3127, LOCAL_URL)
+
+    def test_supabase_name_outside_official_host_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "database Supabase"):
+            self.validate(
+                "uat",
+                "supabase",
+                3127,
+                "postgresql://postgres:secret@supabase.example.com:5432/postgres",
+            )
+
+    def test_process_environment_wins_over_dotenv_override(self):
+        with TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env.uat"
+            dotenv_path.write_text("APP_ENV=local-prod\n", encoding="utf-8")
+            with patch.object(config, "PROCESS_ENV_KEYS", frozenset({"APP_ENV"})), patch.dict(
+                os.environ, {"APP_ENV": "uat"}, clear=False
+            ):
+                config.safe_load_dotenv(dotenv_path, override=True)
+                self.assertEqual("uat", os.environ["APP_ENV"])
 
 
 if __name__ == "__main__":

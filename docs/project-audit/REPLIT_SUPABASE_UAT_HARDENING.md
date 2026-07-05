@@ -99,6 +99,12 @@ documented callback URIs.
 
 Migrations are manual and must never run on app startup:
 
+The migration runner supports hosted UAT directly. It prefers
+`DATABASE_MIGRATION_URL`, then `SUPABASE_MIGRATION_DATABASE_URL`, before either
+runtime URL. Explicit process/Replit environment values take precedence over
+local dotenv files, and the selected migration URL is the URL validated during
+migration-runner bootstrap.
+
 1. Confirm the target is the dedicated empty Supabase UAT project.
 2. Set the UAT selectors and migration URL in a controlled shell.
 3. Run `python backend/scripts/run_migrations.py`.
@@ -127,8 +133,8 @@ Migrations are manual and must never run on app startup:
 
 ## Tests Run
 
-- Targeted backend config/provisioning/system-info tests: 18 passed.
-- Full backend discovery: 174 passed.
+- Targeted backend config/migration/lifecycle/system-info tests: 32 passed.
+- Full backend discovery after migration bootstrap hardening: 181 passed.
 - Frontend utility tests: 18 passed.
 - Web and landing lint: passed.
 - Replit same-origin production build: passed; the existing large-chunk warning

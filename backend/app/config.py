@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
+PROCESS_ENV_KEYS = frozenset(os.environ)
 
 
 def _env_bool(key, default="false"):
@@ -15,6 +16,11 @@ def _env_bool(key, default="false"):
 def safe_load_dotenv(path, override=False):
     for key, value in dotenv_values(path).items():
         if value is None:
+            continue
+
+        # Explicit process variables (Replit Secrets, CI, operator shell) always
+        # take precedence over repository and profile dotenv files.
+        if key in PROCESS_ENV_KEYS:
             continue
 
         if not override and key in os.environ:
@@ -41,6 +47,25 @@ def load_environment_profile():
 SUPPORTED_APP_ENVIRONMENTS = {"local-dev", "local-prod", "uat", "prod"}
 SUPABASE_APP_ENVIRONMENTS = {"local-prod", "uat", "prod"}
 LOCAL_DATABASE_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def is_supabase_database_host(host):
+    normalized_host = str(host or "").strip().lower().rstrip(".")
+    parts = normalized_host.split(".")
+
+    is_direct_host = (
+        len(parts) == 4
+        and parts[0] == "db"
+        and bool(parts[1])
+        and parts[2:] == ["supabase", "co"]
+    )
+    is_pooler_host = (
+        len(parts) >= 4
+        and parts[-3:] == ["pooler", "supabase", "com"]
+        and all(parts[:-3])
+    )
+
+    return is_direct_host or is_pooler_host
 
 
 def validate_runtime_environment(
@@ -75,7 +100,7 @@ def validate_runtime_environment(
     if (
         database_url
         and app_env in SUPABASE_APP_ENVIRONMENTS
-        and "supabase" not in database_host
+        and not is_supabase_database_host(database_host)
     ):
         raise ValueError(f"{app_env} harus memakai database Supabase")
 

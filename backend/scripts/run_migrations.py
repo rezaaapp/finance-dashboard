@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import sys
 
 
@@ -24,7 +25,24 @@ def safe_error_message(action, error):
     )
 
 
+def select_migration_database_url(environment=None):
+    configured = environment if environment is not None else os.environ
+    return (
+        configured.get("DATABASE_MIGRATION_URL")
+        or configured.get("SUPABASE_MIGRATION_DATABASE_URL")
+        or configured.get("DATABASE_URL")
+        or configured.get("SUPABASE_DATABASE_URL")
+    )
+
+
 def load_database_helper():
+    migration_database_url = select_migration_database_url()
+    if migration_database_url:
+        # app.config validates DATABASE_URL at import time. For this dedicated
+        # runner, validate the exact migration target selected above rather
+        # than a stale runtime URL from a local dotenv file.
+        os.environ["DATABASE_URL"] = migration_database_url
+
     from app.database import get_migration_connection
 
     return get_migration_connection
