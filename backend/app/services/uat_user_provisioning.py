@@ -10,12 +10,15 @@ from app.security.passwords import hash_password
 
 
 SAFE_ENVIRONMENTS = {"local-dev", "dev", "uat"}
+BLOCKED_ENVIRONMENTS = {"local-prod", "prod"}
 TESTER_ROLES = {"owner", "member", "user"}
 
 
 def is_uat_provisioning_allowed() -> bool:
     app_env = str(settings.APP_ENV or "").strip().lower()
     env_profile = str(settings.ENV_PROFILE or "").strip().lower()
+    if app_env in BLOCKED_ENVIRONMENTS or env_profile in BLOCKED_ENVIRONMENTS:
+        return False
     return app_env in SAFE_ENVIRONMENTS or env_profile in SAFE_ENVIRONMENTS
 
 

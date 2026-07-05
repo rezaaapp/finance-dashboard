@@ -175,13 +175,41 @@ class UatUserProvisioningTestCase(unittest.TestCase):
                 provision_uat_test_user(self.payload)
         self.assertEqual(403, context.exception.status_code)
 
-    def test_environment_gate_allows_local_dev_and_blocks_local_prod(self):
-        with patch("app.services.uat_user_provisioning.settings.APP_ENV", "local-dev"), patch(
-            "app.services.uat_user_provisioning.settings.ENV_PROFILE", "local-dev"
+    def test_environment_gate_matches_uat_and_production_contract(self):
+        for environment in ("local-dev", "dev", "uat"):
+            with self.subTest(environment=environment), patch(
+                "app.services.uat_user_provisioning.settings.APP_ENV", environment
+            ), patch(
+                "app.services.uat_user_provisioning.settings.ENV_PROFILE", environment
+            ):
+                self.assertTrue(is_uat_provisioning_allowed())
+
+        for environment in ("local-prod", "prod"):
+            with self.subTest(environment=environment), patch(
+                "app.services.uat_user_provisioning.settings.APP_ENV", environment
+            ), patch(
+                "app.services.uat_user_provisioning.settings.ENV_PROFILE", environment
+            ):
+                self.assertFalse(is_uat_provisioning_allowed())
+
+        with patch(
+            "app.services.uat_user_provisioning.settings.APP_ENV", "prod"
+        ), patch(
+            "app.services.uat_user_provisioning.settings.ENV_PROFILE", "uat"
         ):
-            self.assertTrue(is_uat_provisioning_allowed())
-        with patch("app.services.uat_user_provisioning.settings.APP_ENV", "local-prod"), patch(
-            "app.services.uat_user_provisioning.settings.ENV_PROFILE", "local-prod"
+            self.assertFalse(is_uat_provisioning_allowed())
+
+        with patch(
+            "app.services.uat_user_provisioning.settings.APP_ENV", "prod"
+        ), patch(
+            "app.services.uat_user_provisioning.settings.ENV_PROFILE", "uat"
+        ):
+            self.assertFalse(is_uat_provisioning_allowed())
+
+        with patch(
+            "app.services.uat_user_provisioning.settings.APP_ENV", "prod"
+        ), patch(
+            "app.services.uat_user_provisioning.settings.ENV_PROFILE", "uat"
         ):
             self.assertFalse(is_uat_provisioning_allowed())
 

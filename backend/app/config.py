@@ -31,11 +31,53 @@ def safe_load_dotenv(path, override=False):
 def load_environment_profile():
     profile = os.getenv("ENV_PROFILE") or os.getenv("APP_ENV") or "local-dev"
 
-    if profile not in {"local-dev", "local-prod"}:
+    if profile not in {"local-dev", "local-prod", "uat", "prod"}:
         return
 
     safe_load_dotenv(REPO_ROOT / f".env.{profile}", override=True)
     safe_load_dotenv(BACKEND_ROOT / f".env.{profile}", override=True)
+
+
+SUPPORTED_APP_ENVIRONMENTS = {"local-dev", "local-prod", "uat", "prod"}
+SUPABASE_APP_ENVIRONMENTS = {"local-prod", "uat", "prod"}
+LOCAL_DATABASE_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def validate_runtime_environment(
+    *, app_env, env_profile, db_target, backend_port, database_url
+):
+    if app_env not in SUPPORTED_APP_ENVIRONMENTS:
+        supported = ", ".join(sorted(SUPPORTED_APP_ENVIRONMENTS))
+        raise ValueError(f"APP_ENV harus salah satu dari: {supported}")
+
+    if env_profile not in SUPPORTED_APP_ENVIRONMENTS:
+        supported = ", ".join(sorted(SUPPORTED_APP_ENVIRONMENTS))
+        raise ValueError(f"ENV_PROFILE harus salah satu dari: {supported}")
+
+    expected_target = "postgres-local" if app_env == "local-dev" else "supabase"
+    if db_target != expected_target:
+        raise ValueError(f"{app_env} harus memakai DB_TARGET={expected_target}")
+
+    if app_env == "local-dev" and backend_port != 8000:
+        raise ValueError("local-dev default backend port harus 8000")
+
+    if app_env == "local-prod" and backend_port != 8001:
+        raise ValueError("local-prod default backend port harus 8001")
+
+    database_host = (urlparse(database_url or "").hostname or "").lower()
+    if (
+        database_url
+        and app_env == "local-dev"
+        and database_host not in LOCAL_DATABASE_HOSTS
+    ):
+        raise ValueError("local-dev harus memakai database PostgreSQL local")
+
+    if (
+        database_url
+        and app_env in SUPABASE_APP_ENVIRONMENTS
+        and "supabase" not in database_host
+    ):
+        raise ValueError(f"{app_env} harus memakai database Supabase")
 
 
 safe_load_dotenv(REPO_ROOT / ".env")
@@ -47,7 +89,7 @@ class Settings:
     ENV_PROFILE = os.getenv("ENV_PROFILE", APP_ENV)
     DB_TARGET = os.getenv(
         "DB_TARGET",
-        "supabase" if APP_ENV == "local-prod" else "postgres-local",
+        "supabase" if APP_ENV in SUPABASE_APP_ENVIRONMENTS else "postgres-local",
     )
     BACKEND_PORT = int(
         os.getenv(
@@ -211,36 +253,13 @@ class Settings:
             "belum diset di .env"
         )
 
-    if APP_ENV not in {"local-dev", "local-prod"}:
-        raise ValueError("APP_ENV harus bernilai local-dev atau local-prod")
-
-    if APP_ENV == "local-dev" and DB_TARGET != "postgres-local":
-        raise ValueError("local-dev harus memakai DB_TARGET=postgres-local")
-
-    if APP_ENV == "local-prod" and DB_TARGET != "supabase":
-        raise ValueError("local-prod harus memakai DB_TARGET=supabase")
-
-    if APP_ENV == "local-dev" and BACKEND_PORT != 8000:
-        raise ValueError("local-dev default backend port harus 8000")
-
-    if APP_ENV == "local-prod" and BACKEND_PORT != 8001:
-        raise ValueError("local-prod default backend port harus 8001")
-
-    _database_host = (urlparse(DATABASE_URL or "").hostname or "").lower()
-
-    if DATABASE_URL and APP_ENV == "local-dev" and _database_host not in {
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }:
-        raise ValueError("local-dev harus memakai database PostgreSQL local")
-
-    if (
-        DATABASE_URL
-        and APP_ENV == "local-prod"
-        and "supabase" not in _database_host
-    ):
-        raise ValueError("local-prod harus memakai database Supabase")
+    validate_runtime_environment(
+        app_env=APP_ENV,
+        env_profile=ENV_PROFILE,
+        db_target=DB_TARGET,
+        backend_port=BACKEND_PORT,
+        database_url=DATABASE_URL,
+    )
 
     def get_database_summary(self):
         parsed = urlparse(self.DATABASE_URL or "")
