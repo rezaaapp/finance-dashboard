@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.scripts.run_migrations import apply_migration
+from backend.scripts.run_migrations import apply_migration, select_migration_database_url
 
 
 class FakeTransaction:
@@ -127,6 +127,33 @@ class MigrationRunnerTestCase(unittest.TestCase):
             ],
             connection.executed,
         )
+
+    def test_migration_url_precedence_prefers_explicit_migration_url(self):
+        environment = {
+            "DATABASE_URL": "postgresql://runtime.example/postgres",
+            "SUPABASE_DATABASE_URL": "postgresql://supabase-runtime.example/postgres",
+            "DATABASE_MIGRATION_URL": "postgresql://migration.example/postgres",
+            "SUPABASE_MIGRATION_DATABASE_URL": (
+                "postgresql://supabase-migration.example/postgres"
+            ),
+        }
+
+        selected = select_migration_database_url(environment)
+
+        self.assertEqual(environment["DATABASE_MIGRATION_URL"], selected)
+
+    def test_supabase_migration_alias_precedes_runtime_urls(self):
+        environment = {
+            "DATABASE_URL": "postgresql://runtime.example/postgres",
+            "SUPABASE_DATABASE_URL": "postgresql://supabase-runtime.example/postgres",
+            "SUPABASE_MIGRATION_DATABASE_URL": (
+                "postgresql://supabase-migration.example/postgres"
+            ),
+        }
+
+        selected = select_migration_database_url(environment)
+
+        self.assertEqual(environment["SUPABASE_MIGRATION_DATABASE_URL"], selected)
 
 
 if __name__ == "__main__":
