@@ -30,13 +30,13 @@ class SystemInfoTestCase(unittest.TestCase):
             "database": "postgres",
         }
 
-        with patch("app.main.settings.APP_ENV", "local-prod"), patch(
-            "app.main.settings.ENV_PROFILE", "local-prod"
+        with patch("app.main.settings.APP_ENV", "uat"), patch(
+            "app.main.settings.ENV_PROFILE", "uat"
         ), patch("app.main.settings.DB_TARGET", "supabase"), patch(
-            "app.main.settings.BACKEND_PORT", 8001
+            "app.main.settings.BACKEND_PORT", 3127
         ), patch(
             "app.main.settings.IMPORT_TEMP_DIR",
-            "backend/output/imports/temp/local-prod",
+            "backend/output/imports/temp/uat",
         ), patch(
             "app.main.settings.get_database_summary", return_value=database
         ), patch(
@@ -44,7 +44,9 @@ class SystemInfoTestCase(unittest.TestCase):
         ):
             payload = system_info()
 
-        self.assertEqual("local-prod", payload["app_env"])
+        self.assertEqual("uat", payload["app_env"])
+        self.assertEqual("uat", payload["env_profile"])
+        self.assertEqual(3127, payload["backend_port"])
         self.assertEqual("supabase", payload["db_target"])
         self.assertEqual("aw***.supabase.com", payload["database_host"])
         self.assertEqual(24, payload["migration_count"])

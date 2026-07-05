@@ -23,6 +23,7 @@ import {
   updateAdminUserRole,
   provisionAdminTestUser,
 } from "../api/adminApi";
+import { isUatProvisioningAllowed } from "../utils/environment";
 import {
   buildCredentialText,
   defaultWorkspaceName,
@@ -148,11 +149,7 @@ const AdminUsers = ({ onImpersonate, onUnauthorized, systemInfoState }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [createdCredential, setCreatedCredential] = useState(null);
   const [copyNotice, setCopyNotice] = useState("");
-  const canProvisionTestUser = ["local-dev", "dev", "uat"].includes(
-    systemInfoState?.data?.appEnv
-  ) || ["local-dev", "dev", "uat"].includes(
-    systemInfoState?.data?.envProfile
-  );
+  const canProvisionTestUser = isUatProvisioningAllowed(systemInfoState?.data);
 
   const totalByRole = useMemo(() => (
     ROLE_OPTIONS.reduce((accumulator, role) => {

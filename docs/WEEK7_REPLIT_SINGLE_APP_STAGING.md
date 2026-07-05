@@ -14,8 +14,8 @@ Routing target:
 - `/api/*` -> FastAPI backend.
 - `/*` -> React SPA from `apps/web/dist`.
 
-This is for personal staging with the existing Supabase project. It does not
-replace the Vercel + Render docs for future stable/beta hosting.
+This is the hosted UAT path. It must use a dedicated, empty Supabase UAT
+project; never point it at personal or production data.
 
 ## Why Single-App Replit
 
@@ -91,6 +91,9 @@ Use Replit Secrets. Do not commit `.env`.
 Backend/database:
 
 ```env
+APP_ENV=uat
+ENV_PROFILE=uat
+DB_TARGET=supabase
 SUPABASE_DATABASE_URL=<supabase-runtime-or-pooled-connection-string>
 SUPABASE_MIGRATION_DATABASE_URL=<supabase-direct-or-session-connection-string>
 DATABASE_SSL=true
@@ -125,7 +128,7 @@ GOOGLE_OAUTH_CLIENT_ID=<google-oauth-client-id>.apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=<google-oauth-client-secret>
 GOOGLE_OAUTH_REDIRECT_URI=https://<replit-app-url>/api/google/oauth/callback
 GOOGLE_LOGIN_REDIRECT_URI=https://<replit-app-url>/api/auth/google/callback
-GOOGLE_OAUTH_SCOPES=openid email profile https://www.googleapis.com/auth/spreadsheets.readonly
+GOOGLE_OAUTH_SCOPES=openid email profile https://www.googleapis.com/auth/spreadsheets
 ```
 
 Rule-based only:
@@ -149,6 +152,17 @@ VITE_GUEST_MODE_MULTIPLIER=0.75
 Important: Replit may reserve or manage `DATABASE_URL`, so use
 `SUPABASE_DATABASE_URL` and `SUPABASE_MIGRATION_DATABASE_URL` for this staging
 path.
+
+Do not set `BACKEND_PORT` in hosted UAT. Replit supplies `PORT`, and the UAT
+profile accepts that managed port. `VITE_API_MODE=same-origin` must be present
+when the frontend build runs, not only when the server starts.
+
+The full Sheets scope is required because the current approval/retry workflow
+can write rows back to the configured destination. Testers must connect only a
+disposable spreadsheet or a copy prepared for UAT. Do not promise that every
+application action leaves that spreadsheet unchanged. Reset Synced Data and
+Factory Reset retain their existing contract and do not modify the original
+Google Sheet.
 
 ## Google OAuth Setup
 
@@ -191,15 +205,18 @@ separate:
 - Do not use `/auth/google/callback` as `FRONTEND_AUTH_REDIRECT_URL` in
   Replit single-app staging if that route conflicts with the backend.
 
-## Supabase Existing Warning
+## Supabase UAT Safety Checklist
 
-Existing Supabase is acceptable for personal staging. It is not recommended for
-public beta. Before public beta:
-
-- Create a separate Supabase beta project.
-- Run migrations from a clean state.
-- Use a separate OAuth client or dedicated redirect URI.
-- Re-run the SQL validation pack.
+- Create a dedicated empty Supabase UAT project with no personal/production data.
+- Run every checked-in migration manually before sharing the UAT link. Do not
+  add migration execution to application startup.
+- Verify `schema_migrations`, migration 022, and `user_password_credentials`.
+- Verify all PostgreSQL extensions required by the migration files.
+- Bootstrap the first Super Admin using the documented static-admin path and
+  keep its credentials in Replit Secrets.
+- Provision testers only after confirming `/api/system/info` reports `uat` and
+  `supabase`.
+- Run a two-user workspace-isolation smoke test before external UAT.
 
 Database validation doc:
 

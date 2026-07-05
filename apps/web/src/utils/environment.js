@@ -11,6 +11,18 @@ const ENVIRONMENT_PRESENTATION = {
     databaseLabel: "Supabase",
     tone: "prod",
   },
+  uat: {
+    badgeLabel: "UAT",
+    title: "Hosted UAT Environment",
+    databaseLabel: "Supabase UAT",
+    tone: "dev",
+  },
+  prod: {
+    badgeLabel: "PROD",
+    title: "Production Environment",
+    databaseLabel: "Supabase",
+    tone: "prod",
+  },
   unknown: {
     badgeLabel: "UNKNOWN",
     title: "Environment Unavailable",
@@ -22,6 +34,18 @@ const ENVIRONMENT_PRESENTATION = {
 export const getEnvironmentPresentation = (appEnv) => (
   ENVIRONMENT_PRESENTATION[appEnv] || ENVIRONMENT_PRESENTATION.unknown
 );
+
+export const isUatProvisioningAllowed = ({ appEnv, envProfile } = {}) => {
+  const environments = [appEnv, envProfile];
+  const blockedEnvironments = ["local-prod", "prod"];
+  const safeEnvironments = ["local-dev", "dev", "uat"];
+
+  if (environments.some((environment) => blockedEnvironments.includes(environment))) {
+    return false;
+  }
+
+  return environments.some((environment) => safeEnvironments.includes(environment));
+};
 
 export const sanitizeApiUrl = (value) => {
   const rawValue = String(value || "").trim();
@@ -58,7 +82,7 @@ export const normalizeSystemInfo = (
   rawInfo,
   { apiUrl, frontendPort = null, version },
 ) => {
-  const appEnv = ["local-dev", "local-prod"].includes(rawInfo?.app_env)
+  const appEnv = ["local-dev", "local-prod", "uat", "prod"].includes(rawInfo?.app_env)
     ? rawInfo.app_env
     : "unknown";
   const safeApiUrl = sanitizeApiUrl(apiUrl);

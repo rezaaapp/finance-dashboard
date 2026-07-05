@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createSystemInfoFallback,
   getEnvironmentPresentation,
+  isUatProvisioningAllowed,
   normalizeSystemInfo,
   sanitizeApiUrl,
 } from "./environment.js";
@@ -46,6 +47,27 @@ test("local-prod environment renders the production simulation presentation", ()
   assert.equal(getEnvironmentPresentation(info.appEnv).badgeLabel, "LOCAL-PROD");
   assert.equal(getEnvironmentPresentation(info.appEnv).tone, "prod");
   assert.equal(info.apiUrl, "http://127.0.0.1:8001");
+});
+
+test("hosted UAT environment is preserved and clearly presented", () => {
+  const info = normalizeSystemInfo({
+    app_env: "uat",
+    env_profile: "uat",
+    db_target: "supabase",
+    backend_port: 3127,
+    database_host: "db***.supabase.co",
+  }, { ...frontend, apiUrl: "/" });
+
+  assert.equal(info.appEnv, "uat");
+  assert.equal(info.backendPort, 3127);
+  assert.equal(getEnvironmentPresentation(info.appEnv).badgeLabel, "UAT");
+  assert.equal(getEnvironmentPresentation(info.appEnv).databaseLabel, "Supabase UAT");
+});
+
+test("provisioning allows UAT and denies mixed production identity", () => {
+  assert.equal(isUatProvisioningAllowed({ appEnv: "uat", envProfile: "uat" }), true);
+  assert.equal(isUatProvisioningAllowed({ appEnv: "prod", envProfile: "prod" }), false);
+  assert.equal(isUatProvisioningAllowed({ appEnv: "prod", envProfile: "uat" }), false);
 });
 
 test("offline fallback remains usable and identifies an unknown environment", () => {

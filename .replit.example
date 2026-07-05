@@ -1,3 +1,5 @@
+# Required Replit Secrets include APP_ENV=uat, ENV_PROFILE=uat,
+# DB_TARGET=supabase, and VITE_API_MODE=same-origin. Replit supplies PORT.
 run = "npm run build:replit && npm run start:replit"
 
 [deployment]
