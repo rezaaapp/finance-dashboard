@@ -6,6 +6,7 @@
     "build": "npm --prefix apps/web run build",
     "build:web": "npm --prefix apps/web run build",
     "build:replit": "npm run build:web",
+    "install:replit": "npm ci --prefix apps/web && python3 -m pip install -r backend/requirements.txt",
     "build:landing": "npm --prefix apps/landing run build",
     "build:all": "npm run build:web && npm run build:landing",
     "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",

@@ -1,5 +1,4 @@
-# Replit supplies PORT. VITE_API_MODE=same-origin must be available at build
-# time. Runtime secrets are configured separately and are never committed.
+# Replit editor: build the frontend, then start the single FastAPI web process.
 run = "npm run build:replit && npm run start:replit"
 
 [deployment]
