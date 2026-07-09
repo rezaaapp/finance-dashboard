@@ -112,6 +112,59 @@ const getInitialView = () => {
   return "dashboard";
 };
 
+const PRIMARY_NAVIGATION_ITEMS = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    title: "Dashboard",
+    description: "Ringkasan kondisi keuanganmu dalam satu tempat.",
+    icon: LayoutDashboard,
+  },
+  {
+    id: "analytics",
+    label: "Analytics",
+    title: "Analytics",
+    description: "Pahami pola pemasukan, pengeluaran, dan kebiasaan finansial.",
+    icon: BarChart3,
+    requiresPremium: true,
+  },
+  {
+    id: "budgeting",
+    label: "Budget",
+    title: "Budget",
+    description: "Rencanakan batas pengeluaran dan pantau area yang perlu diperhatikan.",
+    icon: BellRing,
+    requiresPremium: true,
+  },
+  {
+    id: "search",
+    label: "Search",
+    title: "Search",
+    description: "Temukan transaksi dari merchant, kategori, catatan, atau sumber dana.",
+    icon: SearchIcon,
+  },
+  {
+    id: "import",
+    label: "Import",
+    title: "Import",
+    description: "Masukkan dan tinjau data transaksi sebelum digunakan di Omon.",
+    icon: Upload,
+  },
+  {
+    id: "configuration",
+    label: "Settings",
+    title: "Settings",
+    description: "Kelola workspace, koneksi, dan preferensi penggunaan Omon.",
+    icon: Settings,
+    isActive: (activeView) => activeView === "configuration" || activeView === "admin",
+  },
+];
+
+const ADMIN_PAGE_METADATA = {
+  title: "User Management",
+  description: "Kelola akses pengguna untuk kebutuhan operasional internal.",
+};
+
 const LockedFeature = ({ title, message }) => (
   <div className="panel rounded-lg p-6 shadow-lg">
     <div className="mx-auto flex max-w-2xl flex-col items-center py-10 text-center">
@@ -206,6 +259,247 @@ const ProfileWidget = ({ auth, onLogout }) => {
     </div>
   );
 };
+
+const getNavigationItemActive = (item, activeView) => (
+  item.isActive ? item.isActive(activeView) : activeView === item.id
+);
+
+const DesktopNavigation = ({
+  activeView,
+  auth,
+  hasPremiumAccess,
+  isSidebarCollapsed,
+  isSuperAdmin,
+  onNavigate,
+}) => (
+  <nav className="space-y-2" aria-label="Primary navigation">
+    {PRIMARY_NAVIGATION_ITEMS.map((item) => {
+      const Icon = item.icon;
+      const isActive = getNavigationItemActive(item, activeView);
+      const isLocked = item.requiresPremium && !hasPremiumAccess;
+
+      if (item.id === "configuration") {
+        return isSidebarCollapsed ? (
+          <div key={item.id} className="group relative">
+            <button
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`nav-link flex min-h-11 w-full items-center justify-center rounded-lg border border-transparent text-left transition-colors duration-200 ${
+                isActive
+                  ? "is-active bg-[var(--color-accent-bg)] text-accent"
+                  : "bg-transparent"
+              }`}
+              aria-current={isActive ? "page" : undefined}
+              aria-label={item.label}
+              title={item.label}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <Icon size={18} />
+              </span>
+            </button>
+
+            <div className="invisible absolute left-full top-0 z-50 ml-3 w-56 translate-x-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-x-0 group-hover:opacity-100">
+              <p className="px-3 py-2 text-sm font-bold text-main">
+                Settings
+              </p>
+
+              <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Account
+              </p>
+
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("admin")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                  aria-current={activeView === "admin" ? "page" : undefined}
+                >
+                  User Management
+                </button>
+              )}
+
+              {(isSuperAdmin || auth?.role === "owner") && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("configuration")}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                >
+                  Invite Member
+                </button>
+              )}
+
+              <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Connections
+              </p>
+
+              <button
+                type="button"
+                onClick={() => onNavigate("configuration")}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+              >
+                Google Sheets
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div key={item.id} className="group">
+            <button
+              type="button"
+              onClick={() => onNavigate(item.id)}
+              className={`nav-link flex min-h-11 w-full items-center rounded-lg border border-transparent px-3 py-2 text-left transition-colors duration-200 ${
+                isActive
+                  ? "is-active bg-[var(--color-accent-bg)] text-accent"
+                  : "bg-transparent"
+              }`}
+              aria-current={isActive ? "page" : undefined}
+              aria-label={item.label}
+              title={item.label}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+                <Icon size={18} />
+              </span>
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                {item.label}
+              </span>
+              <ChevronRight
+                size={16}
+                className="shrink-0 transition-transform duration-200 group-hover:rotate-90"
+              />
+            </button>
+
+            <div className={`overflow-hidden transition-all duration-300 ease-out ${
+              isActive
+                ? "max-h-80 opacity-100"
+                : "max-h-0 opacity-0 group-hover:max-h-80 group-hover:opacity-100"
+            }`}>
+              <p className="mt-4 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Account
+              </p>
+
+              <div className="space-y-1">
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin")}
+                    className={`w-full rounded-lg py-2 pl-9 pr-4 text-left text-sm transition-colors duration-200 ${
+                      activeView === "admin"
+                        ? "bg-[var(--color-accent-bg)] text-accent"
+                        : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                    }`}
+                    aria-current={activeView === "admin" ? "page" : undefined}
+                  >
+                    User Management
+                  </button>
+                )}
+
+                {(isSuperAdmin || auth?.role === "owner") && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("configuration")}
+                    className="w-full rounded-lg py-2 pl-9 pr-4 text-left text-sm text-[rgba(255,255,255,0.72)] transition-colors duration-200 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+                  >
+                    Invite Member
+                  </button>
+                )}
+              </div>
+
+              <p className="mt-4 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Connections
+              </p>
+
+              <button
+                type="button"
+                onClick={() => onNavigate("configuration")}
+                className={`w-full rounded-lg py-2 pl-9 pr-4 text-left text-sm transition-colors duration-200 ${
+                activeView === "configuration"
+                  ? "bg-[var(--color-accent-bg)] text-accent"
+                  : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+              }`}
+              >
+                Google Sheets
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onNavigate(item.id)}
+          className={`nav-link flex min-h-11 w-full items-center rounded-lg border border-transparent text-left transition-colors ${
+            isSidebarCollapsed
+              ? "justify-center px-0"
+              : "justify-start gap-3 px-3 py-2"
+          } ${
+            isActive
+              ? "is-active bg-[var(--color-accent-bg)] text-accent"
+              : "bg-transparent"
+          }`}
+          aria-current={isActive ? "page" : undefined}
+          aria-label={item.label}
+          title={item.label}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+            <Icon size={18} />
+          </span>
+          {!isSidebarCollapsed && (
+            <span className="min-w-0 flex-1 truncate font-semibold">
+              {item.label}
+            </span>
+          )}
+          {!isSidebarCollapsed && isLocked && (
+            <span className="ml-auto rounded-full bg-[var(--color-alert-bg)] px-2 py-0.5 text-xs font-bold text-[var(--color-alert-text)]">
+              Locked
+            </span>
+          )}
+        </button>
+      );
+    })}
+  </nav>
+);
+
+const MobileNavigation = ({
+  activeView,
+  hasPremiumAccess,
+  onNavigate,
+}) => (
+  <nav
+    className="app-shell__mobile-nav grid-cols-6"
+    aria-label="Primary mobile navigation"
+  >
+    {PRIMARY_NAVIGATION_ITEMS.map((item) => {
+      const Icon = item.icon;
+      const isActive = getNavigationItemActive(item, activeView);
+      const isLocked = item.requiresPremium && !hasPremiumAccess;
+
+      return (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onNavigate(item.id)}
+          className={`app-shell__mobile-nav-item ${
+            isActive
+              ? "is-active bg-[var(--color-accent-bg)] text-accent"
+              : "text-muted"
+          }`}
+          aria-current={isActive ? "page" : undefined}
+          aria-label={item.label}
+          title={item.label}
+        >
+          <Icon size={18} />
+          <span>{item.label}</span>
+          {isLocked && (
+            <span className="text-[9px] font-bold text-[var(--color-alert-text)]">
+              Locked
+            </span>
+          )}
+        </button>
+      );
+    })}
+  </nav>
+);
 
 const Dashboard = ({
   auth,
@@ -913,37 +1207,10 @@ const Dashboard = ({
     );
   };
 
-  const pageMetadata = {
-    dashboard: {
-      title: "Dashboard",
-      description: "Ringkasan kondisi keuanganmu dalam satu tempat.",
-    },
-    analytics: {
-      title: "Analytics",
-      description: "Pahami pola pemasukan, pengeluaran, dan kebiasaan finansial.",
-    },
-    search: {
-      title: "Search",
-      description: "Temukan transaksi dari merchant, kategori, catatan, atau sumber dana.",
-    },
-    budgeting: {
-      title: "Budget",
-      description: "Rencanakan batas pengeluaran dan pantau area yang perlu diperhatikan.",
-    },
-    import: {
-      title: "Import",
-      description: "Masukkan dan tinjau data transaksi sebelum digunakan di Omon.",
-    },
-    configuration: {
-      title: "Settings",
-      description: "Kelola workspace, koneksi, dan preferensi penggunaan Omon.",
-    },
-    admin: {
-      title: "User Management",
-      description: "Kelola akses pengguna untuk kebutuhan operasional internal.",
-    },
-  };
-  const currentPage = pageMetadata[activeView] || pageMetadata.dashboard;
+  const currentPage = activeView === "admin"
+    ? ADMIN_PAGE_METADATA
+    : PRIMARY_NAVIGATION_ITEMS.find((item) => getNavigationItemActive(item, activeView))
+      || PRIMARY_NAVIGATION_ITEMS[0];
 
   // =========================
   // UI
@@ -990,288 +1257,19 @@ const Dashboard = ({
           </button>
         </div>
 
-        <nav className="space-y-4">
-          <button
-            type="button"
-            onClick={() => setActiveView("dashboard")}
-            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
-              isSidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-start gap-3 px-3 py-2"
-            } ${
-              activeView === "dashboard"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "bg-transparent"
-            }`}
-            aria-label="Dashboard"
-            title="Dashboard"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <LayoutDashboard size={18} />
-            </span>
-            {!isSidebarCollapsed && (
-              <span className="min-w-0 flex-1 truncate font-semibold">
-                Dashboard
-              </span>
-            )}
-          </button>
+        <DesktopNavigation
+          activeView={activeView}
+          auth={auth}
+          hasPremiumAccess={hasPremiumAccess}
+          isSidebarCollapsed={isSidebarCollapsed}
+          isSuperAdmin={isSuperAdmin}
+          onNavigate={setActiveView}
+        />
 
-          <button
-            type="button"
-            onClick={() => setActiveView("analytics")}
-            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
-              isSidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-start gap-3 px-3 py-2"
-            } ${
-              activeView === "analytics"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "bg-transparent"
-            }`}
-            aria-label="Analytics"
-            title="Analytics"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <BarChart3 size={18} />
-            </span>
-            {!isSidebarCollapsed && (
-              <span className="min-w-0 flex-1 truncate font-semibold">
-                Analytics
-              </span>
-            )}
-            {!isSidebarCollapsed && !hasPremiumAccess && (
-              <span className="ml-auto rounded-full bg-[var(--color-alert-bg)] px-2 py-0.5 text-xs font-bold text-[var(--color-alert-text)]">
-                Locked
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveView("search")}
-            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
-              isSidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-start gap-3 px-3 py-2"
-            } ${
-              activeView === "search"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "bg-transparent"
-            }`}
-            aria-label="Search"
-            title="Search"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <SearchIcon size={18} />
-            </span>
-            {!isSidebarCollapsed && (
-              <span className="min-w-0 flex-1 truncate font-semibold">
-                Search
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveView("budgeting")}
-            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
-              isSidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-start gap-3 px-3 py-2"
-            } ${
-              activeView === "budgeting"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "bg-transparent"
-            }`}
-            aria-label="Budgeting & Alerts"
-            title="Budgeting & Alerts"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <BellRing size={18} />
-            </span>
-            {!isSidebarCollapsed && (
-              <span className="min-w-0 flex-1 truncate font-semibold">
-                Budgeting & Alerts
-              </span>
-            )}
-            {!isSidebarCollapsed && !hasPremiumAccess && (
-              <span className="ml-auto rounded-full bg-[var(--color-alert-bg)] px-2 py-0.5 text-xs font-bold text-[var(--color-alert-text)]">
-                Locked
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveView("import")}
-            className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent text-left transition-colors ${
-              isSidebarCollapsed
-                ? "justify-center px-0"
-                : "justify-start gap-3 px-3 py-2"
-            } ${
-              activeView === "import"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "bg-transparent"
-            }`}
-            aria-label="Import Transaksi"
-            title="Import Transaksi"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <Upload size={18} />
-            </span>
-            {!isSidebarCollapsed && (
-              <span className="min-w-0 flex-1 truncate font-semibold">
-                Import Transaksi
-              </span>
-            )}
-          </button>
-
-          {isSidebarCollapsed ? (
-            <div className="group relative">
-              <button
-                type="button"
-                onClick={() => setActiveView("configuration")}
-                className={`nav-link flex min-h-11 w-full items-center justify-center rounded-xl border border-transparent text-left transition-colors duration-200 ${
-                  activeView === "configuration" || activeView === "admin"
-                    ? "bg-[var(--color-accent-bg)] text-accent"
-                    : "bg-transparent"
-                }`}
-                aria-label="Settings"
-                title="Settings"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-                  <Settings size={18} />
-                </span>
-              </button>
-
-              <div className="invisible absolute left-full top-0 z-50 ml-3 w-56 translate-x-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-x-0 group-hover:opacity-100">
-                <p className="px-3 py-2 text-sm font-bold text-main">
-                  Settings
-                </p>
-
-                <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
-                  USER CONTROL
-                </p>
-
-                {isSuperAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveView("admin")}
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
-                  >
-                    User Management
-                  </button>
-                )}
-
-                {(isSuperAdmin || auth?.role === "owner") && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveView("configuration")}
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
-                  >
-                    Invite Member
-                  </button>
-                )}
-
-                <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
-                  INTEGRATIONS
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveView("configuration")}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
-                >
-                  Google Sheets
-                </button>
-
-              </div>
-            </div>
-          ) : (
-            <div className="group">
-              <button
-                type="button"
-                onClick={() => setActiveView("configuration")}
-                className={`nav-link flex min-h-11 w-full items-center rounded-xl border border-transparent py-2.5 px-4 text-left transition-colors duration-200 ${
-                  activeView === "configuration" || activeView === "admin"
-                    ? "bg-[var(--color-accent-bg)] text-accent"
-                    : "bg-transparent"
-                }`}
-                aria-label="Settings"
-                title="Settings"
-              >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-                    <Settings size={18} />
-                  </span>
-                <span className="min-w-0 flex-1 truncate font-semibold">
-                  Settings
-                </span>
-                <ChevronRight
-                  size={16}
-                  className="shrink-0 transition-transform duration-200 group-hover:rotate-90"
-                />
-              </button>
-
-              <div className={`overflow-hidden transition-all duration-300 ease-out ${
-                activeView === "configuration" || activeView === "admin"
-                  ? "max-h-80 opacity-100"
-                  : "max-h-0 opacity-0 group-hover:max-h-80 group-hover:opacity-100"
-              }`}>
-                <p className="mt-5 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
-                  USER CONTROL
-                </p>
-
-                <div className="space-y-1">
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveView("admin")}
-                      className={`w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm transition-colors duration-200 ${
-                        activeView === "admin"
-                          ? "bg-[var(--color-accent-bg)] text-accent"
-                          : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
-                      }`}
-                    >
-                      User Management
-                    </button>
-                  )}
-
-                  {(isSuperAdmin || auth?.role === "owner") && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveView("configuration")}
-                      className="w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm text-[rgba(255,255,255,0.72)] transition-colors duration-200 hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
-                    >
-                      Invite Member
-                    </button>
-                  )}
-                </div>
-
-                <p className="mt-5 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
-                  INTEGRATIONS
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveView("configuration")}
-                  className={`w-full rounded-lg pl-9 pr-4 py-2 text-left text-sm transition-colors duration-200 ${
-                  activeView === "configuration"
-                    ? "bg-[var(--color-accent-bg)] text-accent"
-                    : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
-                }`}
-              >
-                  Google Sheets
-                </button>
-
-              </div>
-            </div>
-          )}
-        </nav>
-
-      <SidebarDataSourceIndicator
-        sheetName={currentSheetName}
-        isCollapsed={isSidebarCollapsed}
-      />
+        <SidebarDataSourceIndicator
+          sheetName={currentSheetName}
+          isCollapsed={isSidebarCollapsed}
+        />
       </aside>
       }
       header={
@@ -1289,60 +1287,56 @@ const Dashboard = ({
           </div>
 
           <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto_auto]">
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              onChange={handleWorkspaceChange}
+            />
 
-          <WorkspaceSwitcher
-            workspaces={workspaces}
-            activeWorkspaceId={activeWorkspaceId}
-            onChange={handleWorkspaceChange}
-          />
+            <WorkspaceInvitationNotification
+              invitations={pendingInvitations}
+              actionInvitationId={invitationActionId}
+              error={invitationError}
+              onAccept={handleAcceptInvitation}
+              onDecline={handleDeclineInvitation}
+            />
 
-          <WorkspaceInvitationNotification
-            invitations={pendingInvitations}
-            actionInvitationId={invitationActionId}
-            error={invitationError}
-            onAccept={handleAcceptInvitation}
-            onDecline={handleDeclineInvitation}
-          />
+            <select
+              value={selectedYear}
+              onChange={(event) => setSelectedYear(event.target.value)}
+              className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
+            >
+              {years.length === 0 && (
+                <option value="">
+                  No synced data
+                </option>
+              )}
+              {years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
 
-          {/* YEAR FILTER */}
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(e.target.value)}
-            className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
-          >
-            {years.length === 0 && (
-              <option value="">
-                No synced data
-              </option>
-            )}
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-
-          {/* MONTH FILTER */}
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
-          >
-            <option value="">All Month</option>
-
-            <option value="1">January</option>
-            <option value="2">February</option>
-            <option value="3">March</option>
-            <option value="4">April</option>
-            <option value="5">May</option>
-            <option value="6">June</option>
-            <option value="7">July</option>
-            <option value="8">August</option>
-            <option value="9">September</option>
-            <option value="10">October</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
+            <select
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
+            >
+              <option value="">All Month</option>
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
 
             <button
               type="button"
@@ -1355,7 +1349,6 @@ const Dashboard = ({
               <span className="hidden sm:inline">{isDarkMode ? "Light" : "Dark"}</span>
             </button>
 
-            {/* REFRESH BUTTON */}
             <button
               type="button"
               onClick={handleRefreshData}
@@ -1373,26 +1366,26 @@ const Dashboard = ({
         </div>
       }
       banner={isTestMode && (
-          <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-bold">
-                Test User Mode
-              </p>
-              <p className="mt-1 truncate text-xs">
-                Anda sedang melihat dashboard sebagai {auth?.username || auth?.email || "test user"}.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={onExitImpersonation}
-              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-950/50"
-            >
-              <LogOut size={16} />
-              Exit Test Mode
-            </button>
+        <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-bold">
+              Test User Mode
+            </p>
+            <p className="mt-1 truncate text-xs">
+              Anda sedang melihat dashboard sebagai {auth?.username || auth?.email || "test user"}.
+            </p>
           </div>
-        )}
+
+          <button
+            type="button"
+            onClick={onExitImpersonation}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-950/50"
+          >
+            <LogOut size={16} />
+            Exit Test Mode
+          </button>
+        </div>
+      )}
     >
         {activeView === "dashboard" && onboardingState !== "ready" ? (
           renderOnboardingState()
@@ -1695,112 +1688,11 @@ const Dashboard = ({
             onSaveAndNavigate={finishSettingsNavigation}
           />
         )}
-      <nav className={`app-shell__mobile-nav ${
-        isSuperAdmin ? "grid-cols-7" : "grid-cols-6"
-      }`}>
-        <button
-          type="button"
-          onClick={() => setActiveView("dashboard")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
-            activeView === "dashboard"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <LayoutDashboard size={18} />
-          Dashboard
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("analytics")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
-            activeView === "analytics"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <BarChart3 size={18} />
-          Analytics
-          {!hasPremiumAccess && (
-            <span className="text-[9px] font-bold text-[var(--color-alert-text)]">
-              Locked
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("budgeting")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
-            activeView === "budgeting"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <BellRing size={18} />
-          Budgeting
-          {!hasPremiumAccess && (
-            <span className="text-[9px] font-bold text-[var(--color-alert-text)]">
-              Locked
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("search")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
-            activeView === "search"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <SearchIcon size={18} />
-          Search
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("import")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
-            activeView === "import"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <Upload size={18} />
-          Import
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("configuration")}
-          className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold sm:text-xs ${
-            activeView === "configuration"
-              ? "bg-[var(--color-accent-bg)] text-accent"
-              : "text-muted"
-          }`}
-        >
-          <Settings size={18} />
-          Settings
-        </button>
-
-        {isSuperAdmin && (
-          <button
-            type="button"
-            onClick={() => setActiveView("admin")}
-            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${
-              activeView === "admin"
-                ? "bg-[var(--color-accent-bg)] text-accent"
-                : "text-muted"
-            }`}
-          >
-            <ShieldCheck size={18} />
-            Admin
-          </button>
-        )}
-      </nav>
+      <MobileNavigation
+        activeView={activeView}
+        hasPremiumAccess={hasPremiumAccess}
+        onNavigate={setActiveView}
+      />
     </AppShell>
   );
 };
