@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import EmptyState from "../components/EmptyState";
+import AppShell from "../components/AppShell";
 import SummaryCard from "../components/SummaryCard";
 import FinancialInsights from "../components/FinancialInsights";
 import MonthlyChart from "../components/charts/MonthlyChart";
@@ -912,12 +913,44 @@ const Dashboard = ({
     );
   };
 
+  const pageMetadata = {
+    dashboard: {
+      title: "Dashboard",
+      description: "Ringkasan kondisi keuanganmu dalam satu tempat.",
+    },
+    analytics: {
+      title: "Analytics",
+      description: "Pahami pola pemasukan, pengeluaran, dan kebiasaan finansial.",
+    },
+    search: {
+      title: "Search",
+      description: "Temukan transaksi dari merchant, kategori, catatan, atau sumber dana.",
+    },
+    budgeting: {
+      title: "Budget",
+      description: "Rencanakan batas pengeluaran dan pantau area yang perlu diperhatikan.",
+    },
+    import: {
+      title: "Import",
+      description: "Masukkan dan tinjau data transaksi sebelum digunakan di Omon.",
+    },
+    configuration: {
+      title: "Settings",
+      description: "Kelola workspace, koneksi, dan preferensi penggunaan Omon.",
+    },
+    admin: {
+      title: "User Management",
+      description: "Kelola akses pengguna untuk kebutuhan operasional internal.",
+    },
+  };
+  const currentPage = pageMetadata[activeView] || pageMetadata.dashboard;
+
   // =========================
   // UI
   // =========================
   return (
-    <div className="dashboard-screen min-h-screen flex">
-      {/* SIDEBAR */}
+    <AppShell
+      sidebar={
       <aside
         className={`
           dashboard-sidebar
@@ -1235,23 +1268,21 @@ const Dashboard = ({
           )}
         </nav>
 
-        <SidebarDataSourceIndicator
-          sheetName={currentSheetName}
-          isCollapsed={isSidebarCollapsed}
-        />
+      <SidebarDataSourceIndicator
+        sheetName={currentSheetName}
+        isCollapsed={isSidebarCollapsed}
+      />
       </aside>
-
-      {/* MAIN */}
-      <main className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-5 lg:p-6">
-        {/* HEADER */}
-        <div className="mb-8 flex flex-col gap-4 xl:mb-10 xl:flex-row xl:items-center xl:justify-between">
+      }
+      header={
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold sm:text-4xl">
-              [Belum ada namanya]
+              {currentPage.title}
             </h1>
 
             <p className="text-muted mt-1 text-sm sm:text-base">
-              Ringkasan keuanganmu dalam satu tempat.
+              {currentPage.description}
             </p>
 
             <EnvironmentBadge systemInfoState={systemInfoState} />
@@ -1340,8 +1371,8 @@ const Dashboard = ({
             </div>
           </div>
         </div>
-
-        {isTestMode && (
+      }
+      banner={isTestMode && (
           <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-bold">
@@ -1362,7 +1393,7 @@ const Dashboard = ({
             </button>
           </div>
         )}
-
+    >
         {activeView === "dashboard" && onboardingState !== "ready" ? (
           renderOnboardingState()
         ) : activeView === "dashboard" ? (
@@ -1664,9 +1695,7 @@ const Dashboard = ({
             onSaveAndNavigate={finishSettingsNavigation}
           />
         )}
-      </main>
-
-      <nav className={`fixed inset-x-0 bottom-0 z-50 grid gap-1 border-t border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-2 shadow-none lg:hidden ${
+      <nav className={`app-shell__mobile-nav ${
         isSuperAdmin ? "grid-cols-7" : "grid-cols-6"
       }`}>
         <button
@@ -1772,7 +1801,7 @@ const Dashboard = ({
           </button>
         )}
       </nav>
-    </div>
+    </AppShell>
   );
 };
 

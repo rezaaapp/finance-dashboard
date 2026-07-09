@@ -102,6 +102,65 @@ select {
   transition: background-color 180ms ease, color 180ms ease;
 }
 
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-shell__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-shell__content {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 20px 16px 96px;
+}
+
+.app-shell__header {
+  margin-bottom: 32px;
+}
+
+.app-shell__page {
+  min-width: 0;
+}
+
+.app-shell__mobile-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 50;
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-panel);
+  padding: 8px;
+}
+
+@media (min-width: 640px) {
+  .app-shell__content {
+    padding-inline: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell__content {
+    padding: 24px;
+  }
+
+  .app-shell__mobile-nav {
+    display: none;
+  }
+}
+
+@media (min-width: 1280px) {
+  .app-shell__header {
+    margin-bottom: 40px;
+  }
+}
+
 .dashboard-sidebar {
   background: var(--color-sidebar);
   border-color: rgba(255, 255, 255, 0.12);
