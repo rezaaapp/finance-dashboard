@@ -1,26 +1,32 @@
 import {
   BarChart3,
   BellRing,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Cloud,
   Database,
+  Landmark,
   LayoutDashboard,
   LogOut,
+  Minus,
   Moon,
+  PiggyBank,
   Upload,
   RefreshCw,
   Search as SearchIcon,
   Settings,
   ShieldCheck,
   Sun,
+  TrendingDown,
+  TrendingUp,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import EmptyState from "../components/EmptyState";
 import AppShell from "../components/AppShell";
-import SummaryCard from "../components/SummaryCard";
 import FinancialInsights from "../components/FinancialInsights";
 import MonthlyChart from "../components/charts/MonthlyChart";
 import PieCategoryChart from "../components/charts/PieCategoryChart";
@@ -44,7 +50,7 @@ import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
 import ImportTransactions from "./ImportTransactions";
 import SearchPage from "./Search";
-import { PRIVACY_MODES } from "../utils/privacy";
+import { formatPrivateRupiah, PRIVACY_MODES } from "../utils/privacy";
 
 import {
   getDashboardViewModel,
@@ -95,6 +101,89 @@ const hasSummaryData = (summary = {}) => (
   || Number(summary.total_income || 0) > 0
   || Number(summary.transaction_count || 0) > 0
 );
+
+const MONTH_LABELS = [
+  "All Month",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const getPeriodLabel = (year, month) => {
+  if (!year) {
+    return "No synced period yet";
+  }
+
+  const monthLabel = MONTH_LABELS[Number(month)] || "All Month";
+
+  return month ? `${monthLabel} ${year}` : `All Month ${year}`;
+};
+
+const getSummaryAmount = (summary, keys) => (
+  keys.reduce((value, key) => (
+    value ?? summary?.[key]
+  ), undefined) ?? 0
+);
+
+const formatTrendPercent = (value) => {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return "Belum ada pembanding";
+  }
+
+  const prefix = numericValue > 0 ? "+" : "";
+
+  return `${prefix}${new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(numericValue)}%`;
+};
+
+const getTrendDirection = (trend, trendDirection) => {
+  if (trendDirection) {
+    return trendDirection;
+  }
+
+  const numericTrend = Number(trend);
+
+  if (!Number.isFinite(numericTrend)) {
+    return "unavailable";
+  }
+
+  if (numericTrend > 0) {
+    return "up";
+  }
+
+  if (numericTrend < 0) {
+    return "down";
+  }
+
+  return "flat";
+};
+
+const getTrendCopy = ({ label, direction, comparisonLabel }) => {
+  if (direction === "unavailable") {
+    return comparisonLabel || "Belum ada cukup data pembanding.";
+  }
+
+  if (direction === "flat") {
+    return `${label} relatif stabil ${comparisonLabel || "dibanding periode sebelumnya"}.`;
+  }
+
+  const movement = direction === "up" ? "meningkat" : "menurun";
+
+  return `${label} ${movement} ${comparisonLabel || "dibanding periode sebelumnya"}.`;
+};
 
 const getInitialView = () => {
   if (window.location.pathname.startsWith("/import")) {
@@ -500,6 +589,356 @@ const MobileNavigation = ({
     })}
   </nav>
 );
+
+const DashboardLoadingState = () => (
+  <div className="dashboard-screen min-h-screen p-6" role="status" aria-live="polite">
+    <div className="mx-auto grid w-full max-w-6xl gap-5">
+      <section className="panel rounded-lg p-5 shadow-lg sm:p-6">
+        <div className="flex items-center gap-3 text-sm font-semibold text-muted">
+          <RefreshCw size={18} className="animate-spin text-accent" />
+          Omon sedang menyiapkan ringkasan keuanganmu...
+        </div>
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+          <div className="h-48 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+          <div className="grid gap-3">
+            <div className="h-20 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+            <div className="h-20 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="h-32 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+        <div className="h-32 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+        <div className="h-32 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <div className="h-72 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+        <div className="h-72 animate-pulse rounded-lg bg-[var(--color-panel-hover)]" />
+      </section>
+    </div>
+  </div>
+);
+
+const DashboardErrorState = ({ error, onRetry, onOpenSettings, onLogout }) => (
+  <div className="dashboard-screen flex min-h-screen items-center justify-center p-6" role="alert">
+    <div className="panel w-full max-w-lg rounded-lg p-6 text-center shadow-lg sm:p-8">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-accent-glow text-accent">
+        <RefreshCw size={22} />
+      </div>
+      <h1 className="mt-4 text-2xl font-bold text-main">
+        Dashboard belum dapat dibuka
+      </h1>
+      <p className="mt-3 text-sm leading-6 text-muted">
+        {error || "Ringkasan keuangan belum bisa dimuat. Coba lagi sebentar lagi."}
+      </p>
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        <button type="button" onClick={onRetry} className="primary-button rounded-lg px-5 py-2.5 font-bold">
+          Coba Lagi
+        </button>
+        <button type="button" onClick={onOpenSettings} className="secondary-button rounded-lg px-5 py-2.5 font-bold">
+          Buka Settings
+        </button>
+        <button type="button" onClick={onLogout} className="secondary-button rounded-lg px-5 py-2.5 font-bold">
+          Logout
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+const DashboardSection = ({ title, description, children }) => (
+  <section className="grid gap-4">
+    <div className="max-w-3xl">
+      <h2 className="text-xl font-bold text-main">
+        {title}
+      </h2>
+      {description && (
+        <p className="mt-1 text-sm leading-6 text-muted">
+          {description}
+        </p>
+      )}
+    </div>
+    {children}
+  </section>
+);
+
+const FinancialMetricCard = ({
+  label,
+  value,
+  icon: Icon,
+  trend,
+  trendDirection,
+  comparisonLabel,
+  privacyMode,
+}) => {
+  const direction = getTrendDirection(trend, trendDirection);
+  const TrendIcon = direction === "up"
+    ? TrendingUp
+    : direction === "down"
+      ? TrendingDown
+      : Minus;
+
+  return (
+    <article className="panel rounded-lg p-4 shadow-lg sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-muted">
+            {label}
+          </p>
+          <p className="mt-2 break-words text-[clamp(1.35rem,5vw,1.85rem)] font-bold leading-tight text-main tabular-nums">
+            {formatPrivateRupiah(value, privacyMode)}
+          </p>
+        </div>
+        <div className="icon-badge shrink-0 rounded-lg p-2.5">
+          <Icon size={20} />
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-start gap-2 text-sm text-muted">
+        <TrendIcon size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+        <p>
+          <span className="font-bold text-main">
+            {formatTrendPercent(trend)}
+          </span>{" "}
+          {getTrendCopy({
+            label,
+            direction,
+            comparisonLabel,
+          })}
+        </p>
+      </div>
+    </article>
+  );
+};
+
+const DashboardHome = ({
+  anomalies,
+  categoryData,
+  financialInsightsError,
+  financialInsightsLoading,
+  financialTypes,
+  hasDashboardPeriodData,
+  hasPremiumAccess,
+  income,
+  monthlyFinancialTypes,
+  onOpenSettings,
+  onRefresh,
+  privacyMode,
+  ruleBasedInsights,
+  saving,
+  selectedMonth,
+  selectedYear,
+  spending,
+  summary,
+  theme,
+  topSpending,
+}) => {
+  const totalExpenses = Number(getSummaryAmount(summary, [
+    "total_pengeluaran",
+    "total_expenses",
+  ]));
+  const totalIncome = Number(getSummaryAmount(summary, ["total_income"]));
+  const totalSaving = Number(getSummaryAmount(summary, ["total_saving"]));
+  const netCashflow = totalIncome - totalExpenses;
+  const transactionCount = Number(summary.transaction_count || 0);
+  const periodLabel = getPeriodLabel(selectedYear, selectedMonth);
+  const cashflowTone = netCashflow >= 0
+    ? "Pemasukan masih menutup pengeluaran pada periode ini."
+    : "Pengeluaran lebih besar dari pemasukan pada periode ini.";
+
+  if (!hasDashboardPeriodData) {
+    return (
+      <div className="grid gap-6">
+        <EmptyState
+          title="Belum ada ringkasan untuk periode ini."
+          description="Coba pilih periode lain atau sinkronkan Google Sheet agar Dashboard mulai menampilkan pola keuanganmu."
+          actionLabel="Buka Settings"
+          onAction={onOpenSettings}
+          secondaryLabel="Refresh Dashboard"
+          onSecondaryAction={onRefresh}
+          icon={Database}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-8">
+      <section className="panel overflow-hidden rounded-lg p-5 shadow-lg sm:p-6">
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_1.4fr] xl:items-stretch">
+          <div className="flex min-h-[260px] flex-col justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-5">
+            <div>
+              <div className="mb-5 flex w-fit items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-1 text-xs font-bold text-muted">
+                <CalendarDays size={14} />
+                {periodLabel}
+              </div>
+
+              <p className="text-sm font-semibold text-muted">
+                Net cashflow
+              </p>
+              <h2 className="mt-2 break-words text-[clamp(2rem,8vw,3.25rem)] font-bold leading-tight text-main tabular-nums">
+                {formatPrivateRupiah(netCashflow, privacyMode)}
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
+                {cashflowTone}
+              </p>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="primary-button rounded-lg px-4 py-2 text-sm font-bold"
+              >
+                <RefreshCw size={16} />
+                Refresh data
+              </button>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="secondary-button rounded-lg px-4 py-2 text-sm font-bold"
+              >
+                <Settings size={16} />
+                Kelola sumber data
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-1">
+            <FinancialMetricCard
+              label="Income"
+              value={totalIncome}
+              icon={Landmark}
+              trend={summary.total_income_change_pct ?? summary.trend_income}
+              trendDirection={summary.total_income_trend}
+              comparisonLabel={summary.comparison?.total_income_label || summary.comparison?.label}
+              privacyMode={privacyMode}
+            />
+            <FinancialMetricCard
+              label="Expenses"
+              value={totalExpenses}
+              icon={Wallet}
+              trend={summary.total_expenses_change_pct ?? summary.trend_pengeluaran}
+              trendDirection={summary.total_expenses_trend}
+              comparisonLabel={summary.comparison?.total_expenses_label || summary.comparison?.label}
+              privacyMode={privacyMode}
+            />
+            <FinancialMetricCard
+              label="Saving"
+              value={totalSaving}
+              icon={PiggyBank}
+              trend={summary.total_saving_change_pct ?? summary.trend_saving}
+              trendDirection={summary.total_saving_trend}
+              comparisonLabel={summary.comparison?.total_saving_label || summary.comparison?.label}
+              privacyMode={privacyMode}
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 border-t border-[var(--color-border)] pt-5 text-sm text-muted sm:grid-cols-3">
+          <p>
+            <span className="font-bold text-main">{transactionCount}</span> transaksi terbaca pada konteks ini.
+          </p>
+          <p>
+            Grafik di bawah membantu melihat pola, bukan menilai kebiasaanmu.
+          </p>
+          <p>
+            Setiap angka mengikuti konteks periode yang sedang dipilih.
+          </p>
+        </div>
+      </section>
+
+      <FinancialInsights
+        data={ruleBasedInsights}
+        loading={financialInsightsLoading}
+        error={financialInsightsError}
+        privacyMode={privacyMode}
+      />
+
+      <DashboardSection
+        title="Pola utama"
+        description="Mulai dari jenis arus uang, lalu lihat perubahan bulanannya."
+      >
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
+          <FinancialTypeChart
+            data={financialTypes}
+            theme={theme}
+            privacyMode={privacyMode}
+          />
+
+          <MonthlyFinancialTypeTrend
+            data={monthlyFinancialTypes}
+            theme={theme}
+            privacyMode={privacyMode}
+          />
+        </div>
+      </DashboardSection>
+
+      <DashboardSection
+        title="Perubahan dari waktu ke waktu"
+        description="Gunakan grafik ini untuk memahami arah pemasukan, pengeluaran, dan saving."
+      >
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3 xl:gap-6">
+          <MonthlyChart
+            title="Monthly Spending"
+            data={spending}
+            dataKey="total"
+            theme={theme}
+            privacyMode={privacyMode}
+          />
+
+          <MonthlyChart
+            title="Monthly Income"
+            data={income}
+            dataKey="total"
+            theme={theme}
+            privacyMode={privacyMode}
+          />
+
+          <MonthlyChart
+            title="Monthly Saving"
+            data={saving}
+            dataKey="total"
+            theme={theme}
+            privacyMode={privacyMode}
+          />
+        </div>
+      </DashboardSection>
+
+      <DashboardSection
+        title="Detail pendukung"
+        description="Informasi tambahan untuk membantu melihat kategori dan transaksi yang paling menonjol."
+      >
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
+          <PieCategoryChart
+            data={categoryData}
+            theme={theme}
+            privacyMode={privacyMode}
+          />
+
+          <TopSpendingTable
+            data={topSpending}
+            privacyMode={privacyMode}
+          />
+
+          {hasPremiumAccess ? (
+            <AnomalyTable
+              data={anomalies}
+              privacyMode={privacyMode}
+            />
+          ) : (
+            <LockedFeature
+              title="Decision Alert Terkunci"
+              message="Decision alert tersedia untuk Owner dan Member premium. Dashboard dasar tetap bisa digunakan untuk memahami ringkasan periode ini."
+            />
+          )}
+        </div>
+      </DashboardSection>
+    </div>
+  );
+};
 
 const Dashboard = ({
   auth,
@@ -1110,15 +1549,7 @@ const Dashboard = ({
   // LOADING SCREEN
   // =========================
   if (loading) {
-    return (
-      <div className="dashboard-screen flex min-h-screen items-center justify-center p-6" role="status" aria-live="polite">
-        <div className="panel w-full max-w-md rounded-2xl p-8 text-center shadow-lg">
-          <RefreshCw size={28} className="mx-auto animate-spin text-accent" />
-          <h1 className="mt-4 text-2xl font-bold text-main">Belum ada namanya</h1>
-          <p className="mt-2 text-sm text-muted">Omon sedang menyiapkan Dashboard kamu...</p>
-        </div>
-      </div>
-    );
+    return <DashboardLoadingState />;
   }
 
   // =========================
@@ -1126,17 +1557,18 @@ const Dashboard = ({
   // =========================
   if (error) {
     return (
-      <div className="dashboard-screen flex min-h-screen items-center justify-center p-6" role="alert">
-        <div className="panel w-full max-w-lg rounded-2xl p-8 text-center shadow-lg">
-          <h1 className="text-2xl font-bold text-main">Dashboard belum dapat dibuka</h1>
-          <p className="mt-3 text-sm leading-6 text-muted">{error}</p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <button type="button" onClick={() => { setError(""); loadInitialData(); }} className="primary-button rounded-xl px-5 py-2.5 font-bold">Coba Lagi</button>
-            <button type="button" onClick={() => { setError(""); commitActiveView("configuration"); }} className="secondary-button rounded-xl px-5 py-2.5 font-bold">Buka Settings</button>
-            <button type="button" onClick={onLogout} className="secondary-button rounded-xl px-5 py-2.5 font-bold">Logout</button>
-          </div>
-        </div>
-      </div>
+      <DashboardErrorState
+        error={error}
+        onRetry={() => {
+          setError("");
+          loadInitialData();
+        }}
+        onOpenSettings={() => {
+          setError("");
+          commitActiveView("configuration");
+        }}
+        onLogout={onLogout}
+      />
     );
   }
 
@@ -1390,145 +1822,28 @@ const Dashboard = ({
         {activeView === "dashboard" && onboardingState !== "ready" ? (
           renderOnboardingState()
         ) : activeView === "dashboard" ? (
-          <>
-            {!hasDashboardPeriodData && (
-              <div className="mb-8">
-                <EmptyState
-                  title="No data available for this period."
-                  description="Try another month or sync your Google Sheet after checking the required transaction columns."
-                  actionLabel="Go to Configuration"
-                  onAction={() => setActiveView("configuration")}
-                  icon={Database}
-                  compact
-                />
-              </div>
-            )}
-
-            {/* SUMMARY */}
-            {hasDashboardPeriodData && (
-              <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3 xl:gap-6">
-                <SummaryCard
-                  title="Total Expenses"
-                  value={summary.total_pengeluaran}
-                  trend={
-                    summary.total_expenses_change_pct
-                    ?? summary.trend_pengeluaran
-                  }
-                  trendDirection={summary.total_expenses_trend}
-                  comparisonLabel={
-                    summary.comparison?.total_expenses_label
-                    || summary.comparison?.label
-                  }
-                  privacyMode={privacyMode}
-                />
-
-                <SummaryCard
-                  title="Total Saving"
-                  value={summary.total_saving}
-                  trend={
-                    summary.total_saving_change_pct
-                    ?? summary.trend_saving
-                  }
-                  trendDirection={summary.total_saving_trend}
-                  comparisonLabel={
-                    summary.comparison?.total_saving_label
-                    || summary.comparison?.label
-                  }
-                  privacyMode={privacyMode}
-                />
-
-                <SummaryCard
-                  title="Total Income"
-                  value={summary.total_income}
-                  trend={
-                    summary.total_income_change_pct
-                    ?? summary.trend_income
-                  }
-                  trendDirection={summary.total_income_trend}
-                  comparisonLabel={
-                    summary.comparison?.total_income_label
-                    || summary.comparison?.label
-                  }
-                  privacyMode={privacyMode}
-                />
-              </div>
-            )}
-
-            <div className="mb-8">
-              <FinancialInsights
-                data={ruleBasedInsights}
-                loading={financialInsightsLoading}
-                error={financialInsightsError}
-                privacyMode={privacyMode}
-              />
-            </div>
-
-            {/* CHARTS */}
-            <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
-              <FinancialTypeChart
-                data={financialTypes}
-                theme={theme}
-                privacyMode={privacyMode}
-              />
-
-              <MonthlyFinancialTypeTrend
-                data={monthlyFinancialTypes}
-                theme={theme}
-                privacyMode={privacyMode}
-              />
-
-              <MonthlyChart
-                title="Monthly Spending"
-                data={spending}
-                dataKey="total"
-                theme={theme}
-                privacyMode={privacyMode}
-              />
-
-              <MonthlyChart
-                title="Monthly Saving"
-                data={saving}
-                dataKey="total"
-                theme={theme}
-                privacyMode={privacyMode}
-              />
-
-              <MonthlyChart
-                title="Monthly Income"
-                data={income}
-                dataKey="total"
-                theme={theme}
-                privacyMode={privacyMode}
-              />
-
-              <PieCategoryChart
-                data={categoryData}
-                theme={theme}
-                privacyMode={privacyMode}
-              />
-            </div>
-
-            {/* TABLES */}
-            <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-6">
-              <TopSpendingTable
-                data={topSpending}
-                privacyMode={privacyMode}
-              />
-
-              {hasPremiumAccess ? (
-                <AnomalyTable
-                  data={anomalies}
-                  privacyMode={privacyMode}
-                />
-              ) : (
-                <LockedFeature
-                  title="Decision Alert Terkunci"
-                  message="Anomaly detection dan decision alert tersedia untuk Owner dan Member premium."
-                />
-              )}
-            </div>
-
-          </>
+          <DashboardHome
+            anomalies={anomalies}
+            categoryData={categoryData}
+            financialInsightsError={financialInsightsError}
+            financialInsightsLoading={financialInsightsLoading}
+            financialTypes={financialTypes}
+            hasDashboardPeriodData={hasDashboardPeriodData}
+            hasPremiumAccess={hasPremiumAccess}
+            income={income}
+            monthlyFinancialTypes={monthlyFinancialTypes}
+            onOpenSettings={() => setActiveView("configuration")}
+            onRefresh={handleRefreshData}
+            privacyMode={privacyMode}
+            ruleBasedInsights={ruleBasedInsights}
+            saving={saving}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+            spending={spending}
+            summary={summary}
+            theme={theme}
+            topSpending={topSpending}
+          />
         ) : activeView === "analytics" && onboardingState !== "ready" ? (
           renderOnboardingState()
         ) : activeView === "analytics" && !hasPremiumAccess ? (
