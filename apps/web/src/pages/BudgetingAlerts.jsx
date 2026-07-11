@@ -27,6 +27,7 @@ import {
   formatPrivateCompact,
   formatPrivateRupiah,
   maskChartRows,
+  PRIVACY_MODES,
 } from "../utils/privacy";
 import { dashboardChartPalette } from "../theme/chartTheme";
 import ConfirmationDialog from "../components/ConfirmationDialog";
@@ -37,6 +38,24 @@ const parseRupiahInput = (value) => (
 
 const formatInputValue = (value) => (
   Number(value || 0).toLocaleString("id-ID")
+);
+
+const clampPercentage = (value) => (
+  Math.min(Math.max(Number(value || 0), 0), 100)
+);
+
+const formatUsageRate = (value) => {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return "0.0%";
+  }
+
+  return `${numericValue.toFixed(1)}%`;
+};
+
+const getBudgetInputType = (privacyMode) => (
+  privacyMode === PRIVACY_MODES.hide ? "password" : "text"
 );
 
 const addCategoryOption = (optionMap, category) => {
@@ -171,6 +190,12 @@ const BudgetingAlerts = ({
     return recommendationMap;
   }, [data?.category_recommendations]);
   const summary = data?.summary ?? {};
+  const totalBudget = Number(summary.total_budget || 0);
+  const currentSpending = Number(summary.current_spending || 0);
+  const remainingBudget = Number(summary.remaining_budget || 0);
+  const overallUsageRate = totalBudget > 0
+    ? currentSpending / totalBudget * 100
+    : 0;
   const [draftBudgets, setDraftBudgets] = useState({});
   const [newCategory, setNewCategory] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -183,6 +208,7 @@ const BudgetingAlerts = ({
       : false
   ));
   const hasPeriod = Boolean(selectedYear && selectedMonth);
+  const isAmountHidden = privacyMode === PRIVACY_MODES.hide;
   const periodStatus = hasPeriod
     ? getPeriodStatus(selectedYear, selectedMonth)
     : "current";
@@ -463,7 +489,7 @@ const BudgetingAlerts = ({
   };
 
   const renderUsageProgress = (usageRate) => {
-    const cappedUsage = Math.min(Math.max(Number(usageRate || 0), 0), 100);
+    const cappedUsage = clampPercentage(usageRate);
     const progressColor = usageRate >= 100
       ? "bg-red-500"
       : usageRate >= 90
@@ -473,7 +499,14 @@ const BudgetingAlerts = ({
           : "bg-[var(--color-accent)]";
 
     return (
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--color-panel-hover)]">
+      <div
+        className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--color-panel-hover)]"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(cappedUsage)}
+        aria-valuetext={`Terpakai ${formatUsageRate(usageRate)}`}
+      >
         <div
           className={`h-full rounded-full ${progressColor}`}
           style={{ width: `${cappedUsage}%` }}
@@ -494,14 +527,14 @@ const BudgetingAlerts = ({
 
     if (usageRate >= 100) {
       return {
-        label: "Melewati budget",
+        label: "Batas terlewati",
         className: "border-red-200 bg-red-50 text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200",
       };
     }
 
     if (usageRate >= 90) {
       return {
-        label: "Hampir habis",
+        label: "Mendekati batas",
         className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200",
       };
     }
@@ -514,7 +547,7 @@ const BudgetingAlerts = ({
     }
 
     return {
-      label: "Aman",
+      label: "Masih tersedia",
       className: "border-[rgba(74,93,78,0.24)] bg-[var(--color-accent-bg)] text-accent",
     };
   };
@@ -546,7 +579,7 @@ const BudgetingAlerts = ({
       <div>
         {renderUsageProgress(usageRate)}
         <p className="mt-1 text-xs font-semibold text-muted">
-          {usageRate.toFixed(1)}%
+          Terpakai {formatUsageRate(usageRate)}
         </p>
       </div>
     );
@@ -625,19 +658,55 @@ const BudgetingAlerts = ({
 
   return (
     <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-6">
-      <section className="panel rounded-2xl p-4 shadow-lg sm:p-5">
-        <div className="mb-5">
-          <p className="text-sm font-semibold text-muted">
-            Periode {periodLabel}
-          </p>
-          <h1 className="mt-1 text-2xl font-bold text-main">
-            {pageTitle}
-          </h1>
-          {periodBanner && (
-            <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3 text-sm font-semibold text-muted">
-              {periodBanner}
+      <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-accent">
+              Periode Budget
+            </p>
+            <h1 className="mt-1 text-2xl font-bold text-main">
+              {pageTitle}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Atur batas yang realistis, pantau penggunaan, dan pilih tindakan
+              berikutnya tanpa mengubah transaksi yang sudah ada.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3">
+            <p className="text-xs font-bold uppercase text-muted">
+              Konteks
+            </p>
+            <p className="mt-1 text-sm font-bold text-main">
+              {periodLabel}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-muted">
+              {isAmountHidden ? "Nominal disembunyikan" : "Nominal terlihat"}
+            </p>
+          </div>
+        </div>
+
+        {periodBanner && (
+          <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3 text-sm font-semibold text-muted">
+            {periodBanner}
+          </div>
+        )}
+
+        <div className="mb-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-main">
+                Progress keseluruhan
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                Terpakai {formatUsageRate(overallUsageRate)} dari anggaran periode ini.
+              </p>
             </div>
-          )}
+            <p className="text-sm font-bold text-main">
+              {formatPrivateRupiah(currentSpending, privacyMode)} / {formatPrivateRupiah(totalBudget, privacyMode)}
+            </p>
+          </div>
+          {renderUsageProgress(overallUsageRate)}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -649,7 +718,7 @@ const BudgetingAlerts = ({
               <Wallet size={20} className="text-accent" />
             </div>
             <p className="break-words text-[clamp(1.25rem,6vw,1.5rem)] font-bold text-main">
-              {formatPrivateRupiah(summary.total_budget || 0, privacyMode)}
+              {formatPrivateRupiah(totalBudget, privacyMode)}
             </p>
           </div>
 
@@ -658,7 +727,7 @@ const BudgetingAlerts = ({
               Sudah Terpakai
             </p>
             <p className="break-words text-[clamp(1.25rem,6vw,1.5rem)] font-bold text-main">
-              {formatPrivateRupiah(summary.current_spending || 0, privacyMode)}
+              {formatPrivateRupiah(currentSpending, privacyMode)}
             </p>
           </div>
 
@@ -667,29 +736,35 @@ const BudgetingAlerts = ({
               Sisa Budget
             </p>
             <p className={`break-words text-[clamp(1.25rem,6vw,1.5rem)] font-bold ${
-              Number(summary.remaining_budget || 0) < 0
+              remainingBudget < 0
                 ? "metric-warning"
                 : "text-main"
             }`}>
-              {formatPrivateRupiah(summary.remaining_budget || 0, privacyMode)}
+              {formatPrivateRupiah(remainingBudget, privacyMode)}
             </p>
           </div>
 
           <div className="rounded-xl border border-[rgba(244,211,94,0.55)] bg-[var(--color-alert-bg)] p-4">
             <p className="mb-4 text-sm font-semibold text-muted">
-              Kategori Melewati Budget
+              Perlu perhatian
             </p>
             <p className="text-[clamp(1.5rem,7vw,1.875rem)] font-bold text-main">
               {overBudgetCategoryCount}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-muted">
+              Kategori melewati batas
             </p>
           </div>
 
           <div className="rounded-xl border border-[var(--color-border)] p-4">
             <p className="mb-4 text-sm font-semibold text-muted">
-              Kategori Belum Dianggarkan
+              Belum memiliki batas
             </p>
             <p className="text-[clamp(1.5rem,7vw,1.875rem)] font-bold text-main">
               {unbudgetedCategoryCount}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-muted">
+              Bisa dianggarkan
             </p>
           </div>
         </div>
@@ -711,7 +786,11 @@ const BudgetingAlerts = ({
           className="mt-6 grid grid-cols-1 gap-3 rounded-xl border border-[var(--color-border)] p-4 md:grid-cols-[minmax(0,1fr)_220px_auto]"
         >
           <div>
+            <label htmlFor="new-budget-category" className="mb-2 block text-sm font-bold text-main">
+              Buat batas kategori
+            </label>
             <select
+              id="new-budget-category"
               value={newCategory}
               onChange={(event) => setNewCategory(event.target.value)}
               className="form-control w-full rounded-xl px-4 py-3"
@@ -729,12 +808,18 @@ const BudgetingAlerts = ({
             </p>
           </div>
           <div>
+            <label htmlFor="new-budget-amount" className="mb-2 block text-sm font-bold text-main">
+              Nominal budget
+            </label>
             <input
+              id="new-budget-amount"
+              type={getBudgetInputType(privacyMode)}
               value={newAmount}
               onChange={(event) => setNewAmount(event.target.value)}
               className="form-control w-full rounded-xl px-4 py-3 text-right"
               inputMode="numeric"
-              placeholder="Budget"
+              placeholder={isAmountHidden ? "Nominal disembunyikan" : "Budget"}
+              aria-label="Nominal budget baru"
             />
             {selectedNewCategory?.recommended_budget > 0 && (
               <button
@@ -766,14 +851,14 @@ const BudgetingAlerts = ({
         )}
       </section>
 
-      <section className="panel rounded-2xl p-4 shadow-lg sm:p-5">
+      <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
         <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-bold text-main">
-              Budget per Kategori
+              Status kategori
             </h2>
             <p className="text-sm text-muted">
-              Kategori tanpa budget tetap tampil sebagai Belum dianggarkan.
+              Setiap kategori menampilkan batas, penggunaan, sisa, dan tindakan yang tersedia.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
@@ -786,14 +871,20 @@ const BudgetingAlerts = ({
               disabled={!hasSavedBudgets || savingKey === "delete-all-budgets"}
               className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
             >
-              Hapus Anggaran Bulan Ini
+              Reset Anggaran Bulan Ini
             </button>
           </div>
         </div>
 
+        {currentSpending <= 0 && categories.length > 0 && (
+          <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3 text-sm font-semibold text-muted">
+            Belum ada penggunaan expense untuk periode ini. Budget tetap bisa disiapkan sebagai batas rencana.
+          </div>
+        )}
+
         {categories.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--color-border)] p-6 text-center text-sm text-muted">
-            Belum ada anggaran atau transaksi Pengeluaran untuk bulan ini. Tambahkan anggaran pada form di atas untuk mulai memantau batas pengeluaran.
+            Belum ada anggaran untuk periode ini. Tambahkan kategori di form atas untuk mulai membuat batas pengeluaran.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-[var(--color-border)]">
@@ -859,6 +950,7 @@ const BudgetingAlerts = ({
                     <div>{renderStatusBadge(item)}</div>
                     <div>
                       <input
+                        type={getBudgetInputType(privacyMode)}
                         value={formatInputValue(budgetValue)}
                         onChange={(event) => (
                           handleDraftChange(item.category, event.target.value)
@@ -931,6 +1023,7 @@ const BudgetingAlerts = ({
                           Budget
                         </p>
                         <input
+                          type={getBudgetInputType(privacyMode)}
                           value={formatInputValue(budgetValue)}
                           onChange={(event) => (
                             handleDraftChange(item.category, event.target.value)
@@ -1006,7 +1099,7 @@ const BudgetingAlerts = ({
         )}
       </section>
 
-      <section className="panel rounded-2xl p-4 shadow-lg sm:p-5">
+      <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-bold text-main">
             {alertSectionTitle}
@@ -1033,7 +1126,7 @@ const BudgetingAlerts = ({
                     {alert.message}
                   </p>
                   <p className="mt-1 opacity-80">
-                    Terpakai {Number(alert.usage_rate || 0).toFixed(1)}% dari budget.
+                    Terpakai {formatUsageRate(alert.usage_rate)} dari budget.
                   </p>
                 </div>
               </div>
@@ -1042,7 +1135,7 @@ const BudgetingAlerts = ({
         </div>
       </section>
 
-      <section className="panel rounded-2xl p-4 shadow-lg sm:p-5">
+      <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
         <div className="mb-6">
           <h2 className="text-xl font-bold text-main">
             Perbandingan Budget dan Pengeluaran
@@ -1131,11 +1224,15 @@ const BudgetingAlerts = ({
 
       <ConfirmationDialog
         open={Boolean(pendingDelete)}
-        title={pendingDelete?.type === "all" ? "Hapus semua anggaran bulan ini?" : `Hapus anggaran ${pendingDelete?.item?.category || "ini"}?`}
-        description="Tindakan ini menghapus anggaran tersimpan untuk periode yang dipilih."
-        affectedItems={pendingDelete?.type === "all" ? ["Semua anggaran pada periode ini"] : ["Anggaran kategori yang dipilih"]}
-        safeItems={["Seluruh transaksi Pemasukan dan Pengeluaran", "Data Google Sheet", "Anggaran periode lain"]}
-        confirmLabel="Hapus Anggaran"
+        title={pendingDelete?.type === "all" ? "Reset anggaran bulan ini?" : `Hapus anggaran ${pendingDelete?.item?.category || "ini"}?`}
+        description={pendingDelete?.type === "all"
+          ? `Tindakan ini menghapus semua batas budget tersimpan untuk ${periodLabel}.`
+          : "Tindakan ini menghapus batas budget kategori yang dipilih pada periode ini."}
+        affectedItems={pendingDelete?.type === "all"
+          ? [`Semua anggaran pada ${periodLabel}`]
+          : [`Anggaran kategori ${pendingDelete?.item?.category || "yang dipilih"}`]}
+        safeItems={["Transaksi tetap aman dan tidak ikut terhapus", "Data Google Sheet tetap aman", "Anggaran periode lain tidak berubah"]}
+        confirmLabel={pendingDelete?.type === "all" ? "Reset Anggaran" : "Hapus Anggaran"}
         isLoading={savingKey === "delete-all-budgets" || Boolean(pendingDelete?.item && savingKey === pendingDelete.item.category)}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => pendingDelete?.type === "all" ? handleDeleteAllBudgets() : handleDeleteCategory(pendingDelete.item)}
