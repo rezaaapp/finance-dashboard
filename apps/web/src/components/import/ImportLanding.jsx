@@ -99,10 +99,11 @@ const ImportLanding = ({ onReviewReady }) => {
     <div className="grid grid-cols-1 gap-6">
       <section>
         <h2 className="text-2xl font-bold text-main">
-          Import Transaksi
+          Unggah mutasi Blu
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted sm:text-base">
-          Import transaksi dari file mutasi bank untuk mempercepat pencatatan keuangan.
+          Pilih pemilik transaksi, unggah PDF e-Statement Blu, lalu Omon akan
+          memeriksa transaksi baru sebelum Anda menyimpannya ke ledger Omon.
         </p>
       </section>
 
@@ -128,7 +129,7 @@ const ImportLanding = ({ onReviewReady }) => {
 
           <label className="mt-5 block">
             <span className="text-sm font-semibold text-muted">
-              Pemilik Statement
+              Pemilik transaksi dalam file ini
             </span>
             <select
               value={statementOwner}
@@ -155,7 +156,7 @@ const ImportLanding = ({ onReviewReady }) => {
             ) : (
               <Upload size={18} />
             )}
-            {uploading ? "Membaca PDF..." : "Upload PDF"}
+            {uploading ? "Memeriksa PDF..." : "Unggah dan periksa PDF"}
           </button>
 
           <input
@@ -195,7 +196,7 @@ const ImportLanding = ({ onReviewReady }) => {
               disabled
               className="mt-6 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-muted dark:border-[var(--color-border)] sm:w-auto"
             >
-              Upload PDF
+              Belum tersedia
             </button>
           </article>
         ))}
@@ -212,7 +213,7 @@ const ImportLanding = ({ onReviewReady }) => {
 
       {uploadStatus === "upload_success" && (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
-          PDF berhasil dibaca. Menyiapkan halaman review...
+          PDF berhasil diperiksa. Menyiapkan review transaksi baru...
         </section>
       )}
 
@@ -239,7 +240,7 @@ const ImportLanding = ({ onReviewReady }) => {
                   <p className="mt-1 font-semibold text-main">{emptyResult.newTransactions}</p>
                 </div>
                 <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Sudah Diimport</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Sudah diproses</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.existingTransactions}</p>
                 </div>
                 <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
@@ -253,8 +254,9 @@ const ImportLanding = ({ onReviewReady }) => {
       )}
 
       <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-        Saat ini Import Transaksi hanya mendukung PDF e-Statement Blu.
-        Dukungan source dana lain akan ditambahkan secara bertahap.
+        Saat ini Import hanya mendukung PDF e-Statement Blu dengan batas dan
+        validasi file dari sistem yang sudah berjalan. File akan diperiksa dulu;
+        transaksi baru baru disimpan setelah Anda menyetujuinya.
       </section>
     </div>
   );

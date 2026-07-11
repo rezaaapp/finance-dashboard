@@ -214,8 +214,8 @@ export const buildApproveFeedback = (response = {}) => {
       tone: "warning",
       title: "Approval selesai dan transaksi tersimpan di Omon.",
       message: syncSuccess > 0
-        ? `Sebagian salinan Spreadsheet berhasil dikirim, tetapi ${syncFailed} transaksi masih perlu retry pengiriman.`
-        : "Salinan ke Google Spreadsheet belum berhasil dikirim. Lanjutkan dari Import History dengan retry pengiriman.",
+        ? `Sebagian salinan Spreadsheet berhasil dikirim, tetapi ${syncFailed} transaksi masih perlu dikirim ulang.`
+        : "Salinan ke Google Spreadsheet belum berhasil dikirim. Lanjutkan dari Riwayat Import dengan pengiriman ulang.",
       detail,
     };
 };
@@ -238,7 +238,7 @@ export const buildRetryFeedback = (response = {}) => {
   if (syncStatus === "success" || response.status === "completed") {
     return {
       tone: "success",
-      title: "Retry pengiriman selesai.",
+      title: "Pengiriman ulang selesai.",
       message: syncFailed > 0
         ? `${syncSuccess} transaksi berhasil dikirim, ${syncFailed} transaksi masih belum berhasil.`
         : `${syncSuccess} transaksi berhasil dikirim ke Google Spreadsheet.`,
@@ -249,7 +249,7 @@ export const buildRetryFeedback = (response = {}) => {
   if (syncStatus === "needs_reconnect") {
     return {
       tone: "warning",
-      title: "Retry pengiriman tertunda.",
+      title: "Pengiriman ulang tertunda.",
       message: "Transaksi di Omon tetap aman, tetapi akun Google perlu dihubungkan ulang sebelum pengiriman Spreadsheet dilanjutkan.",
       detail,
     };
@@ -257,7 +257,7 @@ export const buildRetryFeedback = (response = {}) => {
 
     return {
       tone: "warning",
-      title: "Retry pengiriman belum berhasil.",
+      title: "Pengiriman ulang belum berhasil.",
       message: "Transaksi di Omon tetap aman, tetapi pengiriman ke Google Spreadsheet masih gagal.",
       detail,
     };

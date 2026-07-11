@@ -5,6 +5,7 @@ import {
   LoaderCircle,
   RefreshCw,
 } from "lucide-react";
+import { formatPrivateRupiah } from "../../utils/privacy";
 
 import {
   getOmonApprovalStatus,
@@ -42,12 +43,6 @@ const StatusBadge = ({ children, tone = "default" }) => (
     {children}
   </span>
 );
-
-const formatAmount = (amount) => new Intl.NumberFormat("id-ID", {
-  style: "currency",
-  currency: "IDR",
-  maximumFractionDigits: 0,
-}).format(Number(amount || 0));
 
 const RetryResultBanner = ({ retryResult }) => {
   if (!retryResult) {
@@ -95,6 +90,7 @@ const ImportHistory = ({
   retryResult = null,
   onTargetSourceChange,
   onTargetSheetChange,
+  privacyMode,
 }) => {
   const hasRetryTarget = Boolean(targetSourceId && targetSheetName);
   const approvalStatus = selectedDetail ? getOmonApprovalStatus(selectedDetail) : null;
@@ -112,10 +108,10 @@ const ImportHistory = ({
                 </span>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">
-                    Import Transaksi
+                    Riwayat Import
                   </p>
                   <h2 className="text-2xl font-bold text-main">
-                    History
+                    Status Omon dan Spreadsheet
                   </h2>
                 </div>
               </div>
@@ -135,7 +131,7 @@ const ImportHistory = ({
               ) : (
                 <RefreshCw size={16} />
               )}
-              Refresh
+              Muat ulang
             </button>
           </div>
         </section>
@@ -160,8 +156,8 @@ const ImportHistory = ({
           ) : historyRows.length === 0 ? (
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-6 text-center">
               <p className="font-semibold text-main">Belum ada riwayat Import.</p>
-              <p className="mt-2 text-sm text-muted">Upload PDF Blu untuk memulai Import pertama.</p>
-              <button type="button" onClick={onUpload} className="primary-button mt-4 rounded-lg px-5 py-2.5 text-sm font-semibold">Upload PDF</button>
+              <p className="mt-2 text-sm text-muted">Unggah PDF Blu untuk memulai Import pertama.</p>
+              <button type="button" onClick={onUpload} className="primary-button mt-4 rounded-lg px-5 py-2.5 text-sm font-semibold">Unggah PDF</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -245,7 +241,7 @@ const ImportHistory = ({
                                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-950/20"
                               >
                                 <RefreshCw size={14} />
-                                Retry
+                                Coba sinkronkan lagi
                               </button>
                             )}
                           </div>
@@ -293,7 +289,7 @@ const ImportHistory = ({
           <div className="grid grid-cols-1 gap-5">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">
-                Import Detail
+                Detail Import
               </p>
               <h3 className="mt-2 text-xl font-bold text-main">
                 {selectedDetail.filename}
@@ -365,7 +361,7 @@ const ImportHistory = ({
                   Ada transaksi yang sudah disetujui dan menjadi data utama di Omon, tetapi salinannya belum terkirim ke Google Spreadsheet.
                 </p>
                 <p className="mt-1">
-                  {selectedDetail.unsynced_count} transaksi perlu Retry pengiriman tanpa membuat ulang transaksi final di Omon.
+                  {selectedDetail.unsynced_count} transaksi perlu dikirim ulang ke Spreadsheet tanpa membuat ulang transaksi final di Omon.
                 </p>
               </div>
             )}
@@ -391,7 +387,7 @@ const ImportHistory = ({
                           </p>
                         </div>
                         <p className="shrink-0 font-semibold text-main">
-                          {formatAmount(transaction.amount)}
+                          {formatPrivateRupiah(transaction.amount, privacyMode)}
                         </p>
                       </div>
                       <p className="mt-2 text-xs text-muted">
@@ -407,10 +403,11 @@ const ImportHistory = ({
             {selectedDetail.unsynced_count > 0 && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-                  Retry Pengiriman Spreadsheet
+                  Kirim ulang ke Spreadsheet
                 </p>
                 <p className="mt-2 text-sm text-muted">
-                  Retry hanya mencoba mengirim ulang salinan ke Google Spreadsheet. Transaksi yang sudah tersimpan di Omon tidak dibuat ulang.
+                  Pengiriman ulang hanya mencoba mengirim salinan ke Google Spreadsheet.
+                  Transaksi yang sudah tersimpan di Omon tidak dibuat ulang.
                 </p>
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <label className="block">
@@ -474,7 +471,7 @@ const ImportHistory = ({
                     ) : (
                       <RefreshCw size={16} />
                     )}
-                    Retry Pengiriman
+                    Kirim ulang ke Spreadsheet
                   </button>
                 </div>
               </div>
@@ -510,7 +507,7 @@ const ImportHistory = ({
             </span>
             <h3 className="mt-4 text-lg font-bold text-main">Pilih riwayat import</h3>
             <p className="mt-2 max-w-xs text-sm leading-6 text-muted">
-              Klik View Detail untuk melihat ringkasan approval di Omon dan status pengiriman Spreadsheet.
+              Pilih detail untuk melihat ringkasan penyimpanan di Omon dan status pengiriman Spreadsheet.
             </p>
           </div>
         )}

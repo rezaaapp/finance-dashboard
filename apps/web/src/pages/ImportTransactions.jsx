@@ -49,7 +49,7 @@ const suggestTargetSheetName = ({ filename = "", worksheets = [], source = null 
   return "";
 };
 
-const ImportTransactions = () => {
+const ImportTransactions = ({ privacyMode }) => {
   const [activeTab, setActiveTab] = useState("upload");
   const [activeJobId, setActiveJobId] = useState("");
   const [reviewData, setReviewData] = useState(null);
@@ -375,8 +375,8 @@ const ImportTransactions = () => {
           ...buildRetryFeedback({
             status: "failed",
             sync_status: responsePayload.sync_status || "failed",
-            message: responsePayload.message || responsePayload.detail || "Retry pengiriman belum berhasil.",
-            sync_error_message: responsePayload.message || responsePayload.detail || "Retry pengiriman belum berhasil.",
+            message: responsePayload.message || responsePayload.detail || "Pengiriman ulang belum berhasil.",
+            sync_error_message: responsePayload.message || responsePayload.detail || "Pengiriman ulang belum berhasil.",
           }),
         });
     } finally {
@@ -393,13 +393,47 @@ const ImportTransactions = () => {
   };
 
   const tabs = [
-    { id: "upload", label: "Upload" },
+    { id: "upload", label: "Unggah" },
     { id: "review", label: "Review" },
-    { id: "history", label: "History" },
+    { id: "history", label: "Riwayat" },
   ];
 
   return (
     <div className="grid grid-cols-1 gap-6">
+      <section className="panel rounded-lg p-5 shadow-lg">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-accent">
+              Workflow Import
+            </p>
+            <h2 className="mt-1 text-2xl font-bold text-main">
+              Periksa transaksi sebelum menjadi ledger Omon.
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+              Unggah file, review transaksi baru, lalu setujui untuk menyimpan
+              ke Omon. Pengiriman ke Spreadsheet dipantau terpisah sebagai
+              salinan lanjutan.
+            </p>
+          </div>
+
+          <div className="grid min-w-0 grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:w-[520px]">
+            {["Unggah", "Review", "Simpan di Omon", "Spreadsheet"].map((stage, index) => (
+              <div
+                key={stage}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-3"
+              >
+                <p className="text-xs font-bold uppercase text-muted">
+                  {index + 1}
+                </p>
+                <p className="mt-1 font-bold text-main">
+                  {stage}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="panel rounded-lg p-3 shadow-lg">
         <div className="flex flex-wrap gap-2">
           {tabs.map((tab) => (
@@ -476,12 +510,13 @@ const ImportTransactions = () => {
               setCategoryOptionsError("");
               setActiveTab("upload");
             }}
+            privacyMode={privacyMode}
           />
         ) : (
           <div className="panel rounded-lg p-8 text-center shadow-lg">
             <h2 className="text-lg font-bold text-main">Belum ada transaksi untuk di-Review</h2>
-            <p className="mt-2 text-sm text-muted">Upload PDF Blu untuk menyiapkan transaksi sebelum disimpan ke Omon.</p>
-            <button type="button" onClick={() => setActiveTab("upload")} className="primary-button mt-5 rounded-lg px-5 py-2.5 font-semibold">Upload PDF</button>
+            <p className="mt-2 text-sm text-muted">Unggah PDF Blu untuk menyiapkan transaksi sebelum disimpan ke Omon.</p>
+            <button type="button" onClick={() => setActiveTab("upload")} className="primary-button mt-5 rounded-lg px-5 py-2.5 font-semibold">Unggah PDF</button>
           </div>
         )
       )}
@@ -526,6 +561,7 @@ const ImportTransactions = () => {
             setTargetSheetName(nextSheetName);
             setHistoryRetryResult(null);
           }}
+          privacyMode={privacyMode}
         />
       )}
     </div>

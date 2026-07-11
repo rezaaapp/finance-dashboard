@@ -8,12 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import ConfirmationDialog from "../ConfirmationDialog";
-
-const formatAmount = (amount) => new Intl.NumberFormat("id-ID", {
-  style: "currency",
-  currency: "IDR",
-  maximumFractionDigits: 0,
-}).format(Number(amount || 0));
+import { formatPrivateRupiah } from "../../utils/privacy";
 
 const splitDateTime = (datetimeValue) => {
   const [date = "-", time = "-"] = String(datetimeValue || "").split(" ");
@@ -83,6 +78,7 @@ const ImportReview = ({
   pagination = null,
   onPageChange,
   onBack,
+  privacyMode,
 }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -251,7 +247,7 @@ const ImportReview = ({
     return (
       <div className="panel rounded-lg p-6 shadow-lg">
         <p className="text-sm text-muted">
-          Menyiapkan review import transaksi...
+          Menyiapkan review transaksi. Belum ada transaksi yang disimpan ke Omon.
         </p>
       </div>
     );
@@ -275,7 +271,7 @@ const ImportReview = ({
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)]"
             >
               <ChevronRight size={16} className="rotate-180" />
-              Kembali ke Upload
+              Kembali ke Unggah
             </button>
           </div>
         </div>
@@ -301,7 +297,7 @@ const ImportReview = ({
                     Import Transaksi
                   </p>
                   <h2 className="truncate text-2xl font-bold text-main">
-                    Review
+                    Review sebelum simpan ke Omon
                   </h2>
                 </div>
               </div>
@@ -328,7 +324,7 @@ const ImportReview = ({
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-[var(--color-panel-hover)]"
             >
               <ChevronRight size={16} className="rotate-180" />
-              Upload Lain
+              Unggah File Lain
             </button>
           </div>
 
@@ -361,12 +357,11 @@ const ImportReview = ({
               </p>
               <p className="mt-2 text-sm text-muted">
                 Setelah transaksi disetujui dan tersimpan di Omon, sistem akan mencoba
-                mengirim salinannya ke tab ini sebagai projection/export layer.
+                mengirim salinannya ke tab ini sebagai salinan Spreadsheet.
               </p>
               <p className="mt-2 text-xs text-muted">
-                PostgreSQL di Omon adalah source of truth. Google Spreadsheet dipakai
-                sebagai input dan projection/export layer, jadi status approval dan
-                status pengiriman Spreadsheet dipantau terpisah.
+                Omon adalah sumber data utama. Status simpan di Omon dan status
+                pengiriman Spreadsheet dipantau terpisah.
               </p>
             </div>
 
@@ -503,7 +498,7 @@ const ImportReview = ({
                 )}
                 {actionFeedback.tone !== "success" && (
                   <p className="mt-2 text-xs">
-                    Lanjutkan monitoring status pengiriman salinan di tab History.
+                    Lanjutkan monitoring status pengiriman salinan di tab Riwayat.
                   </p>
                 )}
               </div>
@@ -511,7 +506,7 @@ const ImportReview = ({
 
             {actionLoading === "approve-selected" && (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 text-sm text-muted">
-                Sedang menyimpan approval ke Omon, lalu mencoba mengirim salinannya ke Google Spreadsheet...
+                Sedang menyimpan transaksi ke Omon, lalu mencoba mengirim salinannya ke Google Spreadsheet...
               </div>
             )}
 
@@ -566,7 +561,7 @@ const ImportReview = ({
                   disabled={selectedIds.length === 0 || actionLoading !== ""}
                   className="primary-button inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Simpan ke Omon"}
+                  {actionLoading === "approve-selected" ? "Menyimpan ke Omon..." : "Setujui & Simpan di Omon"}
                 </button>
                 <button
                   type="button"
@@ -627,7 +622,7 @@ const ImportReview = ({
                     <th className="px-4 py-3 text-left font-semibold">Jam</th>
                     <th className="px-4 py-3 text-left font-semibold">Nama Transaksi</th>
                     <th className="px-4 py-3 text-left font-semibold">Nominal</th>
-                    <th className="px-4 py-3 text-left font-semibold">Kategori</th>
+                    <th className="px-4 py-3 text-left font-semibold">Kategori transaksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -666,7 +661,7 @@ const ImportReview = ({
                           />
                         </td>
                         <td className="px-4 py-3 font-semibold text-main">
-                          {formatAmount(row.amount)}
+                          {formatPrivateRupiah(row.amount, privacyMode)}
                         </td>
                         <td className="px-4 py-3">
                           <select
@@ -725,7 +720,7 @@ const ImportReview = ({
         <ConfirmationDialog
           open={rejectConfirmOpen}
           title={`Tolak ${selectedIds.length} transaksi?`}
-          description="Transaksi yang ditolak akan dikeluarkan dari Review ini dan tidak disimpan ke Omon."
+          description="Transaksi yang ditolak hanya dikeluarkan dari draft review ini. Ini bukan penghapusan transaksi final."
           affectedItems={[`${selectedIds.length} transaksi akan ditandai ditolak`, "Transaksi tidak akan disimpan ke Omon atau dikirim ke Google Sheet"]}
           safeItems={["Transaksi lain di Review", "Data yang sudah tersimpan di Omon", "Google Sheet asli"]}
           confirmLabel="Tolak"

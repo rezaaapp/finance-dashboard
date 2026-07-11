@@ -2186,7 +2186,7 @@ const Dashboard = ({
             systemInfoState={systemInfoState}
           />
         ) : activeView === "import" ? (
-          <ImportTransactions />
+          <ImportTransactions privacyMode={privacyMode} />
         ) : (
           <Configuration
             key={activeWorkspaceId || "default-workspace"}
