@@ -107,8 +107,11 @@ const CategoryTrendChart = ({ data, theme = "dark", privacyMode }) => {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold text-main">
-            Category Trend Analysis
+            Perubahan kategori dari waktu ke waktu
           </h2>
+          <p className="mt-1 text-sm text-muted">
+            Pilih kategori untuk melihat total bulanannya dibanding rata-rata.
+          </p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -125,6 +128,7 @@ const CategoryTrendChart = ({ data, theme = "dark", privacyMode }) => {
             value={selectedCategory}
             onChange={(event) => setSelectedCategory(event.target.value)}
             className="form-control px-4 py-2 rounded-xl"
+            aria-label="Pilih kategori untuk analisis tren"
           >
             {categories.map((category) => (
               <option
@@ -140,7 +144,7 @@ const CategoryTrendChart = ({ data, theme = "dark", privacyMode }) => {
 
       {chartData.length === 0 ? (
         <div className="flex h-56 items-center justify-center text-muted">
-          No category trend data available
+          Belum ada tren kategori untuk periode ini.
         </div>
       ) : (
         <div className="h-[360px]">

@@ -128,16 +128,16 @@ const MonthlyAllocationTrend = ({
     <section className="panel rounded-2xl p-5 shadow-lg">
       <div className="mb-6">
         <h2 className="text-xl font-bold text-main">
-          Monthly Budget Allocation Trend
+          Pola alokasi bulanan
         </h2>
         <p className="mt-1 text-sm text-muted">
-          50/30/20 allocation view from synced transaction direction and category data.
+          Membandingkan kebutuhan, keinginan, dan simpanan dari data transaksi yang tersinkron.
         </p>
       </div>
 
       {chartData.length === 0 ? (
         <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] text-sm text-muted">
-          No allocation trend data available.
+          Belum ada data alokasi untuk periode ini.
         </div>
       ) : (
         <div className="h-[360px]">

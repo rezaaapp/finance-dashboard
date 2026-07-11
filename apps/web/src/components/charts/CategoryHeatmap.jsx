@@ -357,14 +357,14 @@ const CategoryHeatmap = ({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold text-main">
-            Category Transaction Heat Map
+            Heatmap kategori transaksi
           </h2>
         </div>
 
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-lg border border-[var(--color-border)] px-4 py-3">
             <p className="text-muted text-xs mb-1">
-              Top Category
+              Kategori utama
             </p>
             <p className="font-semibold text-main">
               {summary.topCategory?.kategori ?? "-"}
@@ -376,7 +376,7 @@ const CategoryHeatmap = ({
 
           <div className="rounded-lg border border-[var(--color-border)] px-4 py-3">
             <p className="text-muted text-xs mb-1">
-              Peak Spending
+              Pengeluaran tertinggi
             </p>
             <p className="font-semibold text-main">
               {summary.peak
@@ -392,7 +392,7 @@ const CategoryHeatmap = ({
 
       {rows.length === 0 ? (
         <div className="flex h-48 items-center justify-center text-muted">
-          No category data available
+          Belum ada data kategori untuk periode ini.
         </div>
       ) : (
         <>
@@ -406,7 +406,7 @@ const CategoryHeatmap = ({
             }}
           >
             <div className="text-xs font-semibold uppercase text-muted">
-              Category
+              Kategori
             </div>
 
             {months.map((month) => (

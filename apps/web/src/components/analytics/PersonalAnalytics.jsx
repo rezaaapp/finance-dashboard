@@ -37,14 +37,14 @@ const fallbackKpi = {
 const fallbackUsers = [{ label: "All Data", value: "all" }];
 
 const getUserDisplayLabel = (user) => (
-  user?.value === "all" ? "All Data" : user?.label
+  user?.value === "all" ? "Semua data" : user?.label
 );
 
 const formatTrendValue = (value, suffix = "%") => {
   const numericValue = Number(value);
 
   if (!Number.isFinite(numericValue)) {
-    return "N/A";
+    return "Belum ada";
   }
 
   const prefix = numericValue > 0 ? "+" : "";
@@ -121,7 +121,7 @@ const PerformanceKpiCard = ({
           {direction !== "up" && direction !== "down" && (
             <Minus size={15} strokeWidth={2.5} />
           )}
-          {hasTrend ? formatTrendValue(trendValue, trendSuffix) : "N/A"}
+          {hasTrend ? formatTrendValue(trendValue, trendSuffix) : "Belum ada"}
         </span>
         <span className="text-sm text-subtle">
           {trendLabel}
@@ -181,14 +181,14 @@ const PersonalAnalytics = ({
     <div className="panel rounded-lg p-5 shadow-lg">
       <div className="mb-6">
         <h2 className="text-xl font-bold text-main">
-          Top Spending Category Breakdown
+          Kategori pengeluaran terbesar
         </h2>
       </div>
 
       <div className="space-y-5">
         {topCategories.length === 0 && (
           <div className="flex h-28 items-center justify-center text-muted">
-            No spending category data available
+            Belum ada data kategori pengeluaran untuk periode ini.
           </div>
         )}
 
@@ -235,14 +235,17 @@ const PersonalAnalytics = ({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-col">
             <h2 className="text-xl font-bold text-main">
-              Personal Finance Performance
+              Ringkasan performa keuangan
             </h2>
             <p className="mt-1 truncate text-sm text-muted">
               {getUserDisplayLabel(selectedUserLabel)}
             </p>
           </div>
 
-          <div className="flex max-w-full shrink-0 flex-row flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-[var(--color-border)] p-1">
+          <div
+            className="flex max-w-full shrink-0 flex-row flex-nowrap items-center gap-2 overflow-x-auto rounded-xl border border-[var(--color-border)] p-1"
+            aria-label="Filter pemilik transaksi"
+          >
             {users.map((user) => {
               const isActive = selectedUser === user.value;
 
@@ -277,13 +280,13 @@ const PersonalAnalytics = ({
         <EmptyState
           title={
             selectedUser === "all"
-              ? "Analytics will appear after you sync transactions."
-              : "No transactions found for this person in the selected period."
+              ? "Belum cukup data untuk melihat pola."
+              : "Belum ada transaksi untuk pemilik ini pada periode pilihan."
           }
           description={
             selectedUser === "all"
-              ? "Sync valid transactions from Configuration to populate performance cards."
-              : "Try All Data, choose another period, or sync more transaction rows."
+              ? "Sinkronkan transaksi dari Settings agar ringkasan performa dapat terbentuk."
+              : "Coba Semua data, pilih periode lain, atau sinkronkan transaksi tambahan."
           }
           icon={Users}
           compact
@@ -291,7 +294,7 @@ const PersonalAnalytics = ({
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <PerformanceKpiCard
-            title="Total Income"
+            title="Pemasukan"
             value={formatPrivateRupiah(kpis.income, privacyMode)}
             icon={DollarSign}
             iconClassName="bg-[var(--color-accent-bg)] text-accent"
@@ -304,7 +307,7 @@ const PersonalAnalytics = ({
           />
 
           <PerformanceKpiCard
-            title="Total Spending"
+            title="Pengeluaran"
             value={formatPrivateRupiah(kpis.spending, privacyMode)}
             icon={TrendingDown}
             iconClassName="bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]"
@@ -318,7 +321,7 @@ const PersonalAnalytics = ({
           />
 
           <PerformanceKpiCard
-            title="Total Saving"
+            title="Simpanan"
             value={formatPrivateRupiah(kpis.saving, privacyMode)}
             icon={PiggyBank}
             iconClassName="bg-[var(--color-accent-bg)] text-accent"

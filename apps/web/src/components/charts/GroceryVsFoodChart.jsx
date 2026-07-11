@@ -99,7 +99,7 @@ const GroceryVsFoodChart = ({ data = [], theme = "dark", privacyMode }) => {
     <div className="panel rounded-2xl p-5 shadow-lg">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-main">
-          Grocery vs Food
+          Grocery dan makanan
         </h2>
 
         <div className="text-xs text-muted">
@@ -109,7 +109,7 @@ const GroceryVsFoodChart = ({ data = [], theme = "dark", privacyMode }) => {
 
       {!hasData ? (
         <div className="flex h-[360px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
-          No grocery or food expenses available for this period.
+          Belum ada pengeluaran grocery atau makanan pada periode ini.
         </div>
       ) : (
         <div className="h-[360px] min-w-0">

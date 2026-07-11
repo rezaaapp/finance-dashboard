@@ -940,6 +940,138 @@ const DashboardHome = ({
   );
 };
 
+const AnalyticsContextPanel = ({
+  periodLabel,
+  selectedUserLabel,
+  isPrivacyHidden,
+  analyticsLoading,
+  analyticsError,
+  onRetry,
+}) => (
+  <section className="panel rounded-lg p-5 shadow-lg">
+    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase text-accent">
+          Konteks analisis
+        </p>
+        <h2 className="mt-2 text-xl font-bold text-main">
+          Pahami pola dari periode yang sedang dipilih
+        </h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+          Halaman ini merangkum perubahan, komposisi, dan area yang paling
+          berpengaruh dari data transaksi yang sudah tersinkron.
+        </p>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3 lg:w-[520px]">
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase text-muted">
+            <CalendarDays size={14} />
+            Periode
+          </div>
+          <p className="mt-2 truncate text-sm font-bold text-main">
+            {periodLabel}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase text-muted">
+            <UserRound size={14} />
+            Data
+          </div>
+          <p className="mt-2 truncate text-sm font-bold text-main">
+            {selectedUserLabel}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase text-muted">
+            <ShieldCheck size={14} />
+            Privasi
+          </div>
+          <p className="mt-2 truncate text-sm font-bold text-main">
+            {isPrivacyHidden ? "Nominal disembunyikan" : "Nominal terlihat"}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {(analyticsLoading || analyticsError) && (
+      <div className={`mt-5 rounded-lg border px-4 py-3 text-sm ${
+        analyticsError
+          ? "border-[var(--color-danger)] bg-[var(--color-danger-bg)] text-main"
+          : "border-[var(--color-border)] bg-[var(--color-panel-hover)] text-muted"
+      }`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            {analyticsError || "Sedang memperbarui data Analytics untuk konteks ini."}
+          </p>
+          {analyticsError && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="secondary-button inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 font-semibold"
+            >
+              Coba lagi
+            </button>
+          )}
+        </div>
+      </div>
+    )}
+  </section>
+);
+
+const AnalyticsSkeleton = () => (
+  <div className="grid grid-cols-1 gap-5" aria-live="polite" aria-busy="true">
+    <div className="panel rounded-lg p-5 shadow-lg">
+      <div className="h-5 w-40 animate-pulse rounded bg-[var(--color-panel-hover)]" />
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {[0, 1, 2].map((item) => (
+          <div
+            key={item}
+            className="h-24 animate-pulse rounded-lg bg-[var(--color-panel-hover)]"
+          />
+        ))}
+      </div>
+    </div>
+
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+      <div className="panel h-[360px] animate-pulse rounded-lg bg-[var(--color-panel-hover)] shadow-lg" />
+      <div className="panel h-[360px] animate-pulse rounded-lg bg-[var(--color-panel-hover)] shadow-lg" />
+    </div>
+  </div>
+);
+
+const AnalyticsSection = ({ eyebrow, title, description, children }) => (
+  <section className="grid grid-cols-1 gap-4">
+    <div className="max-w-3xl">
+      <p className="text-xs font-bold uppercase text-accent">
+        {eyebrow}
+      </p>
+      <h2 className="mt-1 text-2xl font-bold text-main">
+        {title}
+      </h2>
+      {description && (
+        <p className="mt-2 text-sm leading-6 text-muted">
+          {description}
+        </p>
+      )}
+    </div>
+    {children}
+  </section>
+);
+
+const getAnalyticsUserLabel = (personalAnalytics, selectedUser) => {
+  const users = personalAnalytics?.users || [];
+  const selectedUserData = users.find((user) => user.value === selectedUser);
+
+  if (!selectedUserData || selectedUserData.value === "all") {
+    return "Semua data";
+  }
+
+  return selectedUserData.label || selectedUserData.value;
+};
+
 const Dashboard = ({
   auth,
   onExitImpersonation,
@@ -1007,6 +1139,9 @@ const Dashboard = ({
   };
   const [activeAnalyticsSubTab, setActiveAnalyticsSubTab] = useState("overview");
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState("all");
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState("");
+  const [analyticsRetryKey, setAnalyticsRetryKey] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [autoBudget, setAutoBudget] = useState(() => (
     localStorage.getItem("finance-dashboard-auto-budget") !== "false"
@@ -1169,6 +1304,8 @@ const Dashboard = ({
     setSourceDanaAnalytics({});
     setMonthlyAllocation([]);
     setPersonalAnalytics({});
+    setAnalyticsLoading(false);
+    setAnalyticsError("");
     setBudgetForecast({});
     setAnomalies([]);
     setCurrentSheetName("");
@@ -1408,6 +1545,8 @@ const Dashboard = ({
         setSourceDanaAnalytics({});
         setMonthlyAllocation([]);
         setPersonalAnalytics({});
+        setAnalyticsLoading(false);
+        setAnalyticsError("");
         setBudgetForecast({});
         setAnomalies([]);
         setCurrentSheetName("");
@@ -1472,6 +1611,9 @@ const Dashboard = ({
 
     const fetchAnalyticsData = async () => {
       try {
+        setAnalyticsLoading(true);
+        setAnalyticsError("");
+
         const [
           personalAnalyticsData,
           sourceDanaAnalyticsData,
@@ -1509,6 +1651,7 @@ const Dashboard = ({
           setRawTransactions(transactionsData);
           setCategoryTrends(categoryTrendsData);
           setAnomalies(anomaliesData);
+          setAnalyticsError("");
         }
       } catch (err) {
         console.error("Failed to fetch analytics data.");
@@ -1527,6 +1670,11 @@ const Dashboard = ({
           setRawTransactions([]);
           setCategoryTrends({});
           setAnomalies([]);
+          setAnalyticsError("Analytics belum dapat dimuat. Periksa koneksi, lalu coba lagi.");
+        }
+      } finally {
+        if (isMounted) {
+          setAnalyticsLoading(false);
         }
       }
     };
@@ -1538,6 +1686,7 @@ const Dashboard = ({
     };
   }, [
     activeView,
+    analyticsRetryKey,
     hasPremiumAccess,
     onLogout,
     selectedAnalyticsUser,
@@ -1643,6 +1792,12 @@ const Dashboard = ({
     ? ADMIN_PAGE_METADATA
     : PRIMARY_NAVIGATION_ITEMS.find((item) => getNavigationItemActive(item, activeView))
       || PRIMARY_NAVIGATION_ITEMS[0];
+  const analyticsPeriodLabel = getPeriodLabel(selectedYear, selectedMonth);
+  const analyticsUserLabel = getAnalyticsUserLabel(
+    personalAnalytics,
+    selectedAnalyticsUser
+  );
+  const isPrivacyHidden = privacyMode === PRIVACY_MODES.hide;
 
   // =========================
   // UI
@@ -1853,11 +2008,24 @@ const Dashboard = ({
           />
         ) : activeView === "analytics" ? (
           <div className="grid grid-cols-1 gap-6">
-            {!hasAnalyticsData && (
+            <AnalyticsContextPanel
+              periodLabel={analyticsPeriodLabel}
+              selectedUserLabel={analyticsUserLabel}
+              isPrivacyHidden={isPrivacyHidden}
+              analyticsLoading={analyticsLoading}
+              analyticsError={analyticsError}
+              onRetry={() => setAnalyticsRetryKey((current) => current + 1)}
+            />
+
+            {analyticsLoading && !hasAnalyticsData && (
+              <AnalyticsSkeleton />
+            )}
+
+            {!analyticsLoading && !hasAnalyticsData && (
               <EmptyState
-                title="Analytics will appear after you sync transactions."
-                description="Sync a Google Sheet with valid transactions, then choose a year or month to review personal finance trends."
-                actionLabel="Go to Configuration"
+                title="Belum cukup data untuk melihat pola."
+                description="Sinkronkan transaksi dari Google Sheet, lalu pilih tahun atau bulan untuk membaca pola keuangan dengan konteks yang jelas."
+                actionLabel="Buka Settings"
                 onAction={() => setActiveView("configuration")}
                 icon={BarChart3}
                 compact
@@ -1866,8 +2034,8 @@ const Dashboard = ({
 
             {hasAnalyticsData && (
               <>
-                <div className="panel rounded-2xl p-3 shadow-lg">
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                <div className="panel rounded-lg p-3 shadow-lg" aria-label="Pilihan tampilan Analytics">
+                  <div className="grid grid-cols-2 gap-2 sm:inline-flex sm:flex-wrap">
                     <button
                       type="button"
                       onClick={() => setActiveAnalyticsSubTab("overview")}
@@ -1877,7 +2045,7 @@ const Dashboard = ({
                           : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
                       }`}
                     >
-                      Overview
+                      Pola utama
                     </button>
 
                     <button
@@ -1889,67 +2057,101 @@ const Dashboard = ({
                           : "text-muted hover:bg-[var(--color-panel-hover)] hover:text-accent"
                       }`}
                     >
-                      Income Velocity
+                      Ritme pemasukan
                     </button>
                   </div>
                 </div>
 
-                <PersonalAnalytics
-                  data={personalAnalytics}
-                  selectedUser={selectedAnalyticsUser}
-                  onSelectedUserChange={setSelectedAnalyticsUser}
-                  privacyMode={privacyMode}
-                  variant="summary"
-                />
-
                 <div className="grid grid-cols-1 gap-6">
                   {activeAnalyticsSubTab === "overview" && (
                     <>
-                      <PersonalAnalytics
-                        data={personalAnalytics}
-                        selectedUser={selectedAnalyticsUser}
-                        onSelectedUserChange={setSelectedAnalyticsUser}
-                        privacyMode={privacyMode}
-                        variant="breakdown"
-                      />
+                      <AnalyticsSection
+                        eyebrow="Overview"
+                        title="Apa yang paling berubah?"
+                        description="Ringkasan utama membantu melihat pemasukan, pengeluaran, dan simpanan sebelum masuk ke detail."
+                      >
+                        <PersonalAnalytics
+                          data={personalAnalytics}
+                          selectedUser={selectedAnalyticsUser}
+                          onSelectedUserChange={setSelectedAnalyticsUser}
+                          privacyMode={privacyMode}
+                          variant="summary"
+                        />
+                      </AnalyticsSection>
 
-                      <SourceDanaAnalytics
-                        data={sourceDanaAnalytics}
-                        theme={theme}
-                        privacyMode={privacyMode}
-                      />
+                      <AnalyticsSection
+                        eyebrow="Distribution"
+                        title="Ke mana uang paling banyak bergerak?"
+                        description="Breakdown ini menjelaskan kategori, sumber dana, dan alokasi yang paling membentuk periode pilihan."
+                      >
+                        <div className="grid grid-cols-1 gap-6">
+                          <PersonalAnalytics
+                            data={personalAnalytics}
+                            selectedUser={selectedAnalyticsUser}
+                            onSelectedUserChange={setSelectedAnalyticsUser}
+                            privacyMode={privacyMode}
+                            variant="breakdown"
+                          />
 
-                      <MonthlyAllocationTrend
-                        data={monthlyAllocation}
-                        privacyMode={privacyMode}
-                      />
+                          <SourceDanaAnalytics
+                            data={sourceDanaAnalytics}
+                            theme={theme}
+                            privacyMode={privacyMode}
+                          />
 
-                      <GroceryVsFoodChart
-                        data={groceryVsFood}
-                        theme={theme}
-                        privacyMode={privacyMode}
-                      />
+                          <MonthlyAllocationTrend
+                            data={monthlyAllocation}
+                            privacyMode={privacyMode}
+                          />
+                        </div>
+                      </AnalyticsSection>
 
-                      <CategoryTrendChart
-                        data={categoryTrends}
-                        theme={theme}
-                        privacyMode={privacyMode}
-                      />
+                      <AnalyticsSection
+                        eyebrow="Trend"
+                        title="Pola apa yang muncul dari waktu ke waktu?"
+                        description="Bagian ini menjaga konteks bulanan agar perbandingan tidak hanya bergantung pada tooltip."
+                      >
+                        <div className="grid grid-cols-1 gap-6">
+                          <GroceryVsFoodChart
+                            data={groceryVsFood}
+                            theme={theme}
+                            privacyMode={privacyMode}
+                          />
 
-                      <CategoryHeatmap
-                        data={categoryHeatmap}
-                        rawTransactions={rawTransactions}
-                        theme={theme}
-                        privacyMode={privacyMode}
-                      />
+                          <CategoryTrendChart
+                            data={categoryTrends}
+                            theme={theme}
+                            privacyMode={privacyMode}
+                          />
+                        </div>
+                      </AnalyticsSection>
+
+                      <AnalyticsSection
+                        eyebrow="Supporting detail"
+                        title="Detail pendukung"
+                        description="Gunakan heatmap untuk melihat kategori dan periode yang paling sering membutuhkan perhatian."
+                      >
+                        <CategoryHeatmap
+                          data={categoryHeatmap}
+                          rawTransactions={rawTransactions}
+                          theme={theme}
+                          privacyMode={privacyMode}
+                        />
+                      </AnalyticsSection>
                     </>
                   )}
 
                   {activeAnalyticsSubTab === "velocity" && (
-                    <IncomeVelocityDashboard
-                      rawTransactions={rawTransactions}
-                      privacyMode={privacyMode}
-                    />
+                    <AnalyticsSection
+                      eyebrow="Income rhythm"
+                      title="Bagaimana ritme pemasukan terbentuk?"
+                      description="Lihat pola pemasukan dari transaksi yang sudah ada tanpa membuat prediksi baru."
+                    >
+                      <IncomeVelocityDashboard
+                        rawTransactions={rawTransactions}
+                        privacyMode={privacyMode}
+                      />
+                    </AnalyticsSection>
                   )}
                 </div>
               </>

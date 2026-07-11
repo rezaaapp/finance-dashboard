@@ -40,17 +40,17 @@ const getSourceColor = (source, index) => {
 
 const chartSections = [
   {
-    title: "Income Sources",
+    title: "Sumber pemasukan",
     key: "income_sources",
     accent: "text-accent",
   },
   {
-    title: "Expense Methods",
+    title: "Sumber pengeluaran",
     key: "spending_sources",
     accent: "text-[var(--color-alert-text)]",
   },
   {
-    title: "Saving Allocations",
+    title: "Alokasi simpanan",
     key: "saving_sources",
     accent: "text-accent",
   },
@@ -66,9 +66,7 @@ const SourceDanaDonut = ({
   const colors = chartTheme[theme] || chartTheme.dark;
   const chartData = maskChartRows(rows, ["total"], privacyMode);
   const total = chartData.reduce((sum, row) => sum + Number(row.total || 0), 0);
-  const sourceCounterText = `${rows.length} dynamic source${
-    rows.length === 1 ? "" : "s"
-  } detected`;
+  const sourceCounterText = `${rows.length} sumber terdeteksi`;
 
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-5">
@@ -84,7 +82,7 @@ const SourceDanaDonut = ({
 
       {chartData.length === 0 ? (
         <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] text-sm text-muted">
-          No Source Dana data available.
+          Belum ada data sumber dana untuk bagian ini.
         </div>
       ) : (
         <div className="h-[280px]">
@@ -136,7 +134,7 @@ const SourceDanaDonut = ({
 
       <div className="mt-4 rounded-xl bg-[var(--color-panel-hover)] px-4 py-3">
         <p className="text-muted text-xs font-semibold uppercase tracking-wide">
-          Total
+          Total bagian ini
         </p>
         <p className="mt-1 font-mono text-sm font-bold text-main">
           {formatPrivateRupiah(total, privacyMode)}
@@ -154,11 +152,11 @@ const SourceDanaAnalytics = ({
   <section className="panel rounded-lg p-5 shadow-lg">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-main">
-        Fund Source Analytics
+        Komposisi sumber dana
       </h2>
 
       <p className="text-muted mt-1 text-sm">
-        Dynamic accumulation based on the Source Dana column in Google Sheets.
+        Membantu melihat sumber pemasukan, pengeluaran, dan simpanan dari kolom Source Dana.
       </p>
     </div>
 
