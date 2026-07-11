@@ -56,9 +56,30 @@ import {
 
 const privacyOptions = [
   { label: "Normal", value: PRIVACY_MODES.normal },
-  { label: "Hide", value: PRIVACY_MODES.hide },
-  { label: "Guest", value: PRIVACY_MODES.guest },
+  { label: "Sembunyikan", value: PRIVACY_MODES.hide },
+  { label: "Tamu", value: PRIVACY_MODES.guest },
 ];
+
+const friendlyErrorMessage = (detail, fallback) => {
+  const rawMessage = typeof detail === "string" ? detail : detail?.message;
+  const message = String(rawMessage || "").trim();
+
+  if (!message) return fallback;
+  if (/[{}]|authorization|bearer|credential|password|secret|token/i.test(message)) {
+    return fallback;
+  }
+
+  return message;
+};
+
+const formatWorkspaceRole = (role) => {
+  if (!role) return "Akses mengikuti sesi aktif";
+  return String(role)
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
 
 const defaultInsightThresholds = {
   need_warning_ratio: 0.80,
@@ -111,16 +132,16 @@ const formToPayload = (form) => ({
 
 const formatSyncTimestamp = (value) => {
   if (!value) {
-    return "Never synced";
+    return "Belum pernah sinkron";
   }
 
   try {
-    return new Intl.DateTimeFormat("en", {
+    return new Intl.DateTimeFormat("id-ID", {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(value));
   } catch {
-    return "Last sync unavailable";
+    return "Waktu sinkronisasi belum tersedia";
   }
 };
 
@@ -139,7 +160,7 @@ const formatClassificationSummary = (classification) => {
     return "";
   }
 
-  return `Classification: ${classification.processed || 0} transactions processed, ${classification.low_confidence || 0} low confidence.`;
+  return `Klasifikasi: ${classification.processed || 0} transaksi diproses, ${classification.low_confidence || 0} perlu dicek.`;
 };
 
 const SyncReasonBreakdown = ({ title, reasons, tone = "muted" }) => {
@@ -358,7 +379,7 @@ const Configuration = ({
 
   const validateInsightThresholds = useCallback((form) => {
     if (Object.values(form).some((value) => value === "" || value === null)) {
-      return "All insight threshold fields must be filled.";
+      return "Semua ambang insight perlu diisi.";
     }
 
     const payload = formToPayload(form);
@@ -372,39 +393,39 @@ const Configuration = ({
     ];
 
     if (Object.values(payload).some((value) => Number.isNaN(value))) {
-      return "All insight threshold fields must contain valid numbers.";
+      return "Semua ambang insight harus berupa angka yang valid.";
     }
 
     if (percentFields.some((field) => Number(form[field]) < 0 || Number(form[field]) > 100)) {
-      return "Percentage thresholds must be between 0 and 100.";
+      return "Ambang persentase harus berada di antara 0 dan 100.";
     }
 
     if (payload.need_warning_ratio > payload.need_danger_ratio) {
-      return "Need warning threshold must be less than or equal to Need danger threshold.";
+      return "Ambang perhatian Need harus lebih kecil atau sama dengan ambang tinggi.";
     }
 
     if (payload.want_warning_ratio > payload.want_danger_ratio) {
-      return "Want warning threshold must be less than or equal to Want danger threshold.";
+      return "Ambang perhatian Want harus lebih kecil atau sama dengan ambang tinggi.";
     }
 
     if (payload.saving_warning_ratio > payload.saving_good_ratio) {
-      return "Saving warning threshold must be less than or equal to Saving good threshold.";
+      return "Ambang perhatian Saving harus lebih kecil atau sama dengan ambang baik.";
     }
 
     if (payload.uncategorized_warning_count < 0 || payload.uncategorized_danger_count < 0) {
-      return "Uncategorized counts cannot be negative.";
+      return "Jumlah transaksi tanpa kategori tidak boleh negatif.";
     }
 
     if (payload.uncategorized_warning_count > payload.uncategorized_danger_count) {
-      return "Uncategorized warning count must be less than or equal to danger count.";
+      return "Ambang perhatian tanpa kategori harus lebih kecil atau sama dengan ambang tinggi.";
     }
 
     if (payload.anomaly_warning_multiplier < 1 || payload.anomaly_danger_multiplier < 1) {
-      return "Anomaly multipliers must be at least 1.0.";
+      return "Pengali anomali minimal 1.0.";
     }
 
     if (payload.anomaly_warning_multiplier > payload.anomaly_danger_multiplier) {
-      return "Anomaly warning multiplier must be less than or equal to danger multiplier.";
+      return "Pengali perhatian anomali harus lebih kecil atau sama dengan pengali tinggi.";
     }
 
     return "";
@@ -457,7 +478,7 @@ const Configuration = ({
         return false;
       }
 
-      setInsightThresholdError("Insight severity settings are not available.");
+      setInsightThresholdError("Pengaturan insight belum tersedia untuk sesi ini.");
     } finally {
       setIsLoadingInsightThresholds(false);
     }
@@ -479,7 +500,7 @@ const Configuration = ({
         return;
       }
 
-      setSourceError("Google Sheet sources are not available.");
+      setSourceError("Sumber Google Sheet belum tersedia untuk sesi ini.");
     } finally {
       setIsLoadingSources(false);
     }
@@ -573,7 +594,7 @@ const Configuration = ({
 
         if (isMounted) {
           setWorkspaceConfigurationError(
-            "Workspace settings are not available for this session."
+            "Pengaturan workspace belum tersedia untuk sesi ini."
           );
         }
       } finally {
@@ -625,7 +646,7 @@ const Configuration = ({
         }
 
         if (isMounted) {
-          setGoogleConnectionError("Google connection status is not available.");
+          setGoogleConnectionError("Status koneksi Google belum tersedia.");
         }
       } finally {
         if (isMounted) {
@@ -652,8 +673,8 @@ const Configuration = ({
     if (googleConnected === "success") {
       setNotification({
         type: "success",
-        title: "Google connected",
-        message: "Google account access is connected for this workspace.",
+        title: "Google terhubung",
+        message: "Akses akun Google aktif untuk workspace ini.",
       });
       getGoogleOAuthConnectionStatus()
         .then((response) => {
@@ -664,13 +685,13 @@ const Configuration = ({
         })
         .catch(() => {
           console.error("Failed to refresh Google connection status.");
-          setGoogleConnectionError("Google connection status is not available.");
+          setGoogleConnectionError("Status koneksi Google belum tersedia.");
         });
     } else if (googleConnected === "failed") {
       setNotification({
         type: "error",
-        title: "Google connection failed",
-        message: "Google account access was not connected. Try again from this page.",
+        title: "Koneksi Google belum berhasil",
+        message: "Akses akun Google belum terhubung. Coba lagi dari halaman ini.",
       });
     }
 
@@ -724,16 +745,17 @@ const Configuration = ({
       }
 
       const backendDetail = err?.response?.data?.detail;
-      const message = backendDetail?.includes("format datanya tidak sesuai")
+      const message = backendDetail?.includes?.("format datanya tidak sesuai")
         ? `${backendDetail} Pastikan sheet memiliki header transaksi yang benar dan minimal satu baris data.`
-        : backendDetail
-        || err?.message
-        || "Google Sheet ID gagal disimpan. Periksa ID spreadsheet dan akses Google Sheets.";
+        : friendlyErrorMessage(
+          backendDetail,
+          "Kami belum bisa menyimpan perubahan. Periksa isian dan coba lagi."
+        );
 
       setWorkspaceConfigurationError(message);
       setNotification({
         type: "error",
-        title: "Google Sheet ID gagal",
+        title: "Perubahan belum tersimpan",
         message,
       });
       return false;
@@ -765,7 +787,10 @@ const Configuration = ({
       setSourceTestResult(response);
 
       if (!response?.valid) {
-        setSourceError(response?.message || "Google Sheet connection test failed.");
+        setSourceError(friendlyErrorMessage(
+          response?.message,
+          "Spreadsheet belum bisa diperiksa."
+        ));
         return;
       }
 
@@ -774,8 +799,8 @@ const Configuration = ({
 
       setNotification({
         type: "success",
-        title: "Google Sheet verified",
-        message: `${response.spreadsheet_title || "Spreadsheet"} is accessible.`,
+        title: "Spreadsheet berhasil diperiksa",
+        message: `${response.spreadsheet_title || "Spreadsheet"} dapat dipakai sebagai sumber sinkronisasi.`,
       });
     } catch (err) {
       console.error("Failed to save workspace configuration.");
@@ -785,8 +810,10 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Google Sheet connection test failed.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Spreadsheet belum bisa diperiksa. Pastikan akses Google masih aktif dan URL benar."
+      );
 
       setSourceError(message);
     } finally {
@@ -810,8 +837,8 @@ const Configuration = ({
       setSourceTestResult(null);
       setNotification({
         type: "success",
-        title: "Google Sheet source saved",
-        message: `${response?.spreadsheet_title || "Google Spreadsheet"} is ready to sync.`,
+        title: "Sumber Spreadsheet tersimpan",
+        message: `${response?.spreadsheet_title || "Google Spreadsheet"} siap disinkronkan ke Omon.`,
       });
       await loadGoogleSheetSources();
     } catch (err) {
@@ -822,13 +849,15 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Google Sheet source could not be saved.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Sumber Spreadsheet belum bisa disimpan. Coba periksa URL dan tab yang dipilih."
+      );
 
       setSourceError(message);
       setNotification({
         type: "error",
-        title: "Save source failed",
+        title: "Sumber belum tersimpan",
         message,
       });
     } finally {
@@ -852,7 +881,7 @@ const Configuration = ({
         type: "success",
         title: "Sync complete",
         message: [
-          `${response?.inserted_rows || 0} inserted, ${response?.updated_rows || 0} updated.`,
+          `${response?.inserted_rows || 0} transaksi baru, ${response?.updated_rows || 0} diperbarui di Omon.`,
           formatClassificationSummary(response?.classification),
         ].filter(Boolean).join(" "),
       });
@@ -866,9 +895,10 @@ const Configuration = ({
       }
 
       const detail = err?.response?.data?.detail;
-      const message = typeof detail === "string"
-        ? detail
-        : detail?.message || "Google Sheet sync failed.";
+      const message = friendlyErrorMessage(
+        detail,
+        "Sinkronisasi belum berhasil. Data yang sudah tersimpan di Omon tetap aman."
+      );
 
       setSourceError(message);
 
@@ -904,7 +934,7 @@ const Configuration = ({
       }));
       setNotification({
         type: "success",
-        title: "Synced data reset",
+        title: "Data tersinkron berhasil direset",
         message: `Data hasil sinkronisasi Google Sheet berhasil dihapus dari Omon (${response.deleted_transactions || 0} transaksi). Google Sheet asli tidak berubah.`,
       });
       setResetSource(null);
@@ -917,13 +947,15 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Synced Google Sheet data could not be reset.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Data tersinkron belum bisa direset. Coba lagi setelah beberapa saat."
+      );
 
       setSourceError(message);
       setNotification({
         type: "error",
-        title: "Reset synced data failed",
+        title: "Reset belum berhasil",
         message,
       });
     } finally {
@@ -938,14 +970,17 @@ const Configuration = ({
       setFactoryResetOpen(false);
       setNotification({
         type: "success",
-        title: "Workspace data reset",
-        message: `${Object.values(response.deleted || {}).reduce((sum, count) => sum + Number(count || 0), 0)} operational rows deleted. Identity and integrations were preserved.`,
+        title: "Data workspace berhasil direset",
+        message: `${Object.values(response.deleted || {}).reduce((sum, count) => sum + Number(count || 0), 0)} data operasional di Omon dihapus. Identitas dan integrasi tetap aman.`,
       });
     } catch (err) {
       setNotification({
         type: "error",
-        title: "Factory reset failed",
-        message: err?.response?.data?.detail || "Workspace data could not be reset.",
+        title: "Reset workspace belum berhasil",
+        message: friendlyErrorMessage(
+          err?.response?.data?.detail,
+          "Data workspace belum bisa direset. Coba lagi setelah beberapa saat."
+        ),
       });
     } finally {
       setIsFactoryResetting(false);
@@ -956,7 +991,7 @@ const Configuration = ({
     setInsightResetConfirmOpen(false);
     setInsightThresholds(settingsToForm(defaultInsightThresholds));
     setInsightThresholdError("");
-    setInsightThresholdSuccess("Nilai default dimuat. Klik Save Changes untuk menyimpannya.");
+    setInsightThresholdSuccess("Nilai default dimuat. Pilih Simpan Perubahan untuk menyimpannya.");
   };
 
   const handleConnectGoogle = async () => {
@@ -980,13 +1015,15 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Google connection could not be started.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Koneksi Google belum bisa dimulai. Coba lagi dari halaman ini."
+      );
 
       setGoogleConnectionError(message);
       setNotification({
         type: "error",
-        title: "Google connection failed",
+        title: "Koneksi Google belum berhasil",
         message,
       });
       setIsConnectingGoogle(false);
@@ -1005,8 +1042,8 @@ const Configuration = ({
       setGoogleConnection(response || { connected: false });
       setNotification({
         type: "success",
-        title: "Google berhasil diputuskan",
-        message: "Akses akun Google telah diputuskan. Data Omon dan konfigurasi source tetap aman.",
+        title: "Koneksi Google berhasil diputus",
+        message: "Akses akun Google telah diputuskan. Data Omon dan konfigurasi sumber tetap aman.",
       });
       setDisconnectConfirmOpen(false);
     } catch (err) {
@@ -1017,13 +1054,15 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Google connection could not be disconnected.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Koneksi Google belum bisa diputus. Coba lagi."
+      );
 
       setGoogleConnectionError(message);
       setNotification({
         type: "error",
-        title: "Disconnect gagal",
+        title: "Koneksi belum terputus",
         message: "Akses Google belum dapat diputuskan. Silakan coba lagi.",
       });
     } finally {
@@ -1057,8 +1096,8 @@ const Configuration = ({
       setInviteEmail("");
       setNotification({
         type: "success",
-        title: "Invitation sent",
-        message: `${response?.email || "Member"} is waiting for acceptance.`,
+        title: "Undangan terkirim",
+        message: `${response?.email || "Member"} menunggu diterima.`,
       });
     } catch (err) {
       console.error("Failed to invite workspace member.");
@@ -1068,13 +1107,15 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Member gagal diundang ke workspace.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Member belum bisa diundang ke workspace."
+      );
 
       setWorkspaceConfigurationError(message);
       setNotification({
         type: "error",
-        title: "Invite failed",
+        title: "Undangan belum terkirim",
         message,
       });
     } finally {
@@ -1096,8 +1137,8 @@ const Configuration = ({
       ));
       setNotification({
         type: "success",
-        title: "Invite cancelled",
-        message: "Pending invitation was cancelled.",
+        title: "Undangan dibatalkan",
+        message: "Undangan tertunda sudah dibatalkan.",
       });
     } catch (err) {
       console.error("Failed to cancel workspace invitation.");
@@ -1107,13 +1148,15 @@ const Configuration = ({
         return;
       }
 
-      const message = err?.response?.data?.detail
-        || "Invitation could not be cancelled.";
+      const message = friendlyErrorMessage(
+        err?.response?.data?.detail,
+        "Undangan belum bisa dibatalkan."
+      );
 
       setWorkspaceConfigurationError(message);
       setNotification({
         type: "error",
-        title: "Cancel failed",
+        title: "Undangan belum dibatalkan",
         message,
       });
     } finally {
@@ -1152,11 +1195,14 @@ const Configuration = ({
 
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted">
+          Pengaturan Omon
+        </p>
         <h1 className="text-2xl font-bold text-main sm:text-3xl">
           Settings
         </h1>
         <p className="mt-1 text-sm text-muted sm:text-base">
-          Persistent configuration and immediate workspace actions, clearly separated.
+          Kelola preferensi, workspace, dan koneksi Google Sheet tanpa mengubah data secara tidak sengaja.
         </p>
       </div>
 
@@ -1167,19 +1213,48 @@ const Configuration = ({
         aria-live="polite"
       >
         <CheckCircle2 size={16} />
-          All configuration changes saved
+          Semua perubahan tersimpan
       </div>
     </div>
 
-    <div className="mt-6"><p className="text-xs font-bold uppercase tracking-wider text-muted">Configuration</p></div>
+    <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted">
+            Workspace aktif
+          </p>
+          <h2 className="mt-1 break-words text-xl font-bold text-main">
+            {workspaceName || "Workspace belum tersedia"}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Semua pengaturan di halaman ini berlaku untuk workspace ini.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-xs font-bold">
+          <span className="rounded-full bg-[var(--color-accent-bg)] px-3 py-1 text-accent">
+            {formatWorkspaceRole(workspaceRole)}
+          </span>
+          <span className={`rounded-full px-3 py-1 ${
+            hasDirtySettings
+              ? "bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
+              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200"
+          }`}>
+            {hasDirtySettings ? `${dirtySummary.count} belum disimpan` : "Tidak ada perubahan tertunda"}
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <div className="mt-8"><p className="text-xs font-bold uppercase tracking-wider text-muted">Preferensi dan konfigurasi</p></div>
     <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-2">
       <ConfigurationCard
         icon={CalendarDays}
-        title="Financial Cycle Settings"
-        description="Control how transactions are assigned to monthly budget cycles."
+        title="Siklus Bulanan"
+        description="Atur kapan transaksi mulai dihitung ke periode budget berikutnya."
       >
         <label className="block text-sm font-semibold text-muted">
-          Payday Start Day
+          Tanggal mulai periode
         </label>
         <select
           value={draftPaydayStartDay}
@@ -1193,15 +1268,14 @@ const Configuration = ({
           ))}
         </select>
         <p className="mt-3 text-sm leading-6 text-muted">
-          Transactions on or after this day automatically count toward the next
-          month's budget cycle.
+          Transaksi pada tanggal ini atau setelahnya akan masuk ke siklus budget bulan berikutnya.
         </p>
       </ConfigurationCard>
 
       <ConfigurationCard
         icon={Settings}
-        title="Budgeting Mode"
-        description="Switch between manual allocation or historical average forecasting engine."
+        title="Mode Budget"
+        description="Pilih apakah alokasi budget dikelola manual atau dibantu rata-rata historis."
       >
         <div className="grid grid-cols-2 gap-2 rounded-xl border border-[var(--color-border)] p-1">
           <button
@@ -1227,36 +1301,55 @@ const Configuration = ({
             }`}
           >
             <RefreshCw size={16} className="mr-2 inline" />
-            Auto
+            Otomatis
           </button>
         </div>
 
         <div className="mt-4 rounded-xl bg-[var(--color-panel-hover)] px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Active Engine
+             Mode aktif
           </p>
           <p className="mt-1 text-sm font-bold text-main">
-            {draftAutoBudget ? "Historical Average Forecasting" : "Manual Allocation"}
+            {draftAutoBudget ? "Rata-rata historis" : "Alokasi manual"}
           </p>
         </div>
       </ConfigurationCard>
 
       <ConfigurationCard
+        icon={Eye}
+        title="Privasi Nominal"
+        description="Atur bagaimana nominal ditampilkan saat kamu memakai Omon bersama orang lain."
+      >
+        <div className="grid grid-cols-3 gap-2 rounded-xl border border-[var(--color-border)] p-1">
+          {privacyOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setDraftPrivacyMode(option.value)}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                draftPrivacyMode === option.value
+                  ? "bg-[var(--color-accent-strong)] text-white"
+                  : "text-muted hover:text-accent"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-muted">
+          <Eye size={15} className="mt-0.5 shrink-0" />
+          Perubahan ini tersambung dengan kontrol sembunyikan nominal di dashboard setelah disimpan.
+        </p>
+      </ConfigurationCard>
+
+      <ConfigurationCard
         icon={Link2}
-        title="Integrations — Google Account & Sources"
-        description="Workspace-level Google Sheets source and account controls."
+        title="Google Sheet"
+        description="Kelola koneksi Google, sumber Spreadsheet, tab sinkronisasi, dan action yang terkait data."
         className="lg:col-span-2"
       >
-        <label className="block text-sm font-semibold text-muted">
-          Workspace
-        </label>
-        <input
-          readOnly
-          value={workspaceName || "No workspace found"}
-          className="form-control mt-2 w-full cursor-default rounded-2xl px-4 py-3 text-sm font-semibold"
-        />
-
-        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:p-8">
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:p-8">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--color-accent-bg)] text-accent">
               <Cloud size={21} />
@@ -1264,10 +1357,10 @@ const Configuration = ({
 
             <div className="min-w-0">
               <h3 className="text-lg font-bold leading-7 text-main">
-                Google Sheets Connection
+                Koneksi Google
               </h3>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-                Connect your Google account to access Google Sheets data.
+                Hubungkan akun Google agar Omon dapat membaca Spreadsheet yang kamu pilih.
               </p>
             </div>
           </div>
@@ -1277,7 +1370,7 @@ const Configuration = ({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-wide text-subtle">
-                Connection Status
+                Status koneksi
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -1287,13 +1380,13 @@ const Configuration = ({
                     : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300"
                 }`}>
                   {isLoadingGoogleConnection
-                    ? "Checking..."
-                    : googleConnection.connected ? "Connected" : "Not Connected"}
+                    ? "Memeriksa..."
+                    : googleConnection.connected ? "Google Sheet terhubung" : "Belum terhubung"}
                 </span>
 
                 {googleConnection.connected && googleConnection.google_email && (
                   <span className="min-w-0 max-w-full truncate text-sm font-semibold text-main">
-                    Connected as: {googleConnection.google_email}
+                    Akun: {googleConnection.google_email}
                   </span>
                 )}
               </div>
@@ -1311,7 +1404,7 @@ const Configuration = ({
                 ) : (
                   <Cloud size={16} />
                 )}
-                {googleConnection.connected ? "Reconnect Google" : "Connect Google"}
+                {googleConnection.connected ? "Hubungkan ulang Google" : "Hubungkan Google"}
               </button>
 
               <button
@@ -1329,7 +1422,7 @@ const Configuration = ({
                 ) : (
                   <Unplug size={16} />
                 )}
-                Disconnect
+                Putuskan Koneksi
               </button>
             </div>
           </div>
@@ -1347,18 +1440,18 @@ const Configuration = ({
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] sm:p-8">
           <div className="flex flex-col gap-2">
             <h3 className="text-lg font-bold text-main">
-              Google Sheet Data Sources
+              Sumber dan tab Spreadsheet
             </h3>
             <p className="text-sm leading-6 text-muted">
-              Paste a spreadsheet URL, test access, then choose monthly tabs to sync.
+              Tambahkan URL Spreadsheet, periksa akses, lalu pilih tab bulanan yang akan disinkronkan ke Omon.
             </p>
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)] md:grid-cols-3">
             {[
-              ["1", "Connect Google", "Authorize this workspace to read your Google Sheets."],
-              ["2", "Add source", "Paste the spreadsheet URL, test access, and save it."],
-              ["3", "Sync Now", "Import valid transactions and classify them automatically."],
+              ["1", "Hubungkan Google", "Berikan akses baca untuk workspace ini."],
+              ["2", "Simpan sumber", "Pilih Spreadsheet dan tab yang akan dipakai."],
+              ["3", "Sinkronkan", "Salin transaksi valid ke Omon dan klasifikasikan."],
             ].map(([step, title, description]) => (
               <div key={step} className="flex gap-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-bg)] text-xs font-bold text-accent">
@@ -1374,14 +1467,14 @@ const Configuration = ({
 
           {!googleConnection.connected ? (
             <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-              Connect Google first to add spreadsheet sources.
+              Hubungkan Google terlebih dahulu untuk menambahkan sumber Spreadsheet. Ini bukan error; data Omon tetap aman.
             </div>
           ) : (
             <>
               <div className="mt-6 grid grid-cols-1 gap-4">
                 <label className="block">
                   <span className="mb-2 block text-sm font-semibold text-muted">
-                    Spreadsheet URL
+                    URL Spreadsheet
                   </span>
                   <input
                     value={spreadsheetUrl}
@@ -1397,7 +1490,7 @@ const Configuration = ({
 
                 <fieldset className="block">
                   <span className="mb-2 block text-sm font-semibold text-muted">
-                    Monthly Sheet Selection
+                    Pilihan tab bulanan
                   </span>
                   {sourceTestResult?.valid ? (
                     <div className="space-y-2 rounded-2xl border border-gray-200 p-4 dark:border-[var(--color-border)]">
@@ -1405,22 +1498,22 @@ const Configuration = ({
                         const tabs = sourceTestResult?.detected_tabs || sourceTestResult?.tabs || [];
                         const allSelected = tabs.length > 0 && sourceSelectedTabs.length === tabs.length;
                         return <>
-                          <label className="flex items-center gap-3 font-bold text-main"><input type="checkbox" checked={allSelected} onChange={() => setSourceSelectedTabs(allSelected ? [] : tabs)} /> Select All</label>
+                          <label className="flex items-center gap-3 font-bold text-main"><input type="checkbox" checked={allSelected} onChange={() => setSourceSelectedTabs(allSelected ? [] : tabs)} /> Pilih semua</label>
                           {tabs.map((tabName) => <label key={tabName} className="flex items-center gap-3 text-sm text-main"><input type="checkbox" checked={sourceSelectedTabs.includes(tabName)} onChange={() => setSourceSelectedTabs((current) => current.includes(tabName) ? current.filter((name) => name !== tabName) : [...current, tabName])} /> {tabName}</label>)}
                         </>;
                       })()}
                     </div>
-                  ) : <div className="rounded-2xl border border-gray-200 px-4 py-3 text-sm text-muted dark:border-[var(--color-border)]">Test spreadsheet access first</div>}
+                  ) : <div className="rounded-2xl border border-gray-200 px-4 py-3 text-sm text-muted dark:border-[var(--color-border)]">Periksa akses Spreadsheet terlebih dahulu.</div>}
                   <p className="mt-2 text-xs leading-5 text-muted">
-                    {sourceSelectedTabs.length} {sourceSelectedTabs.length === 1 ? "sheet" : "sheets"} selected
+                    {sourceSelectedTabs.length} tab dipilih
                   </p>
                 </fieldset>
 
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-                  <p>Your spreadsheet should contain the required transaction columns.</p>
-                  <p>This spreadsheet will sync only the selected monthly tabs.</p>
-                  <p>Transaction year will be detected from Waktu Transaksi.</p>
-                  <p>Transactions are classified automatically after sync.</p>
+                  <p>Spreadsheet perlu memiliki kolom transaksi yang sudah didukung Omon.</p>
+                  <p>Omon hanya membaca tab yang dipilih, lalu menyimpan hasil sinkronisasi di Omon.</p>
+                  <p>Isi Google Sheet asli tidak diubah oleh proses konfigurasi ini.</p>
+                  <p>Tahun transaksi dibaca dari kolom Waktu Transaksi.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1435,7 +1528,7 @@ const Configuration = ({
                     ) : (
                       <CheckCircle2 size={16} />
                     )}
-                    {isTestingSource ? "Testing..." : "Test Connection"}
+                    {isTestingSource ? "Memeriksa..." : "Periksa Akses"}
                   </button>
 
                   <button
@@ -1453,7 +1546,7 @@ const Configuration = ({
                     ) : (
                       <Link2 size={16} />
                     )}
-                    {isSavingSource ? "Saving..." : "Save Source"}
+                    {isSavingSource ? "Menyimpan..." : "Simpan Sumber"}
                   </button>
                 </div>
 
@@ -1466,22 +1559,22 @@ const Configuration = ({
                     {sourceTestResult.valid ? (
                       <>
                         <p className="font-bold">
-                          {sourceTestResult.spreadsheet_title || "Google Sheet reachable"}
+                          {sourceTestResult.spreadsheet_title || "Spreadsheet dapat diakses"}
                         </p>
                         <p className="mt-1">
-                          Tabs: {(sourceTestResult.tabs || []).join(", ") || "No tabs found"}
+                          Tab tersedia: {(sourceTestResult.tabs || []).join(", ") || "Belum ada tab terdeteksi"}
                         </p>
                         <p className="mt-1">
-                          Detected tabs: {(sourceTestResult.detected_tabs || []).join(", ") || "No transaction tabs detected"}
+                          Tab transaksi terdeteksi: {(sourceTestResult.detected_tabs || []).join(", ") || "Belum ada tab transaksi terdeteksi"}
                         </p>
                         {(sourceTestResult.skipped_tabs || []).length > 0 && (
                           <p className="mt-1">
-                            Skipped tabs: {sourceTestResult.skipped_tabs.join(", ")}
+                            Tab dilewati: {sourceTestResult.skipped_tabs.join(", ")}
                           </p>
                         )}
                       </>
                     ) : (
-                      <p>{sourceTestResult.message || "Connection test failed."}</p>
+                      <p>{friendlyErrorMessage(sourceTestResult.message, "Spreadsheet belum bisa diperiksa.")}</p>
                     )}
                   </div>
                 )}
@@ -1496,7 +1589,7 @@ const Configuration = ({
                 <div className="mt-8">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="text-sm font-bold text-main">
-                      Saved Sources
+                      Sumber tersimpan
                     </p>
                     <button
                       type="button"
@@ -1509,13 +1602,13 @@ const Configuration = ({
                       ) : (
                         <RefreshCw size={15} />
                       )}
-                      Refresh
+                      Muat ulang
                     </button>
                   </div>
 
                   {isLoadingSources ? (
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-                      Memuat source...
+                      Memuat sumber...
                     </div>
                   ) : googleSheetSources.length > 0 ? (
                     <ul className="space-y-3">
@@ -1525,10 +1618,10 @@ const Configuration = ({
                           source.spreadsheet_title || "Google Spreadsheet"
                         ).trim();
                         const sourceStatus = source.status === "disabled"
-                          ? "Disabled"
+                          ? "Nonaktif"
                           : source.status === "error"
-                            ? "Error"
-                            : "Active";
+                            ? "Perlu dicek"
+                            : "Aktif";
 
                         return (
                           <li
@@ -1544,15 +1637,15 @@ const Configuration = ({
                                   {sourceTitle}
                                 </p>
                                 <p className="mt-1 text-xs text-muted">
-                                  Spreadsheet-level sync - {sourceStatus}
+                                  Status sumber - {sourceStatus}
                                 </p>
                                 <div className="mt-2 space-y-1 text-xs leading-5 text-muted">
-                                  <p>Syncs selected monthly tabs.</p>
-                                  <p>Year is detected from Waktu Transaksi.</p>
+                                  <p>Sinkronisasi hanya memakai tab yang dipilih.</p>
+                                  <p>Tahun dibaca dari Waktu Transaksi.</p>
                                   {(source.selected_tabs || []).length > 0 ? (
-                                    <p>Selected tabs: {source.selected_tabs.join(", ")}</p>
+                                    <p>Tab dipilih: {source.selected_tabs.join(", ")}</p>
                                   ) : source.sheet_name && (
-                                    <p>Legacy default tab: {source.sheet_name}</p>
+                                    <p>Tab utama: {source.sheet_name}</p>
                                   )}
                                 </div>
                                 <p className="mt-2 text-xs text-muted">
@@ -1575,7 +1668,7 @@ const Configuration = ({
                                   ) : (
                                     <RefreshCw size={16} />
                                   )}
-                                  {syncingSourceId === source.source_id ? "Syncing..." : "Sync Now"}
+                                  {syncingSourceId === source.source_id ? "Menyinkronkan..." : "Sinkronkan"}
                                 </button>
 
                                 <button
@@ -1592,7 +1685,7 @@ const Configuration = ({
                                   ) : (
                                     <Trash2 size={16} />
                                   )}
-                                  {resettingSourceId === source.source_id ? "Resetting..." : "Reset Synced Data"}
+                                  {resettingSourceId === source.source_id ? "Mereset..." : "Reset Data Tersinkron"}
                                 </button>
                               </div>
                             </div>
@@ -1602,10 +1695,10 @@ const Configuration = ({
                                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
                                   {[
                                     ["Total", syncResult.total_rows],
-                                    ["Inserted", syncResult.inserted_rows],
-                                    ["Updated", syncResult.updated_rows],
-                                    ["Skipped", syncResult.skipped_rows],
-                                    ["Failed", syncResult.failed_rows],
+                                    ["Baru", syncResult.inserted_rows],
+                                    ["Diperbarui", syncResult.updated_rows],
+                                    ["Dilewati", syncResult.skipped_rows],
+                                    ["Gagal", syncResult.failed_rows],
                                   ].map(([label, value]) => (
                                     <div
                                       key={label}
@@ -1626,7 +1719,7 @@ const Configuration = ({
                                   + (syncResult.failed_rows || 0)
                                 ) > 0 && (
                                   <button type="button" onClick={() => setDetailResult(syncResult)} className="secondary-button mt-3 min-h-10 rounded-xl px-4 py-2 text-sm font-bold">
-                                    <Eye size={16} /> View Details
+                                    <Eye size={16} /> Lihat Detail
                                   </button>
                                 )}
 
@@ -1635,34 +1728,34 @@ const Configuration = ({
                                     <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 font-semibold text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200">
                                       {formatClassificationSummary(syncResult.classification)}
                                       {" "}
-                                      Skipped manual: {syncResult.classification.skipped_manual || 0}.
+                                      Dilewati manual: {syncResult.classification.skipped_manual || 0}.
                                       {" "}
-                                      Errors: {syncResult.classification.errors || 0}.
+                                      Error: {syncResult.classification.errors || 0}.
                                     </p>
                                   )}
                                   {(syncResult.warnings || []).includes("classification_failed") && (
                                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
-                                      Classification did not finish. You can run classification manually later.
+                                      Klasifikasi belum selesai. Data yang sudah masuk Omon tetap aman.
                                     </p>
                                   )}
                                   {(syncResult.failed_rows || 0) > 0 && (
                                     <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200">
-                                      Some rows were not imported. Review reasons below.
+                                      Beberapa baris belum masuk Omon. Lihat alasannya di bawah.
                                     </p>
                                   )}
                                   {(syncResult.processed_tabs || []).length > 0 && (
                                     <p>
-                                      Processed tabs: {syncResult.processed_tabs.join(", ")}
+                                      Tab diproses: {syncResult.processed_tabs.join(", ")}
                                     </p>
                                   )}
                                   {(syncResult.skipped_tabs || []).length > 0 && (
                                     <p>
-                                      Skipped tabs: {syncResult.skipped_tabs.join(", ")}
+                                      Tab dilewati: {syncResult.skipped_tabs.join(", ")}
                                     </p>
                                   )}
                                   {(syncResult.failed_tabs || []).length > 0 && (
                                     <p>
-                                      Failed tabs: {syncResult.failed_tabs.join(", ")}
+                                      Tab gagal: {syncResult.failed_tabs.join(", ")}
                                     </p>
                                   )}
                                 </div>
@@ -1673,20 +1766,20 @@ const Configuration = ({
                                   || (syncResult.skipped_samples || []).length > 0) && (
                                   <div className="mt-3 grid grid-cols-1 gap-2 text-xs leading-5 md:grid-cols-2">
                                     <SyncReasonBreakdown
-                                      title="Failed reasons"
+                                      title="Alasan gagal"
                                       reasons={syncResult.failed_reasons}
                                       tone="warning"
                                     />
                                     <SyncReasonBreakdown
-                                      title="Skipped reasons"
+                                      title="Alasan dilewati"
                                       reasons={syncResult.skipped_reasons}
                                     />
                                     <SyncSamples
-                                      title="Failed samples"
+                                      title="Contoh gagal"
                                       samples={syncResult.failed_samples || []}
                                     />
                                     <SyncSamples
-                                      title="Skipped samples"
+                                      title="Contoh dilewati"
                                       samples={syncResult.skipped_samples || []}
                                     />
                                   </div>
@@ -1699,7 +1792,7 @@ const Configuration = ({
                     </ul>
                   ) : (
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-                      Belum ada source tersimpan. Tambahkan URL spreadsheet, jalankan Test Connection, pilih Save Source, lalu Sync Now untuk mengisi Dashboard.
+                      Belum ada sumber tersimpan. Tambahkan URL Spreadsheet, periksa akses, simpan sumber, lalu sinkronkan untuk mengisi Omon.
                     </div>
                   )}
                 </div>
@@ -1713,85 +1806,60 @@ const Configuration = ({
           </p>
         )}
 
-        <label className="mt-5 block text-sm font-semibold text-muted">
-          Account Privacy Mode
-        </label>
-        <div className="mt-2 grid grid-cols-3 gap-2 rounded-xl border border-[var(--color-border)] p-1">
-          {privacyOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setDraftPrivacyMode(option.value)}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
-                draftPrivacyMode === option.value
-                  ? "bg-[var(--color-accent-strong)] text-white"
-                  : "text-muted hover:text-accent"
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        <p className="mt-3 flex items-center gap-2 text-sm leading-6 text-muted">
-          <Eye size={15} />
-          This setting syncs with the dashboard privacy control after saving.
-        </p>
-
       </ConfigurationCard>
 
       <ConfigurationCard
         icon={SlidersHorizontal}
-        title="Insight Severity Settings"
-        description="Customize how the dashboard highlights Need, Want, Saving, Uncategorized, and anomaly severity for this workspace."
+        title="Ambang Insight"
+        description="Atur kapan insight Need, Want, Saving, uncategorized, dan anomali mulai ditandai untuk workspace ini."
       >
         <div className="space-y-6">
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
             <p>
-              Severity is calculated by the backend based on these workspace-level thresholds.
+              Ambang ini mengatur cara Omon memberi tanda perhatian pada pola keuangan.
             </p>
             <p className="mt-1 font-semibold text-main">
               {insightThresholds.source === "workspace"
-                ? "Using workspace custom thresholds."
-                : "Using default thresholds."}
+                ? "Menggunakan ambang khusus workspace."
+                : "Menggunakan ambang default Omon."}
             </p>
           </div>
 
           {isLoadingInsightThresholds ? (
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-muted dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
-              Loading insight severity settings...
+              Memuat pengaturan insight...
             </div>
           ) : (
             <>
               <div>
                 <h3 className="text-sm font-bold text-main">
-                  Spending Ratio Thresholds
+                  Rasio pengeluaran
                 </h3>
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <ThresholdSlider
-                    label="Need warning threshold"
-                    helperText="Warning when Need spending reaches this percentage of total expense."
+                    label="Need mulai perlu perhatian"
+                    helperText="Ditandai ketika pengeluaran Need mencapai persentase ini dari total expense."
                     valuePercent={insightThresholds.need_warning_ratio}
                     onChangePercent={(value) => updateInsightField("need_warning_ratio", value)}
                     disabled={isSaving}
                   />
                   <ThresholdSlider
-                    label="Need danger threshold"
-                    helperText="Danger when Need spending reaches this percentage of total expense."
+                    label="Need tinggi"
+                    helperText="Ditandai kuat ketika pengeluaran Need mencapai persentase ini dari total expense."
                     valuePercent={insightThresholds.need_danger_ratio}
                     onChangePercent={(value) => updateInsightField("need_danger_ratio", value)}
                     disabled={isSaving}
                   />
                   <ThresholdSlider
-                    label="Want warning threshold"
-                    helperText="Warning when Want spending reaches this percentage of total expense."
+                    label="Want mulai perlu perhatian"
+                    helperText="Ditandai ketika pengeluaran Want mencapai persentase ini dari total expense."
                     valuePercent={insightThresholds.want_warning_ratio}
                     onChangePercent={(value) => updateInsightField("want_warning_ratio", value)}
                     disabled={isSaving}
                   />
                   <ThresholdSlider
-                    label="Want danger threshold"
-                    helperText="Danger when Want spending reaches this percentage of total expense."
+                    label="Want tinggi"
+                    helperText="Ditandai kuat ketika pengeluaran Want mencapai persentase ini dari total expense."
                     valuePercent={insightThresholds.want_danger_ratio}
                     onChangePercent={(value) => updateInsightField("want_danger_ratio", value)}
                     disabled={isSaving}
@@ -1801,19 +1869,19 @@ const Configuration = ({
 
               <div className="border-t border-gray-200 pt-5 dark:border-[var(--color-border)]">
                 <h3 className="text-sm font-bold text-main">
-                  Saving Thresholds
+                  Saving
                 </h3>
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <ThresholdSlider
-                    label="Saving warning threshold"
-                    helperText="Warning when Saving allocation is below this percentage of income."
+                    label="Saving perlu perhatian"
+                    helperText="Ditandai ketika alokasi Saving berada di bawah persentase income ini."
                     valuePercent={insightThresholds.saving_warning_ratio}
                     onChangePercent={(value) => updateInsightField("saving_warning_ratio", value)}
                     disabled={isSaving}
                   />
                   <ThresholdSlider
-                    label="Saving good threshold"
-                    helperText="Positive when Saving allocation reaches this percentage of income."
+                    label="Saving sehat"
+                    helperText="Ditandai positif ketika alokasi Saving mencapai persentase income ini."
                     valuePercent={insightThresholds.saving_good_ratio}
                     onChangePercent={(value) => updateInsightField("saving_good_ratio", value)}
                     disabled={isSaving}
@@ -1824,19 +1892,19 @@ const Configuration = ({
               <div className="grid grid-cols-1 gap-5 border-t border-gray-200 pt-5 dark:border-[var(--color-border)] md:grid-cols-2">
                 <div>
                   <h3 className="text-sm font-bold text-main">
-                    Data Quality Thresholds
+                    Kualitas data
                   </h3>
                   <div className="mt-3 grid grid-cols-1 gap-3">
                     {[
                       [
                         "uncategorized_warning_count",
-                        "Uncategorized warning count",
-                        "Warning when uncategorized transaction count reaches this number.",
+                        "Tanpa kategori mulai perlu perhatian",
+                        "Ditandai ketika jumlah transaksi tanpa kategori mencapai angka ini.",
                       ],
                       [
                         "uncategorized_danger_count",
-                        "Uncategorized danger count",
-                        "Danger when uncategorized transaction count reaches this number.",
+                        "Tanpa kategori tinggi",
+                        "Ditandai kuat ketika jumlah transaksi tanpa kategori mencapai angka ini.",
                       ],
                     ].map(([field, label, helperText]) => (
                       <label
@@ -1861,19 +1929,19 @@ const Configuration = ({
 
                 <div>
                   <h3 className="text-sm font-bold text-main">
-                    Anomaly Thresholds
+                    Anomali transaksi
                   </h3>
                   <div className="mt-3 grid grid-cols-1 gap-3">
                     {[
                       [
                         "anomaly_warning_multiplier",
-                        "Anomaly warning multiplier",
-                        "Warning when a transaction is this many times above its category average.",
+                        "Anomali mulai perlu perhatian",
+                        "Ditandai ketika transaksi sekian kali lebih tinggi dari rata-rata kategorinya.",
                       ],
                       [
                         "anomaly_danger_multiplier",
-                        "Anomaly danger multiplier",
-                        "Danger when a transaction is this many times above its category average.",
+                        "Anomali tinggi",
+                        "Ditandai kuat ketika transaksi sekian kali lebih tinggi dari rata-rata kategorinya.",
                       ],
                     ].map(([field, label, helperText]) => (
                       <label
@@ -1918,7 +1986,7 @@ const Configuration = ({
                   disabled={isSaving}
                   className="secondary-button min-h-11 rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Reset to Defaults
+                  Muat Nilai Default
                 </button>
               </div>
             </>
@@ -1928,8 +1996,8 @@ const Configuration = ({
 
       <ConfigurationCard
         icon={MailPlus}
-        title="Workspace Members"
-        description="Manage team access and invite new members to this financial workspace."
+        title="Workspace & Akses"
+        description="Lihat siapa saja yang memiliki akses ke workspace ini dan kirim undangan jika peranmu mengizinkan."
       >
         {canInviteMembers && (
           <form onSubmit={handleInviteMember} className="grid grid-cols-1 gap-4">
@@ -1958,7 +2026,7 @@ const Configuration = ({
                 ) : (
                   <MailPlus size={16} />
                 )}
-                {isInvitingMember ? "Inviting..." : "Invite Member"}
+                {isInvitingMember ? "Mengirim..." : "Undang Member"}
               </button>
             </div>
           </form>
@@ -1966,7 +2034,7 @@ const Configuration = ({
 
           <div className={`${canInviteMembers ? "mt-6" : ""} rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]`}>
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted">
-              Current Members
+              Member aktif
             </p>
 
             {workspaceMembers.length > 0 ? (
@@ -2001,7 +2069,7 @@ const Configuration = ({
         {canInviteMembers && (
           <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-border)] dark:bg-[var(--color-panel-hover)]">
             <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted">
-              Pending Invitations
+              Undangan tertunda
             </p>
 
             {workspacePendingInvitations.length > 0 ? (
@@ -2016,13 +2084,13 @@ const Configuration = ({
                         {invitation.email}
                       </p>
                       <p className="truncate text-xs text-muted">
-                        {invitation.role} | Waiting for acceptance
+                        {invitation.role} | Menunggu diterima
                       </p>
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
                       <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-                        pending
+                        tertunda
                       </span>
                       <button
                         type="button"
@@ -2036,8 +2104,8 @@ const Configuration = ({
                           <XCircle size={14} />
                         )}
                         {cancelingInvitationId === invitation.id
-                          ? "Cancelling..."
-                          : "Cancel Invite"}
+                          ? "Membatalkan..."
+                          : "Batalkan Undangan"}
                       </button>
                     </div>
                   </li>
@@ -2055,26 +2123,26 @@ const Configuration = ({
 
     {systemInfoState?.data?.appEnv === "local-dev" && (
       <div className="mt-8">
-        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Developer</p>
+        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Environment</p>
         <SystemInfoPanel systemInfoState={systemInfoState} />
-        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5 dark:border-red-400/20 dark:bg-red-500/10"><h3 className="font-bold text-main">Factory Reset Workspace Data</h3><p className="mt-2 text-sm leading-6 text-muted">Deletes operational data in this workspace only. User identity, membership, OAuth, and Google Sheet configuration remain.</p><button type="button" onClick={() => setFactoryResetOpen(true)} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white">Factory Reset Workspace Data</button></div>
+        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5 dark:border-red-400/20 dark:bg-red-500/10"><h3 className="font-bold text-main">Reset Data Workspace Local</h3><p className="mt-2 text-sm leading-6 text-muted">Tindakan ini hanya tersedia di Local Development. Data operasional Omon di workspace ini akan dihapus; akun, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p><button type="button" onClick={() => setFactoryResetOpen(true)} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white">Reset Data Workspace Local</button></div>
       </div>
     )}
     {hasDirtySettings && (
       <div className="fixed inset-x-4 bottom-20 z-[70] mx-auto max-w-3xl animate-[fadeIn_180ms_ease-out] rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-xl lg:bottom-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="font-bold text-main">Ada perubahan yang belum disimpan</p><p className="text-sm text-muted">{dirtySummary.count} pengaturan telah diubah</p></div>
-          <div className="flex gap-2"><button type="button" onClick={handleDiscard} disabled={isSaving} className="secondary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">Batalkan Perubahan</button><button type="button" onClick={handleSave} disabled={isSaving || Boolean(insightValidationError && dirtySummary.insightFields.length)} className="primary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">{isSaving && <LoaderCircle size={16} className="animate-spin" />}{isSaving ? "Menyimpan..." : "Save Changes"}</button></div>
+          <div><p className="font-bold text-main">Perubahan belum disimpan</p><p className="text-sm text-muted">{dirtySummary.count} pengaturan berubah. Action langsung seperti sinkronisasi dan reset tidak masuk hitungan ini.</p></div>
+          <div className="flex gap-2"><button type="button" onClick={handleDiscard} disabled={isSaving} className="secondary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">Batalkan Perubahan</button><button type="button" onClick={handleSave} disabled={isSaving || Boolean(insightValidationError && dirtySummary.insightFields.length)} className="primary-button flex-1 rounded-xl px-4 py-2 font-bold sm:flex-none">{isSaving && <LoaderCircle size={16} className="animate-spin" />}{isSaving ? "Menyimpan..." : "Simpan Perubahan"}</button></div>
         </div>
       </div>
     )}
     {pendingNavigation && (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Unsaved Changes">
-        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Unsaved Changes</h2><p className="mt-3 text-sm leading-6 text-muted">You have unsaved configuration changes.</p><p className="mt-2 text-sm leading-6 text-muted">If you leave this page, those changes will be lost.</p><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={onCancelNavigation} className="secondary-button rounded-xl px-4 py-2 font-bold">Stay</button><button type="button" onClick={() => { handleDiscard(); onDiscardAndNavigate?.(); }} className="secondary-button rounded-xl px-4 py-2 font-bold text-red-600">Discard Changes</button><button type="button" onClick={async () => { if (await handleSave()) onSaveAndNavigate?.(); }} disabled={isSaving} className="primary-button rounded-xl px-4 py-2 font-bold">Save &amp; Leave</button></div></div>
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Perubahan belum disimpan">
+        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Perubahan belum disimpan</h2><p className="mt-3 text-sm leading-6 text-muted">Ada konfigurasi Settings yang belum disimpan.</p><p className="mt-2 text-sm leading-6 text-muted">Jika keluar sekarang, perubahan form akan dibatalkan. Data Omon dan Google Sheet tetap aman.</p><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={onCancelNavigation} className="secondary-button rounded-xl px-4 py-2 font-bold">Tetap di Settings</button><button type="button" onClick={() => { handleDiscard(); onDiscardAndNavigate?.(); }} className="secondary-button rounded-xl px-4 py-2 font-bold text-red-600">Batalkan & Keluar</button><button type="button" onClick={async () => { if (await handleSave()) onSaveAndNavigate?.(); }} disabled={isSaving} className="primary-button rounded-xl px-4 py-2 font-bold">Simpan & Keluar</button></div></div>
       </div>
     )}
     {factoryResetOpen && (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Factory Reset Workspace Data"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Factory Reset Workspace Data</h2><div className="mt-4 space-y-3 text-sm leading-6 text-muted"><p>This will delete all Omon operational data for the current workspace, including transactions, import drafts, import history, fingerprints, budgets, and sync history.</p><p className="font-bold text-main">This will not delete or modify the original Google Sheet.</p><p>This will not delete your user, workspace, membership, OAuth connection, or Google Sheet configuration.</p></div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setFactoryResetOpen(false)} disabled={isFactoryResetting} className="secondary-button rounded-xl px-4 py-2 font-bold">Cancel</button><button type="button" onClick={handleFactoryResetWorkspace} disabled={isFactoryResetting} className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">{isFactoryResetting ? "Resetting..." : "Factory Reset Workspace Data"}</button></div></div></div>
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Workspace Local"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Reset Data Workspace Local</h2><div className="mt-4 space-y-3 text-sm leading-6 text-muted"><p>Tindakan ini menghapus data operasional Omon untuk workspace aktif, termasuk transaksi, draft import, history import, fingerprint, budget, dan riwayat sinkronisasi.</p><p className="font-bold text-main">Isi Google Sheet asli tidak akan dihapus atau diubah.</p><p>Akun, workspace, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p></div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setFactoryResetOpen(false)} disabled={isFactoryResetting} className="secondary-button rounded-xl px-4 py-2 font-bold">Batal</button><button type="button" onClick={handleFactoryResetWorkspace} disabled={isFactoryResetting} className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">{isFactoryResetting ? "Mereset..." : "Reset Data Workspace"}</button></div></div></div>
     )}
     {detailResult && (
       <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} />
@@ -2084,15 +2152,15 @@ const Configuration = ({
         <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]">
           <h2 className="text-xl font-bold text-main">Reset Data Hasil Sinkronisasi</h2>
           <div className="mt-4 space-y-3 text-sm leading-6 text-muted">
-            <p>Seluruh transaksi yang berasal dari Google Sheet ini akan dihapus dari database Omon.</p>
-            <p className="font-bold text-main">Data asli di Google Sheet tidak akan dihapus ataupun diubah.</p>
-            <p>Anda dapat melakukan sinkronisasi kembali kapan saja menggunakan tombol Sync Now.</p>
+            <p>Transaksi yang berasal dari sumber Spreadsheet ini akan dihapus dari Omon sesuai sumber yang dipilih.</p>
+            <p className="font-bold text-main">Isi Google Sheet asli tetap aman dan tidak akan diubah.</p>
+            <p>Kamu dapat melakukan sinkronisasi ulang kapan saja dengan tombol Sinkronkan.</p>
           </div>
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button type="button" onClick={() => setResetSource(null)} disabled={Boolean(resettingSourceId)} className="secondary-button rounded-xl px-4 py-2 font-bold">Cancel</button>
+            <button type="button" onClick={() => setResetSource(null)} disabled={Boolean(resettingSourceId)} className="secondary-button rounded-xl px-4 py-2 font-bold">Batal</button>
             <button type="button" onClick={handleResetSourceData} disabled={Boolean(resettingSourceId)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">
               {resettingSourceId && <LoaderCircle size={16} className="animate-spin" />}
-              {resettingSourceId ? "Resetting..." : "Reset Synced Data"}
+              {resettingSourceId ? "Mereset..." : "Reset Data Tersinkron"}
             </button>
           </div>
         </div>
@@ -2100,11 +2168,11 @@ const Configuration = ({
     )}
     <ConfirmationDialog
       open={disconnectConfirmOpen}
-      title="Disconnect akun Google?"
-      description="Omon tidak akan dapat melakukan Sync Now sampai akun Google dihubungkan kembali."
+      title="Putuskan koneksi Google?"
+      description="Omon tidak akan dapat sinkronisasi baru sampai akun Google dihubungkan kembali."
       affectedItems={["Akses Omon ke akun Google akan diputuskan", "Sinkronisasi baru tidak dapat dijalankan"]}
-      safeItems={["Data yang sudah tersimpan di Omon", "Google Sheet asli", "Source dan konfigurasi workspace"]}
-      confirmLabel="Disconnect"
+      safeItems={["Data yang sudah tersimpan di Omon", "Google Sheet asli", "Sumber dan konfigurasi workspace"]}
+      confirmLabel="Putuskan Koneksi"
       isLoading={isDisconnectingGoogle}
       onCancel={() => setDisconnectConfirmOpen(false)}
       onConfirm={handleDisconnectGoogle}
@@ -2112,9 +2180,9 @@ const Configuration = ({
     <ConfirmationDialog
       open={insightResetConfirmOpen}
       title="Muat nilai insight default?"
-      description="Nilai default hanya dimuat ke form dan belum disimpan sampai kamu memilih Save Changes."
+      description="Nilai default hanya dimuat ke form dan belum disimpan sampai kamu memilih Simpan Perubahan."
       affectedItems={["Perubahan insight yang belum disimpan akan diganti"]}
-      safeItems={["Pengaturan tersimpan tetap aman sampai Save Changes dipilih"]}
+      safeItems={["Pengaturan tersimpan tetap aman sampai Simpan Perubahan dipilih"]}
       confirmLabel="Muat Nilai Default"
       onCancel={() => setInsightResetConfirmOpen(false)}
       onConfirm={handleResetInsightThresholds}
