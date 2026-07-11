@@ -2145,7 +2145,7 @@ const Configuration = ({
       <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Workspace Local"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Reset Data Workspace Local</h2><div className="mt-4 space-y-3 text-sm leading-6 text-muted"><p>Tindakan ini menghapus data operasional Omon untuk workspace aktif, termasuk transaksi, draft import, history import, fingerprint, budget, dan riwayat sinkronisasi.</p><p className="font-bold text-main">Isi Google Sheet asli tidak akan dihapus atau diubah.</p><p>Akun, workspace, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p></div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setFactoryResetOpen(false)} disabled={isFactoryResetting} className="secondary-button rounded-xl px-4 py-2 font-bold">Batal</button><button type="button" onClick={handleFactoryResetWorkspace} disabled={isFactoryResetting} className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">{isFactoryResetting ? "Mereset..." : "Reset Data Workspace"}</button></div></div></div>
     )}
     {detailResult && (
-      <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} />
+      <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} privacyMode={privacyMode} />
     )}
     {resetSource && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Hasil Sinkronisasi">
