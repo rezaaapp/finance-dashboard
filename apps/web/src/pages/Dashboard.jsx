@@ -2160,6 +2160,7 @@ const Dashboard = ({
         ) : activeView === "search" ? (
           <SearchPage
             availableYears={years}
+            privacyMode={privacyMode}
             selectedYear={selectedYear}
             selectedMonth={selectedMonth}
             onUnauthorized={onLogout}

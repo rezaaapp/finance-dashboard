@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  X,
   FileText,
   Loader2,
   Search as SearchIcon,
@@ -10,7 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getInquiryDetail, searchInquiry } from "../api/inquiryApi";
-import { formatRupiah } from "../utils/currency";
+import { formatPrivateRupiah, PRIVACY_MODES } from "../utils/privacy";
 
 
 const exampleQueries = ["kopi", "groceries", "indomaret", "transport"];
@@ -54,6 +55,42 @@ const getMonthLabel = (month) => (
   || "All Months"
 );
 
+const getPeriodLabel = (year, month) => (
+  `${year || "-"} · ${getMonthLabel(month)}`
+);
+
+const getSafeText = (value, fallback = "-") => {
+  const text = String(value ?? "").trim();
+
+  return text || fallback;
+};
+
+const maskTextAmounts = (text, privacyMode) => {
+  const safeText = getSafeText(text, "");
+
+  if (privacyMode !== PRIVACY_MODES.hide) {
+    return safeText;
+  }
+
+  return safeText
+    .replace(/Rp\s?[\d.,]+/gi, "Rp ••••••••")
+    .replace(/\b\d{4,}(?:[.,]\d+)?\b/g, "••••");
+};
+
+const getDisplayQuery = (query, privacyMode) => {
+  const safeQuery = getSafeText(query, "");
+
+  if (privacyMode === PRIVACY_MODES.hide && /\d/.test(safeQuery)) {
+    return "Pencarian nominal disembunyikan";
+  }
+
+  return safeQuery;
+};
+
+const formatSearchAmount = (value, privacyMode) => (
+  formatPrivateRupiah(value || 0, privacyMode)
+);
+
 
 const readRecentSearches = () => {
   try {
@@ -90,17 +127,23 @@ const SummaryMetric = ({ label, value }) => (
 );
 
 
-const InquiryEmptyState = () => (
+const InquiryEmptyState = ({ hasRecentSearches }) => (
   <div className="panel rounded-lg p-8 text-center">
     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-accent-glow text-accent">
       <SearchIcon size={22} />
     </div>
     <p className="mt-4 text-lg font-bold text-main">
-      Apa yang ingin kamu cari?
+      Cari transaksi tanpa perlu istilah teknis.
     </p>
     <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-      Gunakan kata kunci seperti kategori, merchant, catatan, atau sumber dana.
+      Gunakan nama merchant, kategori, catatan, atau sumber dana. Hasil akan
+      mengikuti konteks tahun dan bulan yang sedang dipilih.
     </p>
+    {!hasRecentSearches && (
+      <p className="mt-3 text-sm font-semibold text-subtle">
+        Belum ada pencarian terbaru.
+      </p>
+    )}
   </div>
 );
 
@@ -141,31 +184,33 @@ const InquiryLoadingState = () => (
 );
 
 
-const InquiryNoResultState = () => (
+const InquiryNoResultState = ({ query, periodLabel, privacyMode }) => (
   <section className="panel rounded-lg p-6 text-center">
     <p className="text-lg font-bold text-main">
-      Tidak ditemukan transaksi yang sesuai.
+      Belum ada hasil yang cocok.
     </p>
     <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-      Coba gunakan kata kunci lain seperti kategori, merchant, atau sumber dana.
+      Kami belum menemukan transaksi untuk “{getDisplayQuery(query, privacyMode)}”
+      pada {periodLabel}. Coba gunakan nama merchant, kategori, atau kata yang
+      lebih singkat.
     </p>
   </section>
 );
 
 
-const InquirySummaryCards = ({ result }) => (
+const InquirySummaryCards = ({ result, privacyMode }) => (
   <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
     <SummaryMetric
-      label="Transactions"
+      label="Transaksi"
       value={getTransactionCount(result)}
     />
     <SummaryMetric
-      label="Total Amount"
-      value={formatRupiah(result?.summary?.total_amount || 0)}
+      label="Total nominal"
+      value={formatSearchAmount(result?.summary?.total_amount, privacyMode)}
     />
     <SummaryMetric
-      label="Average"
-      value={formatRupiah(result?.summary?.average_amount || 0)}
+      label="Rata-rata"
+      value={formatSearchAmount(result?.summary?.average_amount, privacyMode)}
     />
   </section>
 );
@@ -176,7 +221,7 @@ const getInsights = (result) => (
 );
 
 
-const InquirySmartInsights = ({ result }) => {
+const InquirySmartInsights = ({ result, privacyMode }) => {
   const insights = getInsights(result);
 
   if (insights.length === 0) {
@@ -186,7 +231,7 @@ const InquirySmartInsights = ({ result }) => {
   return (
     <section className="panel rounded-lg p-5">
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
-        Smart Insight
+        Ringkasan bantuan
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -196,10 +241,10 @@ const InquirySmartInsights = ({ result }) => {
             className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4"
           >
             <h4 className="text-sm font-bold text-main">
-              {insight.title || "Insight"}
+              {maskTextAmounts(insight.title || "Ringkasan", privacyMode)}
             </h4>
             <p className="mt-2 text-sm leading-6 text-muted">
-              {insight.message || "-"}
+              {maskTextAmounts(insight.message || "-", privacyMode)}
             </p>
           </article>
         ))}
@@ -233,6 +278,7 @@ const InquiryEvidenceLayer = ({
   detailLoading,
   offset,
   page,
+  privacyMode,
   onPreviousPage,
   onNextPage,
 }) => {
@@ -273,33 +319,33 @@ const InquiryEvidenceLayer = ({
               <thead className="table-header">
                 <tr>
                   <th className="px-4 py-3 font-bold">Tanggal</th>
-                  <th className="px-4 py-3 font-bold">Nama</th>
+                  <th className="px-4 py-3 font-bold">Transaksi</th>
                   <th className="px-4 py-3 font-bold">Kategori</th>
                   <th className="px-4 py-3 font-bold">Source Dana</th>
-                  <th className="px-4 py-3 text-right font-bold">Amount</th>
-                  <th className="px-4 py-3 font-bold">Note</th>
+                  <th className="px-4 py-3 text-right font-bold">Nominal</th>
+                  <th className="px-4 py-3 font-bold">Catatan</th>
                 </tr>
               </thead>
               <tbody>
                 {detailRows.map((transaction) => (
-                  <tr key={transaction.id} className="table-row table-border">
+                  <tr key={transaction.id || `${transaction.transaction_date}-${transaction.transaction_name}-${transaction.amount}`} className="table-row table-border">
                     <td className="whitespace-nowrap px-4 py-3">
-                      {transaction.transaction_date || "-"}
+                      {getSafeText(transaction.transaction_date)}
                     </td>
                     <td className="min-w-56 px-4 py-3 font-semibold text-main">
-                      {transaction.transaction_name || "-"}
+                      {getSafeText(transaction.transaction_name, "Transaksi tanpa nama")}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      {transaction.category || "-"}
+                      {getSafeText(transaction.category)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      {transaction.source_dana || "-"}
+                      {getSafeText(transaction.source_dana)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right font-bold text-main">
-                      {formatRupiah(transaction.amount || 0)}
+                      {formatSearchAmount(transaction.amount, privacyMode)}
                     </td>
                     <td className="min-w-48 px-4 py-3">
-                      {transaction.note || "-"}
+                      {getSafeText(transaction.note)}
                     </td>
                   </tr>
                 ))}
@@ -315,11 +361,11 @@ const InquiryEvidenceLayer = ({
               disabled={disablePrevious}
             >
               <ChevronLeft size={16} />
-              Previous
+              Sebelumnya
             </button>
 
             <p className="text-center text-sm font-bold text-muted">
-              Page {page}
+              Halaman {page}
             </p>
 
             <button
@@ -328,7 +374,7 @@ const InquiryEvidenceLayer = ({
               className="secondary-button rounded-lg px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
               disabled={disableNext}
             >
-              Next
+              Berikutnya
               <ChevronRight size={16} />
             </button>
           </div>
@@ -351,6 +397,8 @@ const InquiryPreviewList = ({
   detailLoading,
   detailOpen,
   offset,
+  periodLabel,
+  privacyMode,
   onDetailToggle,
   onNextPage,
   onPreviousPage,
@@ -364,17 +412,17 @@ const InquiryPreviewList = ({
       <div className="mb-4">
         <div>
           <h3 className="text-lg font-bold text-main">
-            Preview Transactions
+            Hasil transaksi
           </h3>
           <p className="mt-1 text-sm text-muted">
-            Latest matching transactions, max 10.
+            Menampilkan hingga 10 transaksi yang cocok pada {periodLabel}.
           </p>
         </div>
       </div>
 
       {result?.detail_available && (
         <p className="mb-3 rounded-lg bg-accent-glow px-4 py-2 text-sm font-semibold text-accent">
-          Detail tersedia untuk hasil lainnya.
+          Detail tambahan tersedia bila kamu ingin melihat hasil lainnya.
         </p>
       )}
 
@@ -386,15 +434,15 @@ const InquiryPreviewList = ({
           >
             <div className="min-w-0">
               <p className="truncate font-bold text-main">
-                {transaction.transaction_name || "-"}
+                {getSafeText(transaction.transaction_name, "Transaksi tanpa nama")}
               </p>
               <p className="mt-1 text-sm text-muted">
-                {transaction.transaction_date || "-"} - {transaction.category || "-"} - {transaction.source_dana || "-"}
+                {getSafeText(transaction.transaction_date)} · {getSafeText(transaction.category)} · {getSafeText(transaction.source_dana)}
               </p>
             </div>
 
             <p className="text-base font-bold text-main sm:text-right">
-              {formatRupiah(transaction.amount || 0)}
+              {formatSearchAmount(transaction.amount, privacyMode)}
             </p>
           </article>
         ))}
@@ -409,7 +457,7 @@ const InquiryPreviewList = ({
             disabled={detailLoading}
           >
             {detailOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            {detailOpen ? "Sembunyikan Detail" : "Lihat Detail"}
+            {detailOpen ? "Sembunyikan detail" : "Lihat detail"}
           </button>
         </div>
       )}
@@ -421,6 +469,7 @@ const InquiryPreviewList = ({
           detailLoading={detailLoading}
           offset={offset}
           page={page}
+          privacyMode={privacyMode}
           onPreviousPage={onPreviousPage}
           onNextPage={onNextPage}
         />
@@ -436,6 +485,8 @@ const InquiryResult = ({
   detailLoading,
   detailOpen,
   offset,
+  periodLabel,
+  privacyMode,
   onDetailToggle,
   onNextPage,
   onPreviousPage,
@@ -450,19 +501,26 @@ const InquiryResult = ({
     <div className="grid grid-cols-1 gap-6">
       <section className="panel rounded-lg p-5">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
-          Ringkasan
+          Hasil untuk “{getDisplayQuery(result?.query, privacyMode)}”
         </p>
         <h3 className="mt-2 text-xl font-bold text-main">
-          {result?.answer || "Ringkasan belum tersedia."}
+          {maskTextAmounts(result?.answer || "Ringkasan belum tersedia.", privacyMode)}
         </h3>
+        <p className="mt-2 text-sm text-muted">
+          Ditemukan {totalTransactions} transaksi pada {periodLabel}.
+        </p>
       </section>
 
-      <InquirySummaryCards result={result} />
+      <InquirySummaryCards result={result} privacyMode={privacyMode} />
 
-      <InquirySmartInsights result={result} />
+      <InquirySmartInsights result={result} privacyMode={privacyMode} />
 
       {hasNoResult ? (
-        <InquiryNoResultState />
+        <InquiryNoResultState
+          query={result?.query}
+          periodLabel={periodLabel}
+          privacyMode={privacyMode}
+        />
       ) : (
         <InquiryPreviewList
           detailCache={detailCache}
@@ -470,6 +528,8 @@ const InquiryResult = ({
           detailLoading={detailLoading}
           detailOpen={detailOpen}
           offset={offset}
+          periodLabel={periodLabel}
+          privacyMode={privacyMode}
           onDetailToggle={onDetailToggle}
           onNextPage={onNextPage}
           onPreviousPage={onPreviousPage}
@@ -484,6 +544,7 @@ const InquiryResult = ({
 
 const Search = ({
   availableYears = [],
+  privacyMode = PRIVACY_MODES.normal,
   selectedYear,
   selectedMonth,
   onUnauthorized,
@@ -516,6 +577,8 @@ const Search = ({
 
   const trimmedQuery = query.trim();
   const isQueryValid = trimmedQuery.length >= MIN_QUERY_LENGTH;
+  const periodLabel = getPeriodLabel(contextYear, contextMonth);
+  const hasRecentSearches = recentSearches.length > 0;
 
   const resetDetailState = () => {
     setDetailOpen(false);
@@ -649,6 +712,12 @@ const Search = ({
     runSearch();
   };
 
+  const handleClearSearch = () => {
+    setQuery("");
+    resetResultState();
+    searchInputRef.current?.focus();
+  };
+
   const handleExampleClick = (exampleQuery) => {
     setQuery(exampleQuery);
     runSearch(exampleQuery);
@@ -713,7 +782,7 @@ const Search = ({
         return;
       }
 
-      setDetailError(err?.response?.data?.detail || "Detail transaksi tidak tersedia.");
+      setDetailError("Detail transaksi belum dapat dimuat. Coba lagi sebentar lagi.");
     } finally {
       setDetailLoading(false);
     }
@@ -753,20 +822,48 @@ const Search = ({
 
   return (
     <div className="grid grid-cols-1 gap-6">
-      <div>
-        <h2 className="text-2xl font-bold text-main sm:text-3xl">
-          Search
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Cari transaksi dari merchant, kategori, catatan, atau sumber dana.
-        </p>
-      </div>
+      <section className="panel rounded-lg p-4 sm:p-5">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase text-accent">
+              Cari transaksi
+            </p>
+            <h2 className="mt-1 text-2xl font-bold text-main sm:text-3xl">
+              Temukan transaksi dengan kata yang kamu ingat.
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Cari berdasarkan merchant, kategori, catatan, atau sumber dana.
+              Hasil mengikuti konteks periode yang dipilih.
+            </p>
+          </div>
+
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3 lg:w-[520px]">
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4">
+              <p className="text-xs font-bold uppercase text-muted">
+                Periode
+              </p>
+              <p className="mt-2 truncate text-sm font-bold text-main">
+                {periodLabel}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-hover)] p-4 sm:col-span-2">
+              <p className="text-xs font-bold uppercase text-muted">
+                Privasi
+              </p>
+              <p className="mt-2 text-sm font-bold text-main">
+                {privacyMode === PRIVACY_MODES.hide ? "Nominal disembunyikan" : "Nominal terlihat"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="panel rounded-lg p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
-              Current Context
+              Konteks pencarian
             </p>
             <p className="mt-2 text-sm font-semibold text-main">
               Year: {contextYear || "-"} · Month: {getMonthLabel(contextMonth)}
@@ -776,7 +873,7 @@ const Search = ({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:min-w-[360px]">
             <label className="grid gap-1">
               <span className="text-xs font-bold uppercase tracking-[0.12em] text-subtle">
-                Year
+                Tahun
               </span>
               <select
                 value={contextYear}
@@ -793,7 +890,7 @@ const Search = ({
 
             <label className="grid gap-1">
               <span className="text-xs font-bold uppercase tracking-[0.12em] text-subtle">
-                Month
+                Bulan
               </span>
               <select
                 value={contextMonth}
@@ -811,13 +908,15 @@ const Search = ({
         </div>
       </section>
 
-      <form onSubmit={handleSubmit} className="panel rounded-lg p-4 sm:p-5">
+      <form onSubmit={handleSubmit} className="panel rounded-lg p-4 sm:p-5" role="search">
         <div className="flex flex-col gap-3 sm:flex-row">
           <label className="relative min-w-0 flex-1">
-            <span className="sr-only">Kata kunci transaksi</span>
+            <span className="mb-2 block text-sm font-bold text-main">
+              Kata kunci
+            </span>
             <SearchIcon
               size={18}
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-subtle"
+              className="pointer-events-none absolute left-4 top-[3.05rem] text-subtle"
             />
             <input
               ref={searchInputRef}
@@ -827,21 +926,37 @@ const Search = ({
                 setQuery(event.target.value);
                 setError("");
               }}
-              className="form-control w-full rounded-lg py-3 pl-11 pr-4 text-sm sm:text-base"
-              placeholder="Cari transaksi, kategori, merchant, atau sumber dana..."
+              className="form-control w-full rounded-lg py-3 pl-11 pr-12 text-sm sm:text-base"
+              placeholder="Cari merchant, kategori, atau transaksi"
               maxLength={100}
+              aria-describedby="search-helper"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-3 top-[2.55rem] flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--color-panel-hover)] hover:text-main disabled:opacity-50"
+                aria-label="Bersihkan pencarian"
+                disabled={loading}
+              >
+                <X size={16} />
+              </button>
+            )}
           </label>
 
           <button
             type="submit"
-            className="primary-button h-12 rounded-lg px-5 font-bold disabled:cursor-not-allowed disabled:opacity-60"
+            className="primary-button min-h-12 rounded-lg px-5 font-bold disabled:cursor-not-allowed disabled:opacity-60 sm:self-end"
             disabled={!isQueryValid || loading}
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : <SearchIcon size={18} />}
-            Cari Transaksi
+            Cari
           </button>
         </div>
+
+        <p id="search-helper" className="mt-2 text-sm text-muted">
+          Tekan Enter untuk mencari. Minimal 2 karakter.
+        </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
           {exampleQueries.map((exampleQuery) => (
@@ -858,10 +973,10 @@ const Search = ({
         </div>
       </form>
 
-      {recentSearches.length > 0 && (
+      {hasRecentSearches && (
         <section className="panel rounded-lg p-4 sm:p-5">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
-            Pencarian Terakhir
+            Pencarian terbaru
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {recentSearches.map((recentSearch) => (
@@ -871,9 +986,9 @@ const Search = ({
                 onClick={() => handleRecentSearchClick(recentSearch)}
                 className="secondary-button min-h-10 rounded-lg px-3 py-2 text-left text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={loading}
-                title={`${recentSearch.query} (${recentSearch.year || "-"} / ${getMonthLabel(recentSearch.month)})`}
+                title={`${getDisplayQuery(recentSearch.query, privacyMode)} (${recentSearch.year || "-"} / ${getMonthLabel(recentSearch.month)})`}
               >
-                {recentSearch.query}
+                {getDisplayQuery(recentSearch.query, privacyMode)}
                 <span className="ml-2 text-xs font-normal text-muted">
                   {recentSearch.year || "-"} · {getMonthLabel(recentSearch.month)}
                 </span>
@@ -898,6 +1013,8 @@ const Search = ({
           detailLoading={detailLoading}
           detailOpen={detailOpen}
           offset={offset}
+          periodLabel={periodLabel}
+          privacyMode={privacyMode}
           onDetailToggle={handleDetailToggle}
           onNextPage={handleNextPage}
           onPreviousPage={handlePreviousPage}
@@ -905,7 +1022,7 @@ const Search = ({
           result={result}
         />
       ) : !error ? (
-        <InquiryEmptyState />
+        <InquiryEmptyState hasRecentSearches={hasRecentSearches} />
       ) : null}
     </div>
   );
