@@ -51,7 +51,7 @@ const GoogleAuthCallback = ({ onLogin }) => {
     } = getCallbackParams();
 
     if (!token) {
-      setError("Token login Google tidak ditemukan.");
+      setError("Kami belum menerima sesi Google yang valid. Coba masuk lagi dari halaman login.");
       return;
     }
 
@@ -78,14 +78,14 @@ const GoogleAuthCallback = ({ onLogin }) => {
         {error ? (
           <>
             <h1 className="text-xl font-bold text-main">
-              Login Google gagal
+              Login Google belum berhasil
             </h1>
 
             <p className="mt-3 text-sm text-muted">
               {error}
             </p>
             <a href="/" className="primary-button mt-6 inline-flex rounded-xl px-5 py-2.5 font-bold">
-              Kembali ke Login
+              Kembali ke login
             </a>
           </>
         ) : (
@@ -96,11 +96,11 @@ const GoogleAuthCallback = ({ onLogin }) => {
             />
 
             <h1 className="mt-4 text-xl font-bold text-main">
-              Menyelesaikan login
+              Menyelesaikan login Google
             </h1>
 
             <p className="mt-3 text-sm text-muted">
-              Menghubungkan sesi Google ke dashboard.
+              Menghubungkan sesi dengan aman sebelum membuka dashboard.
             </p>
           </>
         )}

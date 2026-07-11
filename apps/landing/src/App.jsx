@@ -2,7 +2,6 @@ import {
   ArrowRight,
   ArrowUp,
   BarChart3,
-  Bot,
   CalendarClock,
   Check,
   ChevronDown,
@@ -20,7 +19,6 @@ import {
   Mail,
   Menu,
   MessageCircle,
-  PawPrint,
   PieChart,
   PiggyBank,
   RefreshCw,
@@ -45,8 +43,7 @@ const contactLinks = {
 const navItems = [
   ["Fitur", "#features"],
   ["Cara Kerja", "#how-it-works"],
-  ["Cerita", "#story"],
-  ["Harga", "#pricing"],
+  ["Keamanan", "#trust"],
   ["FAQ", "#faq"],
 ];
 
@@ -62,9 +59,9 @@ const problems = [
     body: "Catatan transaksi semakin panjang, tetapi belum membantu menentukan langkah berikutnya.",
   },
   {
-    icon: PawPrint,
-    title: "Target sering jadi omon-omon",
-    body: "Ingin menabung, mengurangi pengeluaran, atau lebih disiplin, tapi sulit memantau progresnya.",
+    icon: Target,
+    title: "Target sulit dipantau",
+    body: "Ingin menabung, mengurangi pengeluaran, atau lebih disiplin, tetapi progresnya sering tidak terlihat.",
   },
 ];
 
@@ -86,8 +83,8 @@ const benefits = [
   },
   {
     icon: Smile,
-    title: "Insight Otomatis",
-    body: "Temukan pola yang sering terlewat sebelum menjadi masalah.",
+    title: "Insight yang Mudah Dibaca",
+    body: "Temukan pola yang sering terlewat tanpa harus membaca tabel panjang.",
   },
 ];
 
@@ -97,8 +94,8 @@ const featureCards = [
   ["Grocery vs Food", WalletCards, "Bedakan kebutuhan rumah dan pengeluaran makan harian."],
   ["Category Heatmap", Grid3X3, "Lihat pola transaksi berdasarkan waktu dan kategori."],
   ["Top Spending", CircleDollarSign, "Temukan transaksi terbesar yang paling berdampak."],
-  ["Anomaly Detection", TriangleAlert, "Kenali pengeluaran yang tidak biasa."],
-  ["AI Insight", Bot, "Dapatkan ringkasan pola keuangan yang lebih mudah dipahami."],
+  ["Anomaly Signals", TriangleAlert, "Kenali pengeluaran yang tidak biasa."],
+  ["Import Review", Eye, "Tinjau transaksi sebelum disimpan ke Omon."],
 ];
 
 const steps = [
@@ -110,21 +107,21 @@ const steps = [
   },
   {
     icon: RefreshCw,
-    title: "Sinkronisasi Otomatis",
-    description: "Omon membaca dan merapikan data keuangan yang sudah Anda catat.",
+    title: "Sinkronisasi Terkontrol",
+    description: "Omon membaca data yang Anda pilih dan menyimpannya sebagai data Omon.",
     source: "Omon Dashboard",
   },
   {
     icon: BarChart3,
     title: "Dashboard & Insight",
-    description: "Lihat ringkasan keuangan, tren pengeluaran, dan insight otomatis.",
+    description: "Lihat ringkasan keuangan, tren pengeluaran, dan tanda yang perlu diperhatikan.",
     source: "Insight & Analytics",
   },
   {
     icon: Target,
     title: "Ambil Keputusan",
-    description: "Pahami kondisi keuangan keluarga dengan lebih jelas.",
-    source: "Keputusan Finansial yang Lebih Baik",
+    description: "Gunakan informasi yang lebih jelas untuk menentukan langkah berikutnya.",
+    source: "Kontrol Tetap di Pengguna",
   },
 ];
 
@@ -132,10 +129,10 @@ const roadmapItems = [
   ["done", "Google Sheets Sync"],
   ["done", "Financial Dashboard"],
   ["done", "Analytics & Insight"],
-  ["progress", "AI Classification"],
-  ["progress", "Smart Budget Recommendation"],
-  ["progress", "Mobile Experience"],
-  ["progress", "Family Collaboration"],
+  ["done", "Budget Foundation"],
+  ["done", "Search & Import Review"],
+  ["done", "Privacy Mode"],
+  ["progress", "Mobile Refinement"],
 ];
 
 const audiences = [
@@ -154,19 +151,19 @@ const insightExamples = [
 
 const pricingPlans = [
   {
-    name: "Free",
-    price: "Rp0",
-    description: "Untuk mulai memahami kondisi keuangan keluarga dari satu spreadsheet.",
-    features: ["1 Workspace", "1 Spreadsheet", "Dashboard dasar", "Analytics dasar"],
-    cta: "Mulai Gratis",
+    name: "Mulai",
+    price: "Akun Omon",
+    description: "Untuk masuk atau membuat akses Omon melalui metode yang tersedia.",
+    features: ["Google sign-in", "Login akun yang sudah tersedia", "Workspace terpisah", "Pengaturan privasi nominal"],
+    cta: "Mulai menggunakan Omon",
     highlighted: false,
   },
   {
-    name: "Pro",
-    price: "Segera",
-    description: "Untuk keluarga yang butuh insight lebih lengkap dan laporan yang lebih rapi.",
-    features: ["Unlimited Sources", "Insight otomatis", "Advanced Analytics", "Export Report", "Priority Features"],
-    cta: "Lihat Pro",
+    name: "Setelah Masuk",
+    price: "Dashboard",
+    description: "Lanjutkan ke pengalaman utama untuk mengelola data dan koneksi.",
+    features: ["Dashboard", "Analytics", "Budget", "Search", "Import", "Settings"],
+    cta: "Masuk ke Omon",
     highlighted: true,
   },
 ];
@@ -174,7 +171,7 @@ const pricingPlans = [
 const faqs = [
   [
     "Apakah data saya aman?",
-    "Omon menggunakan koneksi Google OAuth dan hanya membaca data yang Anda izinkan. Data digunakan untuk menampilkan dashboard dan insight keuangan.",
+    "Omon menggunakan koneksi Google yang Anda izinkan. Data dipakai untuk menampilkan dashboard dan insight keuangan di Omon.",
   ],
   [
     "Apakah harus menggunakan Google Sheets?",
@@ -185,8 +182,8 @@ const faqs = [
     "Ya. Omon dibuat untuk membantu keluarga atau pasangan memahami kondisi keuangan bersama.",
   ],
   [
-    "Apakah tersedia versi gratis?",
-    "Ya. Anda bisa mulai dari paket Free untuk mencoba dashboard dasar.",
+    "Apa yang terjadi setelah saya mulai?",
+    "Anda akan masuk ke halaman autentikasi Omon. Setelah login berhasil, Omon membuka dashboard utama.",
   ],
   [
     "Apakah bisa dibuka dari HP?",
@@ -268,13 +265,13 @@ function Header({ dashboardUrl, menuOpen, setMenuOpen }) {
             className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold text-[#53655f] transition hover:text-[#0b1e36]"
             href={dashboardUrl}
           >
-            Lihat Demo
+            Masuk
           </a>
           <a
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#0b1e36] px-5 text-sm font-semibold text-white shadow-sm shadow-[#0b1e36]/20 transition hover:bg-[#123354]"
             href={dashboardUrl}
           >
-            Mulai Gratis <ArrowRight size={16} aria-hidden="true" />
+            Mulai menggunakan Omon <ArrowRight size={16} aria-hidden="true" />
           </a>
         </div>
 
@@ -300,7 +297,7 @@ function Header({ dashboardUrl, menuOpen, setMenuOpen }) {
               className="mt-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#0b1e36] px-5 text-white"
               href={dashboardUrl}
             >
-              Mulai Gratis <ArrowRight size={16} aria-hidden="true" />
+              Mulai menggunakan Omon <ArrowRight size={16} aria-hidden="true" />
             </a>
           </div>
         </nav>
@@ -314,7 +311,7 @@ function Hero({ dashboardUrl }) {
     <section id="top" className="relative">
       <div className="absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(circle_at_50%_0%,rgba(84,157,103,0.22),transparent_58%)]" />
       <div className="pointer-events-none absolute left-[8%] top-32 hidden h-11 w-11 rounded-full border border-[#d7eadb] bg-white/80 shadow-sm md:block omon-drift-slow">
-        <PawPrint className="m-2.5 text-[#2f7a4f]" size={22} aria-hidden="true" />
+        <LockKeyhole className="m-2.5 text-[#2f7a4f]" size={22} aria-hidden="true" />
       </div>
       <div className="pointer-events-none absolute right-[10%] top-44 hidden h-9 w-9 rounded-full bg-[#fff4ed] shadow-sm lg:block omon-drift">
         <CircleDollarSign className="m-2 text-[#b96545]" size={20} aria-hidden="true" />
@@ -324,33 +321,33 @@ function Hero({ dashboardUrl }) {
           <div className="mx-auto flex w-fit items-center gap-3 rounded-2xl border border-[#dfe8e2] bg-white px-4 py-3 shadow-sm omon-fade-in">
             <BrandLogo size="md" animated />
             <div className="text-left">
-              <p className="text-sm font-bold text-[#0b1e36]">Omon Dashboard</p>
-              <p className="text-xs font-semibold text-[#2f7a4f]">Dashboard keuangan keluarga</p>
+              <p className="text-sm font-bold text-[#0b1e36]">Omon</p>
+              <p className="text-xs font-semibold text-[#2f7a4f]">Calm Financial Companion</p>
             </div>
           </div>
           <div className="mx-auto mt-5 inline-flex items-center gap-2 rounded-full border border-[#b8d6bf] bg-[#edf7ef] px-4 py-2 text-sm font-bold text-[#2f7a4f] shadow-sm omon-fade-in omon-delay-1">
-            <PawPrint size={16} aria-hidden="true" />
-            Ngatur uang nggak perlu omon-omon lagi.
+            <HeartHandshake size={16} aria-hidden="true" />
+            Kelola uang dengan lebih tenang.
           </div>
           <h1 className="mx-auto mt-6 max-w-4xl text-4xl font-semibold leading-[1.06] text-[#0b1e36] sm:text-5xl lg:text-7xl omon-fade-in omon-delay-2">
-            Pahami Keuangan Keluarga Anda.
+            Kelola uang dengan lebih tenang.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-8 text-[#53655f] sm:text-lg omon-fade-in omon-delay-3">
-            Omon Dashboard membantu Anda melihat pemasukan, pengeluaran, tabungan, dan kebiasaan finansial keluarga dalam satu dashboard yang sederhana dan mudah dipahami.
+            Omon membantu Anda memahami pemasukan, pengeluaran, anggaran, dan pola keuangan dalam satu pengalaman yang sederhana.
           </p>
           <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-7 text-[#2f7a4f] sm:text-base">
-            Tidak perlu lagi menebak ke mana uang pergi setiap bulannya.
+            Data tetap bisa ditinjau, disinkronkan, dan dikelola dengan kontrol yang jelas.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#0b1e36] px-6 font-semibold text-white shadow-lg shadow-[#0b1e36]/20 transition hover:bg-[#123354] sm:w-auto" href={dashboardUrl}>
-              Mulai Gratis <ArrowRight size={18} aria-hidden="true" />
+              Mulai menggunakan Omon <ArrowRight size={18} aria-hidden="true" />
             </a>
-            <a className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#cbd9d1] bg-white px-6 font-semibold text-[#0b1e36] shadow-sm transition hover:border-[#9fb8aa] sm:w-auto" href={dashboardUrl}>
-              Lihat Demo <Eye size={18} aria-hidden="true" />
+            <a className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#cbd9d1] bg-white px-6 font-semibold text-[#0b1e36] shadow-sm transition hover:border-[#9fb8aa] sm:w-auto" href="#how-it-works">
+              Lihat cara kerjanya <Eye size={18} aria-hidden="true" />
             </a>
           </div>
           <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-2 text-xs font-bold text-[#53655f]">
-            {["Sinkronisasi Google Sheets", "Insight Otomatis", "Dibuat untuk keluarga Indonesia"].map((item) => (
+            {["Google Sheet sebagai sumber", "Review sebelum simpan", "Hide Amount tersedia"].map((item) => (
               <span className="inline-flex items-center gap-2 rounded-full border border-[#dfe8e2] bg-white px-3 py-2" key={item}>
                 <Check className="text-[#2f7a4f]" size={14} aria-hidden="true" />
                 {item}
@@ -510,13 +507,13 @@ function RoadmapSection() {
       <div className="mx-auto max-w-6xl px-5 lg:px-8">
         <div className="mb-8 max-w-3xl">
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#2f7a4f]">
-            Roadmap produk
+            Prinsip produk
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-tight text-[#0b1e36] sm:text-4xl">
-            Sedang Kami Kembangkan
+            Dirancang agar terasa aman dan terkendali.
           </h2>
           <p className="mt-4 text-base leading-8 text-[#53655f]">
-            Omon aktif dikembangkan agar pengelolaan keuangan keluarga makin mudah dipahami dan makin praktis digunakan.
+            Omon membantu membaca data keuangan tanpa mengambil kontrol dari pengguna.
           </p>
         </div>
 
@@ -535,7 +532,7 @@ function RoadmapSection() {
                 ) : (
                   <RefreshCw size={14} aria-hidden="true" />
                 )}
-                {status === "done" ? "Live" : "Dalam pengembangan"}
+                {status === "done" ? "Tersedia" : "Dirapikan"}
               </span>
               <h3 className="mt-4 text-base font-semibold text-[#0b1e36]">{label}</h3>
             </article>
@@ -640,7 +637,7 @@ function TargetUsers() {
       <div className="mx-auto max-w-7xl px-5 lg:px-8">
         <div className="relative overflow-hidden rounded-[1.75rem] border border-[#d7eadb] bg-[linear-gradient(135deg,#f3fbf5_0%,#ffffff_55%,#edf7ef_100%)] p-6 shadow-xl shadow-[#0b1e36]/6 sm:p-8 lg:p-10">
           <div className="pointer-events-none absolute right-6 top-6 hidden h-16 w-16 rounded-full border border-[#d7eadb] bg-white/70 text-[#2f7a4f] sm:grid sm:place-items-center omon-drift-slow">
-            <PawPrint size={30} aria-hidden="true" />
+            <HeartHandshake size={30} aria-hidden="true" />
           </div>
           <div className="pointer-events-none absolute -bottom-10 -right-8 hidden opacity-10 lg:block">
             <img className="h-40 w-40 object-contain" src={omonLogo} alt="" loading="lazy" />
@@ -785,7 +782,7 @@ function BrandStory() {
               Awalnya, nama ini lahir dari kebiasaan sederhana: banyak orang ingin lebih rapi mengatur uang, tapi sering menunda mencatat, mengevaluasi, atau melihat kembali kondisi keuangannya.
             </p>
             <p>
-              Akhirnya semua hanya menjadi <strong className="text-[#0b1e36]">omon-omon</strong>.
+              Omon mempertahankan semangat itu: membantu percakapan tentang uang menjadi lebih jelas dan lebih tenang.
             </p>
             <p>
               Karena itu Omon Dashboard dibuat untuk membantu mengubah catatan transaksi menjadi visualisasi yang mudah dipahami, supaya keluarga bisa mengambil keputusan finansial dengan lebih jelas.
@@ -794,14 +791,14 @@ function BrandStory() {
           <div className="mt-8 rounded-2xl border border-[#b8d6bf] bg-[#edf7ef] p-6 shadow-sm">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-xl border border-[#cfe1d6] bg-white text-[#2f7a4f]">
-                <PawPrint size={21} aria-hidden="true" />
+                <HeartHandshake size={21} aria-hidden="true" />
               </span>
               <p className="text-sm font-bold uppercase tracking-[0.12em] text-[#2f7a4f]">
-                Signature Omon
+                Cara Omon membantu
               </p>
             </div>
             <blockquote className="mt-5 text-3xl font-semibold leading-tight text-[#0b1e36] sm:text-4xl">
-              Ngatur uang nggak perlu omon-omon lagi.
+              Kelola uang dengan lebih tenang.
             </blockquote>
             <p className="mt-4 text-sm font-semibold leading-7 text-[#53655f]">
               Karena keputusan keuangan yang baik dimulai dari data yang jelas dan mudah dipahami.
@@ -858,10 +855,10 @@ function InsightSection() {
 function PricingSection({ dashboardUrl }) {
   return (
     <Section
-      id="pricing"
-      eyebrow="Harga"
-      title="Mulai dari yang sederhana."
-      description="Gunakan gratis untuk memahami kebutuhan keluarga. Upgrade saat butuh insight yang lebih lengkap."
+      id="access"
+      eyebrow="Mulai"
+      title="Masuk dengan cara yang tersedia."
+      description="Omon akan membawa Anda ke halaman autentikasi. Jika akun belum tersedia, gunakan metode yang disediakan oleh lingkungan Omon saat ini."
     >
       <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
         {pricingPlans.map((plan) => (
@@ -882,13 +879,12 @@ function PricingSection({ dashboardUrl }) {
               </div>
               {plan.highlighted && (
                 <span className="rounded-full bg-[#9fd4a8] px-3 py-1 text-xs font-bold text-[#0b1e36]">
-                  Coming Soon
+                  Setelah login
                 </span>
               )}
             </div>
             <div className="mt-8 flex items-end gap-2">
-              <span className="text-4xl font-semibold">{plan.price}</span>
-              {plan.price !== "Segera" && <span className={plan.highlighted ? "pb-1 text-[#c8d7d2]" : "pb-1 text-[#53655f]"}>/bulan</span>}
+              <span className="text-3xl font-semibold">{plan.price}</span>
             </div>
             <ul className="mt-8 grid gap-3">
               {plan.features.map((feature) => (
@@ -981,14 +977,14 @@ function FinalCta({ dashboardUrl }) {
           Keuangan keluarga jadi lebih mudah dipahami.
         </h2>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#53655f]">
-          Mulai lihat kondisi keuangan keluarga dengan lebih jelas, tanpa harus omon-omon lagi.
+          Mulai dari halaman autentikasi, lalu lanjutkan ke dashboard utama setelah login berhasil.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#0b1e36] px-6 font-semibold text-white shadow-lg shadow-[#0b1e36]/20 transition hover:bg-[#123354] sm:w-auto" href={dashboardUrl}>
-            Mulai Gratis <ArrowRight size={18} aria-hidden="true" />
+            Mulai menggunakan Omon <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <a className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#cbd9d1] bg-white px-6 font-semibold text-[#0b1e36] shadow-sm transition hover:border-[#9fb8aa] sm:w-auto" href={dashboardUrl}>
-            Lihat Demo <Eye size={18} aria-hidden="true" />
+          <a className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#cbd9d1] bg-white px-6 font-semibold text-[#0b1e36] shadow-sm transition hover:border-[#9fb8aa] sm:w-auto" href="#how-it-works">
+            Lihat cara kerjanya <Eye size={18} aria-hidden="true" />
           </a>
         </div>
         <p className="mx-auto mt-5 max-w-xl text-sm font-semibold leading-7 text-[#53655f]">
@@ -1017,7 +1013,7 @@ function Footer({ dashboardUrl }) {
             <span className="text-base font-semibold text-[#0b1e36]">Omon Dashboard</span>
           </a>
           <p className="mt-3 text-sm font-semibold text-[#2f7a4f]">
-            Ngatur uang nggak perlu omon-omon lagi.
+            Calm Financial Companion.
           </p>
         </div>
 
@@ -1043,11 +1039,11 @@ function Footer({ dashboardUrl }) {
               </a>
             ))}
             <a className="transition hover:text-[#0b1e36]" href={dashboardUrl}>
-              Demo
+              Masuk
             </a>
           </nav>
           <p className="text-sm text-[#6b7d76]">
-            © 2026 Omon Dashboard. Built with care for Indonesian families.
+            (c) 2026 Omon. Built with care for Indonesian families.
           </p>
         </div>
       </div>
