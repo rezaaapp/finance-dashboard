@@ -256,7 +256,7 @@ const ImportReview = ({
   if (error) {
     return (
       <div className="panel rounded-lg p-6 shadow-lg">
-        <div className="flex items-start gap-3 text-red-600 dark:text-red-300">
+        <div className="alert-panel alert-panel--danger flex items-start gap-3 p-4">
           <CircleAlert size={20} className="mt-0.5 shrink-0" />
           <div>
             <p className="font-bold text-main">
@@ -430,13 +430,13 @@ const ImportReview = ({
             )}
 
             {error && reviewData && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+              <div className="alert-panel alert-panel--danger px-4 py-3 text-sm">
                 {error}
               </div>
             )}
 
             {actionError && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <div className="alert-panel alert-panel--warning px-4 py-3 text-sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-semibold text-main">
@@ -484,10 +484,10 @@ const ImportReview = ({
             )}
 
             {actionFeedback && (
-              <div className={`rounded-lg border px-4 py-3 text-sm ${
+              <div className={`alert-panel px-4 py-3 text-sm ${
                 actionFeedback.tone === "success"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
-                  : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+                  ? "alert-panel--success"
+                  : "alert-panel--warning"
               }`}>
                 <p className="font-semibold text-main">
                   {actionFeedback.title}
@@ -567,7 +567,7 @@ const ImportReview = ({
                   type="button"
                   onClick={() => setRejectConfirmOpen(true)}
                   disabled={selectedIds.length === 0 || actionLoading !== ""}
-                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-950/30"
+                  className="destructive-button min-h-11 rounded-lg px-4 py-2 text-sm font-semibold"
                 >
                   Tolak
                 </button>
@@ -575,10 +575,10 @@ const ImportReview = ({
             </div>
 
             {categoryNotice && (
-              <div className={`rounded-lg border px-4 py-3 text-sm ${
+              <div className={`alert-panel px-4 py-3 text-sm ${
                 categoryNotice.tone === "warning"
-                  ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
-                  : "border-[var(--color-border)] bg-[var(--color-panel-hover)] text-muted"
+                  ? "alert-panel--warning"
+                  : "alert-panel--neutral"
               }`}>
                 {categoryNotice.message}
               </div>
@@ -594,7 +594,7 @@ const ImportReview = ({
 
         <section className="panel rounded-lg p-4 shadow-lg sm:p-5">
           {draftRows.length === 0 ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <div className="alert-panel alert-panel--success p-5 text-sm">
               <div className="flex items-center gap-3">
                 <CheckCheck size={20} className="shrink-0" />
                 <p className="font-semibold">Semua transaksi baru untuk file ini sudah diproses.</p>

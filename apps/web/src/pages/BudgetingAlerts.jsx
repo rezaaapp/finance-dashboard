@@ -134,18 +134,18 @@ const formatPeriodLabel = (year, month) => {
 
 const getSeverityClassName = (severity) => {
   if (severity === "danger") {
-    return "border-red-200 bg-red-50 text-red-800 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200";
+    return "alert-panel--danger";
   }
 
   if (severity === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200";
+    return "alert-panel--warning";
   }
 
   if (severity === "info") {
-    return "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-200";
+    return "alert-panel--info";
   }
 
-  return "border-[var(--color-border)] bg-[var(--color-panel-hover)] text-soft";
+  return "alert-panel--neutral";
 };
 
 const BudgetingAlerts = ({
@@ -770,13 +770,13 @@ const BudgetingAlerts = ({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">
+          <div className="alert-panel alert-panel--danger mt-4 p-3 text-sm font-semibold">
             {error}
           </div>
         )}
 
         {dirtyBudgetCategories.length > 0 && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <div className="alert-panel alert-panel--warning mt-4 p-3 text-sm font-semibold">
             Belum disimpan: {dirtyBudgetCategories.join(", ")}. Klik Simpan Perubahan pada kategori terkait sebelum reload.
           </div>
         )}
@@ -869,7 +869,7 @@ const BudgetingAlerts = ({
               type="button"
               onClick={() => setPendingDelete({ type: "all" })}
               disabled={!hasSavedBudgets || savingKey === "delete-all-budgets"}
-              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
+              className="destructive-button min-h-10 rounded-xl px-3 py-2 text-sm font-semibold"
             >
               Reset Anggaran Bulan Ini
             </button>
@@ -918,7 +918,7 @@ const BudgetingAlerts = ({
                   type="button"
                   onClick={() => setPendingDelete({ type: "category", item })}
                   disabled={isSaving}
-                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
+                  className="destructive-button min-h-10 rounded-xl px-3 py-2 text-sm font-semibold"
                   aria-label={`Hapus budget ${item.category}`}
                 >
                   <Trash2 size={15} />
@@ -1117,7 +1117,7 @@ const BudgetingAlerts = ({
           {visibleAlerts.map((alert) => (
             <div
               key={`${alert.category}-${alert.severity}`}
-              className={`rounded-xl border p-4 text-sm ${getSeverityClassName(alert.severity)}`}
+              className={`alert-panel p-4 text-sm ${getSeverityClassName(alert.severity)}`}
             >
               <div className="flex items-start gap-3">
                 <AlertTriangle size={18} className="mt-0.5 shrink-0" />

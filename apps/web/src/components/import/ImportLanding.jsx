@@ -12,10 +12,10 @@ const comingSoonProviders = [
 const ownerOptions = ["Reza", "Divya"];
 
 const ProviderBadge = ({ children, variant = "default" }) => (
-  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${
+  <span className={`status-badge ${
     variant === "success"
-      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-      : "bg-[var(--color-accent-bg)] text-accent"
+      ? "status-badge--success"
+      : "status-badge--info"
   }`}>
     {children}
   </span>
@@ -203,7 +203,7 @@ const ImportLanding = ({ onReviewReady }) => {
       </section>
 
       {error && (
-        <section className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+        <section className="alert-panel alert-panel--danger px-4 py-3 text-sm leading-6">
           <div className="flex items-start gap-3">
             <CircleAlert size={18} className="mt-0.5 shrink-0" />
             <p>{error}</p>
@@ -212,13 +212,13 @@ const ImportLanding = ({ onReviewReady }) => {
       )}
 
       {uploadStatus === "upload_success" && (
-        <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <section className="alert-panel alert-panel--success px-4 py-3 text-sm leading-6">
           PDF berhasil diperiksa. Menyiapkan review transaksi baru...
         </section>
       )}
 
       {uploadStatus === "upload_no_new" && emptyResult && (
-        <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-4 text-sm leading-6 text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-200">
+        <section className="alert-panel alert-panel--info px-4 py-4 text-sm leading-6">
           <div className="flex items-start gap-3">
             <CircleAlert size={18} className="mt-0.5 shrink-0" />
             <div className="min-w-0">
@@ -227,23 +227,23 @@ const ImportLanding = ({ onReviewReady }) => {
                 {emptyResult.message}
               </p>
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Pemilik</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.statementOwner}</p>
                 </div>
-                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Dibaca</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.transactionsFound}</p>
                 </div>
-                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Baru</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.newTransactions}</p>
                 </div>
-                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Sudah diproses</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.existingTransactions}</p>
                 </div>
-                <div className="rounded-lg border border-sky-200/80 bg-white/70 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-950/20">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Pernah Ditolak</p>
                   <p className="mt-1 font-semibold text-main">{emptyResult.rejectedTransactions}</p>
                 </div>
@@ -253,7 +253,7 @@ const ImportLanding = ({ onReviewReady }) => {
         </section>
       )}
 
-      <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+      <section className="alert-panel alert-panel--warning px-4 py-3 text-sm leading-6">
         Saat ini Import hanya mendukung PDF e-Statement Blu dengan batas dan
         validasi file dari sistem yang sudah berjalan. File akan diperiksa dulu;
         transaksi baru baru disimpan setelah Anda menyetujuinya.

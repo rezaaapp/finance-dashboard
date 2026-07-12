@@ -43,7 +43,7 @@ const getLatestPeriod = (transactions) => (
 );
 
 const MetricTooltip = ({ children }) => (
-  <div className="pointer-events-none absolute left-0 top-full z-40 mt-3 hidden w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-left text-xs leading-5 text-soft shadow-2xl group-hover/tooltip:block group-focus-within/tooltip:block">
+  <div className="dialog-panel pointer-events-none absolute left-0 top-full z-40 mt-3 hidden w-[min(22rem,calc(100vw-2rem))] p-4 text-left text-xs leading-5 text-soft group-hover/tooltip:block group-focus-within/tooltip:block">
     {children}
   </div>
 );

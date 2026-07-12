@@ -2125,7 +2125,7 @@ const Configuration = ({
       <div className="mt-8">
         <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Environment</p>
         <SystemInfoPanel systemInfoState={systemInfoState} />
-        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5 dark:border-red-400/20 dark:bg-red-500/10"><h3 className="font-bold text-main">Reset Data Workspace Local</h3><p className="mt-2 text-sm leading-6 text-muted">Tindakan ini hanya tersedia di Local Development. Data operasional Omon di workspace ini akan dihapus; akun, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p><button type="button" onClick={() => setFactoryResetOpen(true)} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white">Reset Data Workspace Local</button></div>
+        <div className="alert-panel alert-panel--danger mt-4 p-5"><h3 className="font-bold text-main">Reset Data Workspace Local</h3><p className="mt-2 text-sm leading-6 text-muted">Tindakan ini hanya tersedia di Local Development. Data operasional Omon di workspace ini akan dihapus; akun, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p><button type="button" onClick={() => setFactoryResetOpen(true)} className="destructive-button mt-4 rounded-xl px-4 py-2 text-sm font-bold">Reset Data Workspace Local</button></div>
       </div>
     )}
     {hasDirtySettings && (
@@ -2138,18 +2138,18 @@ const Configuration = ({
     )}
     {pendingNavigation && (
       <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Perubahan belum disimpan">
-        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Perubahan belum disimpan</h2><p className="mt-3 text-sm leading-6 text-muted">Ada konfigurasi Settings yang belum disimpan.</p><p className="mt-2 text-sm leading-6 text-muted">Jika keluar sekarang, perubahan form akan dibatalkan. Data Omon dan Google Sheet tetap aman.</p><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={onCancelNavigation} className="secondary-button rounded-xl px-4 py-2 font-bold">Tetap di Settings</button><button type="button" onClick={() => { handleDiscard(); onDiscardAndNavigate?.(); }} className="secondary-button rounded-xl px-4 py-2 font-bold text-red-600">Batalkan & Keluar</button><button type="button" onClick={async () => { if (await handleSave()) onSaveAndNavigate?.(); }} disabled={isSaving} className="primary-button rounded-xl px-4 py-2 font-bold">Simpan & Keluar</button></div></div>
+        <div className="dialog-panel w-full max-w-lg p-6"><h2 className="text-xl font-bold text-main">Perubahan belum disimpan</h2><p className="mt-3 text-sm leading-6 text-muted">Ada konfigurasi Settings yang belum disimpan.</p><p className="mt-2 text-sm leading-6 text-muted">Jika keluar sekarang, perubahan form akan dibatalkan. Data Omon dan Google Sheet tetap aman.</p><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={onCancelNavigation} className="secondary-button rounded-xl px-4 py-2 font-bold">Tetap di Settings</button><button type="button" onClick={() => { handleDiscard(); onDiscardAndNavigate?.(); }} className="destructive-button rounded-xl px-4 py-2 font-bold">Batalkan & Keluar</button><button type="button" onClick={async () => { if (await handleSave()) onSaveAndNavigate?.(); }} disabled={isSaving} className="primary-button rounded-xl px-4 py-2 font-bold">Simpan & Keluar</button></div></div>
       </div>
     )}
     {factoryResetOpen && (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Workspace Local"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"><h2 className="text-xl font-bold text-main">Reset Data Workspace Local</h2><div className="mt-4 space-y-3 text-sm leading-6 text-muted"><p>Tindakan ini menghapus data operasional Omon untuk workspace aktif, termasuk transaksi, draft import, history import, fingerprint, budget, dan riwayat sinkronisasi.</p><p className="font-bold text-main">Isi Google Sheet asli tidak akan dihapus atau diubah.</p><p>Akun, workspace, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p></div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setFactoryResetOpen(false)} disabled={isFactoryResetting} className="secondary-button rounded-xl px-4 py-2 font-bold">Batal</button><button type="button" onClick={handleFactoryResetWorkspace} disabled={isFactoryResetting} className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">{isFactoryResetting ? "Mereset..." : "Reset Data Workspace"}</button></div></div></div>
+      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Workspace Local"><div className="dialog-panel w-full max-w-lg p-6"><h2 className="text-xl font-bold text-main">Reset Data Workspace Local</h2><div className="mt-4 space-y-3 text-sm leading-6 text-muted"><p>Tindakan ini menghapus data operasional Omon untuk workspace aktif, termasuk transaksi, draft import, history import, fingerprint, budget, dan riwayat sinkronisasi.</p><p className="font-bold text-main">Isi Google Sheet asli tidak akan dihapus atau diubah.</p><p>Akun, workspace, akses member, koneksi Google, dan konfigurasi Google Sheet tetap aman.</p></div><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={() => setFactoryResetOpen(false)} disabled={isFactoryResetting} className="secondary-button rounded-xl px-4 py-2 font-bold">Batal</button><button type="button" onClick={handleFactoryResetWorkspace} disabled={isFactoryResetting} className="destructive-button rounded-xl px-4 py-2 font-bold">{isFactoryResetting ? "Mereset..." : "Reset Data Workspace"}</button></div></div></div>
     )}
     {detailResult && (
       <ImportResultDetailsModal result={detailResult} onClose={() => setDetailResult(null)} privacyMode={privacyMode} />
     )}
     {resetSource && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Reset Data Hasil Sinkronisasi">
-        <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]">
+        <div className="dialog-panel w-full max-w-lg p-6">
           <h2 className="text-xl font-bold text-main">Reset Data Hasil Sinkronisasi</h2>
           <div className="mt-4 space-y-3 text-sm leading-6 text-muted">
             <p>Transaksi yang berasal dari sumber Spreadsheet ini akan dihapus dari Omon sesuai sumber yang dipilih.</p>
@@ -2158,7 +2158,7 @@ const Configuration = ({
           </div>
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button type="button" onClick={() => setResetSource(null)} disabled={Boolean(resettingSourceId)} className="secondary-button rounded-xl px-4 py-2 font-bold">Batal</button>
-            <button type="button" onClick={handleResetSourceData} disabled={Boolean(resettingSourceId)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">
+            <button type="button" onClick={handleResetSourceData} disabled={Boolean(resettingSourceId)} className="destructive-button rounded-xl px-4 py-2 font-bold">
               {resettingSourceId && <LoaderCircle size={16} className="animate-spin" />}
               {resettingSourceId ? "Mereset..." : "Reset Data Tersinkron"}
             </button>

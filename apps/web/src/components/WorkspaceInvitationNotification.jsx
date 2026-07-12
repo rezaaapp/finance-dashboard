@@ -25,13 +25,13 @@ const WorkspaceInvitationNotification = ({
         title="Pending workspace invitations"
       >
         <BellRing size={18} />
-        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+        <span className="status-badge status-badge--danger absolute -right-1 -top-1 h-5 min-w-5 justify-center px-1 text-[11px]">
           {invitationCount}
         </span>
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
+        <div className="dialog-panel absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] p-3">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-sm font-bold text-main">
               Pending Invitations
@@ -42,7 +42,7 @@ const WorkspaceInvitationNotification = ({
           </div>
 
           {error && (
-            <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
+            <p className="alert-panel alert-panel--danger mb-2 px-3 py-2 text-xs font-semibold">
               {error}
             </p>
           )}
