@@ -347,44 +347,50 @@ const PersonalAnalytics = ({
             </div>
           </div>
 
-          <div className="h-[360px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={maskedComparisonData}>
-                <CartesianGrid
-                  stroke="var(--color-border)"
-                  strokeDasharray="3 3"
-                />
-                <XAxis
-                  dataKey="month"
-                  stroke="var(--color-muted)"
-                  tick={{ fill: "var(--color-muted)", fontSize: 12 }}
-                />
-                <YAxis
-                  stroke="var(--color-muted)"
-                  tick={{ fill: "var(--color-muted)", fontSize: 12 }}
-                  tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
-                />
-                <Tooltip
-                  formatter={(value) => formatPrivateRupiah(value, privacyMode)}
-                  contentStyle={{
-                    backgroundColor: "var(--color-panel)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "12px",
-                    color: "var(--color-text)",
-                  }}
-                />
-                <Legend />
-                {comparisonUsers.map((user, index) => (
-                  <Bar
-                    key={user.value}
-                    dataKey={user.value}
-                    fill={categoricalChartColors[index % categoricalChartColors.length]}
-                    radius={[6, 6, 0, 0]}
+          {comparisonData.length === 0 ? (
+            <div className="empty-state-panel flex h-64 items-center justify-center px-4 text-center text-sm">
+              Belum ada data kontribusi bulanan untuk periode ini.
+            </div>
+          ) : (
+            <div className="h-[360px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={maskedComparisonData}>
+                  <CartesianGrid
+                    stroke="var(--color-border)"
+                    strokeDasharray="3 3"
                   />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+                  <XAxis
+                    dataKey="month"
+                    stroke="var(--color-muted)"
+                    tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke="var(--color-muted)"
+                    tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                    tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
+                  />
+                  <Tooltip
+                    formatter={(value) => formatPrivateRupiah(value, privacyMode)}
+                    contentStyle={{
+                      backgroundColor: "var(--color-panel)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "12px",
+                      color: "var(--color-text)",
+                    }}
+                  />
+                  <Legend />
+                  {comparisonUsers.map((user, index) => (
+                    <Bar
+                      key={user.value}
+                      dataKey={user.value}
+                      fill={categoricalChartColors[index % categoricalChartColors.length]}
+                      radius={[6, 6, 0, 0]}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       )}
 

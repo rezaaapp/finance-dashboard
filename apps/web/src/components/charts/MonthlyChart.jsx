@@ -14,6 +14,7 @@ import {
   maskChartRows,
 } from "../../utils/privacy";
 import { chartTheme } from "../../theme/chartTheme";
+import SinglePeriodFallback from "./SinglePeriodFallback";
 
 const MonthlyChart = ({
   title,
@@ -25,6 +26,8 @@ const MonthlyChart = ({
   const colors = chartTheme[theme] || chartTheme.dark;
   const chartData = maskChartRows(data, [dataKey], privacyMode);
   const hasData = chartData.some((row) => Number(row[dataKey] || 0) > 0);
+  const activeRows = data.filter((row) => Number(row[dataKey] || 0) > 0);
+  const singlePeriodRow = activeRows.length === 1 ? activeRows[0] : null;
 
   return (
     <div className="panel rounded-lg p-4 shadow-lg sm:p-5">
@@ -43,6 +46,10 @@ const MonthlyChart = ({
         <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
           No synced transactions available for this period.
         </div>
+      ) : singlePeriodRow ? (
+        <SinglePeriodFallback
+          title={title}
+        />
       ) : (
         <div className="h-[320px] min-w-0 sm:h-[340px]">
 
