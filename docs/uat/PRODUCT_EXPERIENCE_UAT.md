@@ -132,7 +132,7 @@ Branding, informasi environment, dan form login ditampilkan sebagai beberapa pan
 
 ## Fix Commit
 
-- b2e1f5a
+- c0880d6
 
 ---
 
@@ -173,7 +173,7 @@ Tombol Google Login berada di bagian atas form sehingga halaman terasa kurang me
 
 ## Fix Commit
 
-- b2e1f5a
+- c0880d6
 
 ---
 
@@ -214,7 +214,8 @@ Financial Insights (Light Mode)
 
 ## Fix Commit
 
-- b2e1f5a
+- c0880d6
+
 ---
 
 # UAT-PX-004 — Informasi status Privacy terpotong
@@ -253,7 +254,7 @@ Dashboard - Privacy Card (Hide Amount)
 
 ## Fix Commit
 
-- b2e1f5a
+- c0880d6
 
 ---
 
@@ -265,8 +266,8 @@ Dashboard - Privacy Card (Hide Amount)
 |----------|------:|
 | P0 | 0 |
 | P1 | 0 |
-| P2 | 2 |
-| P3 | 0 |
+| P2 | 3 |
+| P3 | 1 |
 
 ---
 
@@ -274,10 +275,10 @@ Dashboard - Privacy Card (Hide Amount)
 
 | Status | Total |
 |---------|------:|
-| Open | 2 |
+| Open | 0 |
 | In Progress | 0 |
 | Fixed | 0 |
-| Verified | 0 |
+| Verified | 4 |
 | Closed | 0 |
 | Won't Fix | 0 |
 
