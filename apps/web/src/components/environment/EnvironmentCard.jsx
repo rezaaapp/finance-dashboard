@@ -3,9 +3,9 @@ import { CircleOff, Server } from "lucide-react";
 import { getEnvironmentPresentation } from "../../utils/environment";
 
 const toneClasses = {
-  dev: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100",
-  prod: "border-orange-300 bg-orange-50 text-orange-950 dark:border-orange-800 dark:bg-orange-950/30 dark:text-orange-100",
-  unknown: "border-gray-300 bg-gray-100 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200",
+  dev: "alert-panel--success",
+  prod: "alert-panel--warning",
+  unknown: "alert-panel--neutral",
 };
 
 const EnvironmentCard = ({ systemInfoState }) => {
@@ -17,7 +17,7 @@ const EnvironmentCard = ({ systemInfoState }) => {
 
   return (
     <section
-      className={`w-full rounded-lg border p-4 ${toneClasses[presentation.tone]}`}
+      className={`alert-panel w-full p-4 ${toneClasses[presentation.tone]}`}
       aria-label="Current environment"
     >
       <div className="flex items-start justify-between gap-4">

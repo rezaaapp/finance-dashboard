@@ -51,7 +51,7 @@ const ConfirmationDialog = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation">
       <div
         ref={dialogRef}
-        className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl dark:bg-[var(--color-panel)]"
+        className="dialog-panel w-full max-w-lg p-6"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirmation-dialog-title"
@@ -61,7 +61,7 @@ const ConfirmationDialog = ({
         {description && <p id="confirmation-dialog-description" className="mt-3 text-sm leading-6 text-muted">{description}</p>}
 
         {affectedItems.length > 0 && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-400/20 dark:bg-red-500/10">
+          <div className="alert-panel alert-panel--danger mt-4 p-4">
             <p className="text-sm font-bold text-main">Yang akan terjadi:</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
               {affectedItems.map((item) => <li key={item}>{item}</li>)}
@@ -70,7 +70,7 @@ const ConfirmationDialog = ({
         )}
 
         {safeItems.length > 0 && (
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-400/20 dark:bg-emerald-500/10">
+          <div className="alert-panel alert-panel--success mt-3 p-4">
             <p className="text-sm font-bold text-main">Yang tetap aman:</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
               {safeItems.map((item) => <li key={item}>{item}</li>)}
@@ -80,7 +80,7 @@ const ConfirmationDialog = ({
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button ref={cancelButtonRef} type="button" onClick={onCancel} disabled={isLoading} className="secondary-button rounded-xl px-4 py-2 font-bold">{cancelLabel}</button>
-          <button type="button" onClick={onConfirm} disabled={isLoading} className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white disabled:opacity-60">{isLoading ? "Memproses..." : confirmLabel}</button>
+          <button type="button" onClick={onConfirm} disabled={isLoading} className="destructive-button rounded-xl px-4 py-2 font-bold">{isLoading ? "Memproses..." : confirmLabel}</button>
         </div>
       </div>
     </div>

@@ -2101,6 +2101,7 @@ const Dashboard = ({
 
                           <MonthlyAllocationTrend
                             data={monthlyAllocation}
+                            theme={theme}
                             privacyMode={privacyMode}
                           />
                         </div>

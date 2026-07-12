@@ -6,6 +6,7 @@ import {
   formatPrivateRupiah,
   maskNumber,
 } from "../../utils/privacy";
+import { heatmapTheme } from "../../theme/chartTheme";
 
 const getVisualScaleLimit = (rows) => {
   const values = rows
@@ -46,26 +47,13 @@ const interpolateColor = (start, end, ratio) => {
 
 const getCellColor = (value, scaleLimit, theme) => {
   const intensity = getVisualIntensity(value, scaleLimit);
+  const colors = heatmapTheme[theme] || heatmapTheme.dark;
 
   if (intensity === 0) {
-    return theme === "light"
-      ? "rgba(226, 232, 240, 0.72)"
-      : "rgba(30, 41, 59, 0.72)";
+    return colors.empty;
   }
 
-  const stops = theme === "light"
-    ? [
-        [224, 242, 254],
-        [103, 232, 249],
-        [20, 184, 166],
-        [245, 158, 11],
-      ]
-    : [
-        [15, 23, 42],
-        [8, 145, 178],
-        [20, 184, 166],
-        [251, 191, 36],
-      ];
+  const { stops } = colors;
 
   if (intensity < 0.34) {
     return interpolateColor(stops[0], stops[1], intensity / 0.34);
@@ -80,28 +68,29 @@ const getCellColor = (value, scaleLimit, theme) => {
 
 const getCellTextColor = (value, scaleLimit, theme) => {
   const intensity = getVisualIntensity(value, scaleLimit);
+  const colors = heatmapTheme[theme] || heatmapTheme.dark;
 
   if (theme === "light") {
-    return intensity > 0.5 ? "#082f49" : "var(--color-text)";
+    return intensity > 0.5 ? colors.textStrong : colors.textDefault;
   }
 
-  return intensity > 0.2 ? "#f8fafc" : "var(--color-text)";
+  return intensity > 0.2 ? colors.textStrong : colors.textDefault;
 };
 
 const HeatmapColorLegend = () => (
   <div className="mb-5 flex w-full flex-col gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-hover)] px-4 py-3 sm:max-w-xl">
-    <span className="text-xs font-medium text-gray-500">
+    <span className="text-xs font-medium text-muted">
       Transaction Intensity
     </span>
 
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <span className="shrink-0 text-xs font-semibold text-gray-500">
+      <span className="shrink-0 text-xs font-semibold text-muted">
         Low / None (Rp 0)
       </span>
 
       <div className="h-2.5 min-w-32 flex-1 rounded bg-gradient-to-r from-slate-600 via-cyan-500 via-emerald-500 via-amber-400 to-orange-500" />
 
-      <span className="shrink-0 text-xs font-semibold text-gray-500">
+      <span className="shrink-0 text-xs font-semibold text-muted">
         High (Peak Spending)
       </span>
     </div>
@@ -162,7 +151,7 @@ const TransactionDetailModal = memo(({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-4 py-5 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-2xl">
+      <div className="dialog-panel w-full max-w-2xl overflow-hidden">
         <div className="h-1.5 bg-gradient-to-r from-[var(--color-accent-strong)] via-[var(--color-accent)] to-[var(--color-alert)]" />
 
         <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
@@ -188,7 +177,7 @@ const TransactionDetailModal = memo(({
 
         <div className="px-5 py-4">
           {transactions.length === 0 ? (
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-5 text-center text-sm text-muted">
+            <div className="empty-state-panel p-5 text-center text-sm">
               No transaction records found for this period.
             </div>
           ) : (
@@ -449,7 +438,7 @@ const CategoryHeatmap = ({
                         : undefined}
                       className={`flex min-h-12 items-center justify-center rounded-lg px-2 text-xs font-semibold transition-all duration-200 ${
                         hasTransactions
-                          ? "cursor-pointer hover:scale-[1.02] hover:brightness-125 focus:outline-none focus:ring-2 focus:ring-cyan-400/70"
+                          ? "cursor-pointer hover:scale-[1.02] hover:brightness-125 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
                           : "cursor-default"
                       }`}
                       style={{
@@ -513,7 +502,7 @@ const CategoryHeatmap = ({
                         : undefined}
                       className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-200 ${
                         hasTransactions
-                          ? "cursor-pointer hover:scale-[1.02] hover:brightness-125 focus:outline-none focus:ring-2 focus:ring-cyan-400/70"
+                          ? "cursor-pointer hover:scale-[1.02] hover:brightness-125 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
                           : "cursor-default"
                       }`}
                       style={{

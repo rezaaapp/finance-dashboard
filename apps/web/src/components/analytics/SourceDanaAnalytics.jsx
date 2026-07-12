@@ -11,21 +11,16 @@ import {
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
-import { categoricalChartColors, chartTheme } from "../../theme/chartTheme";
-
-const brandColors = {
-  BCA: "#0066AE",
-  BLU: "#00B4D8",
-  Gopay: "#4A5D4E",
-  Ovo: "#4C2A86",
-  Seabank: "#FF5722",
-  Jago: "#FFB800",
-};
+import {
+  categoricalChartColors,
+  chartTheme,
+  sourceDanaChartColors,
+} from "../../theme/chartTheme";
 
 const fallbackColors = categoricalChartColors;
 
 const normalizedBrandColors = Object.fromEntries(
-  Object.entries(brandColors).map(([source, color]) => [
+  Object.entries(sourceDanaChartColors).map(([source, color]) => [
     source.trim().toLowerCase(),
     color,
   ])
@@ -81,7 +76,7 @@ const SourceDanaDonut = ({
       </div>
 
       {chartData.length === 0 ? (
-        <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] text-sm text-muted">
+        <div className="empty-state-panel flex h-[280px] items-center justify-center text-sm">
           Belum ada data sumber dana untuk bagian ini.
         </div>
       ) : (

@@ -34,6 +34,46 @@ export const financialTypeChartColors = {
   uncategorized: "var(--neutral-border)",
 };
 
+export const allocationChartColors = {
+  Needs: "var(--chart-1)",
+  Wants: "var(--chart-2)",
+  Savings: "var(--chart-positive)",
+};
+
+export const sourceDanaChartColors = {
+  bca: "var(--chart-1)",
+  blu: "var(--chart-4)",
+  gopay: "var(--chart-positive)",
+  ovo: "var(--chart-2)",
+  seabank: "var(--chart-negative)",
+  jago: "var(--color-alert)",
+};
+
+export const heatmapTheme = {
+  dark: {
+    empty: "rgba(30, 41, 59, 0.72)",
+    textStrong: "var(--chart-tooltip-text)",
+    textDefault: "var(--color-text)",
+    stops: [
+      [15, 23, 42],
+      [8, 145, 178],
+      [20, 184, 166],
+      [251, 191, 36],
+    ],
+  },
+  light: {
+    empty: "rgba(226, 232, 240, 0.72)",
+    textStrong: "var(--info-text)",
+    textDefault: "var(--color-text)",
+    stops: [
+      [224, 242, 254],
+      [103, 232, 249],
+      [20, 184, 166],
+      [245, 158, 11],
+    ],
+  },
+};
+
 export const chartTheme = {
   dark: {
     grid: "var(--chart-grid)",

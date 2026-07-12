@@ -1,11 +1,11 @@
 import { formatPrivateRupiah } from "../utils/privacy";
 
 const severityStyles = {
-  positive: "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success-text)]",
-  neutral: "border-[var(--neutral-border)] bg-[var(--neutral-bg)] text-[var(--neutral-text)]",
-  info: "border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--info-text)]",
-  warning: "border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning-text)]",
-  danger: "border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)] shadow-sm",
+  positive: "status-badge--success",
+  neutral: "status-badge--neutral",
+  info: "status-badge--info",
+  warning: "status-badge--warning",
+  danger: "status-badge--danger shadow-sm",
 };
 
 const formatRatio = (value) => {
@@ -49,15 +49,15 @@ const FinancialInsights = ({
       </div>
 
       {loading ? (
-        <div className="flex min-h-36 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] text-sm text-muted">
+        <div className="empty-state-panel flex min-h-36 items-center justify-center text-sm">
           Loading insights...
         </div>
       ) : error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+        <div className="alert-panel alert-panel--danger px-4 py-3 text-sm font-semibold">
           {error}
         </div>
       ) : highlights.length === 0 ? (
-        <div className="flex min-h-36 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] px-4 text-center text-sm text-muted">
+        <div className="empty-state-panel flex min-h-36 items-center justify-center px-4 text-center text-sm">
           Not enough classified transaction data to show financial insights yet.
         </div>
       ) : (
@@ -83,7 +83,7 @@ const FinancialInsights = ({
                   </div>
 
                   <span
-                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase leading-none ${
+                    className={`status-badge shrink-0 text-[11px] uppercase ${
                       severityStyles[severity] || severityStyles.neutral
                     }`}
                   >

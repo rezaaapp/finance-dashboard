@@ -13,11 +13,12 @@ import {
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
+import { allocationChartColors, chartTheme } from "../../theme/chartTheme";
 
 const allocationKeys = [
-  { key: "Needs", color: "#3b82f6" },
-  { key: "Wants", color: "#f59e0b" },
-  { key: "Savings", color: "#10b981" },
+  { key: "Needs", color: allocationChartColors.Needs },
+  { key: "Wants", color: allocationChartColors.Wants },
+  { key: "Savings", color: allocationChartColors.Savings },
 ];
 
 const formatMonthLabel = (month) => {
@@ -70,7 +71,7 @@ const AllocationTooltip = ({
   const row = payload[0]?.payload ?? {};
 
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-sm text-main shadow-2xl">
+    <div className="dialog-panel p-4 text-sm text-main">
       <p className="mb-3 font-bold">
         {formatMonthLabel(label)}
       </p>
@@ -115,8 +116,10 @@ const AllocationTooltip = ({
 
 const MonthlyAllocationTrend = ({
   data = [],
+  theme = "dark",
   privacyMode,
 }) => {
+  const colors = chartTheme[theme] || chartTheme.dark;
   const maskedRows = maskChartRows(
     data,
     allocationKeys.map((item) => item.key),
@@ -136,7 +139,7 @@ const MonthlyAllocationTrend = ({
       </div>
 
       {chartData.length === 0 ? (
-        <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] text-sm text-muted">
+        <div className="empty-state-panel flex h-64 items-center justify-center text-sm">
           Belum ada data alokasi untuk periode ini.
         </div>
       ) : (
@@ -144,18 +147,18 @@ const MonthlyAllocationTrend = ({
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData}>
               <CartesianGrid
-                stroke="var(--color-border)"
+                stroke={colors.grid}
                 strokeDasharray="3 3"
               />
               <XAxis
                 dataKey="month"
                 tickFormatter={formatMonthLabel}
-                stroke="var(--color-muted)"
-                tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                stroke={colors.tick}
+                tick={{ fill: colors.tick, fontSize: 12 }}
               />
               <YAxis
-                stroke="var(--color-muted)"
-                tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                stroke={colors.tick}
+                tick={{ fill: colors.tick, fontSize: 12 }}
                 tickFormatter={(value) => formatPrivateCompact(value, privacyMode)}
               />
               <Tooltip

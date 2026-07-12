@@ -126,7 +126,7 @@ const Login = ({ onLogin, systemInfoState }) => {
             </div>
 
             {error && (
-              <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+              <p role="alert" className="alert-panel alert-panel--danger mt-4 px-4 py-3 text-sm">
                 {error}
               </p>
             )}
