@@ -989,7 +989,7 @@ const AnalyticsContextPanel = ({
             <ShieldCheck size={14} />
             Privasi
           </div>
-          <p className="mt-2 truncate text-sm font-bold text-main">
+          <p className="mt-2 break-words text-sm font-bold leading-5 text-main">
             {isPrivacyHidden ? "Nominal disembunyikan" : "Nominal terlihat"}
           </p>
         </div>

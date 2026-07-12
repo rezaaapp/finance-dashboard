@@ -100,7 +100,7 @@ Seluruh pengujian difokuskan pada:
 
 - **Area**: Login
 - **Severity**: P2 — Medium
-- **Status**: Open
+- **Status**: Fixed
 - **Category**: Product Experience
 
 ## Scenario
@@ -128,11 +128,11 @@ Branding, informasi environment, dan form login ditampilkan sebagai beberapa pan
 
 ## Affected Files
 
-Belum dianalisis.
+- apps/web/src/pages/Login.jsx
 
 ## Fix Commit
 
--
+- b2e1f5a
 
 ---
 
@@ -140,7 +140,7 @@ Belum dianalisis.
 
 - **Area**: Login
 - **Severity**: P2 — Medium
-- **Status**: Open
+- **Status**: Fixed
 - **Category**: Product Experience
 
 ## Scenario
@@ -169,11 +169,11 @@ Tombol Google Login berada di bagian atas form sehingga halaman terasa kurang me
 
 ## Affected Files
 
-Belum dianalisis.
+- apps/web/src/pages/Login.jsx
 
 ## Fix Commit
 
--
+- b2e1f5a
 
 ---
 
@@ -181,7 +181,7 @@ Belum dianalisis.
 
 - **Area**: Dashboard / Analytics
 - **Severity**: P2 — Medium
-- **Status**: Open
+- **Status**: Fixed
 - **Category**: Visual Consistency
 
 ## Scenario
@@ -210,18 +210,18 @@ Financial Insights (Light Mode)
 
 ## Affected Files
 
-Belum dianalisis.
+- apps/web/src/components/FinancialInsights.jsx
 
 ## Fix Commit
 
--
+- b2e1f5a
 ---
 
 # UAT-PX-004 — Informasi status Privacy terpotong
 
 - **Area**: Dashboard
 - **Severity**: P3 — Low
-- **Status**: Open
+- **Status**: Fixed
 - **Category**: Content & Accessibility
 
 ## Scenario
@@ -249,11 +249,11 @@ Dashboard - Privacy Card (Hide Amount)
 
 ## Affected Files
 
-Belum dianalisis.
+- apps/web/src/pages/Dashboard.jsx
 
 ## Fix Commit
 
--
+- b2e1f5a
 
 ---
 
