@@ -14,25 +14,7 @@ import {
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
-
-const chartTheme = {
-  dark: {
-    grid: "#1e293b",
-    tick: "#94a3b8",
-    tooltipBg: "#0f172a",
-    tooltipBorder: "#334155",
-    tooltipText: "#f8fafc",
-    legendText: "#cbd5e1",
-  },
-  light: {
-    grid: "#dbe4ef",
-    tick: "#64748b",
-    tooltipBg: "#ffffff",
-    tooltipBorder: "#cbd5e1",
-    tooltipText: "#0f172a",
-    legendText: "#475569",
-  },
-};
+import { chartTheme } from "../../theme/chartTheme";
 
 const CustomTooltip = ({
   active,
@@ -148,14 +130,14 @@ const GroceryVsFoodChart = ({ data = [], theme = "dark", privacyMode }) => {
 
             <Bar
               dataKey="Grocery"
-              fill="#14b8a6"
+              fill={colors.positive}
               radius={[6, 6, 0, 0]}
             />
 
             <Bar
               dataKey="Makanan"
               name="Food"
-              fill="#f59e0b"
+              fill={colors.alert}
               radius={[6, 6, 0, 0]}
             />
           </BarChart>

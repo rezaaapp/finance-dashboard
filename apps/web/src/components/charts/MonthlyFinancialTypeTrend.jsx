@@ -14,14 +14,14 @@ import {
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
-import { chartTheme } from "../../theme/chartTheme";
+import { chartTheme, financialTypeChartColors } from "../../theme/chartTheme";
 
 const series = [
-  { key: "need", label: "Need", color: "#335C67" },
-  { key: "want", label: "Want", color: "#D9895B" },
-  { key: "saving", label: "Saving", color: "#4A5D4E" },
-  { key: "income", label: "Income", color: "#2F80A7" },
-  { key: "uncategorized", label: "Uncategorized", color: "#A3ADB8" },
+  { key: "need", label: "Need", color: financialTypeChartColors.need },
+  { key: "want", label: "Want", color: financialTypeChartColors.want },
+  { key: "saving", label: "Saving", color: financialTypeChartColors.saving },
+  { key: "income", label: "Income", color: financialTypeChartColors.income },
+  { key: "uncategorized", label: "Uncategorized", color: financialTypeChartColors.uncategorized },
 ];
 
 const monthLabels = [

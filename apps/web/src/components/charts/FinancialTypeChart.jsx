@@ -14,15 +14,7 @@ import {
   formatPrivateRupiah,
   maskChartRows,
 } from "../../utils/privacy";
-import { chartTheme } from "../../theme/chartTheme";
-
-const financialTypeColors = {
-  need: "#335C67",
-  want: "#D9895B",
-  saving: "#4A5D4E",
-  income: "#2F80A7",
-  uncategorized: "#A3ADB8",
-};
+import { chartTheme, financialTypeChartColors } from "../../theme/chartTheme";
 
 const typeLabels = {
   need: "Need",
@@ -112,7 +104,7 @@ const FinancialTypeChart = ({
                 {chartData.map((entry) => (
                   <Cell
                     key={entry.type}
-                    fill={financialTypeColors[entry.type] || colors.primary}
+                    fill={financialTypeChartColors[entry.type] || colors.primary}
                   />
                 ))}
               </Bar>
