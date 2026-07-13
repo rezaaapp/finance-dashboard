@@ -81,6 +81,31 @@ class AnalyticsDateFilterTestCase(unittest.TestCase):
             params,
         )
 
+    def test_filters_prioritize_explicit_date_range_over_year_month(self):
+        clauses, params = analytics._filters(
+            year=2026,
+            month=6,
+            start_date="2026-02-10",
+            end_date="2026-03-12",
+        )
+
+        self.assertIn("transaction_date >= %s", clauses)
+        self.assertIn("transaction_date < %s", clauses)
+        self.assertEqual(
+            [date(2026, 2, 10), date(2026, 3, 13)],
+            params,
+        )
+
+    def test_filters_do_not_add_period_bound_for_all_time(self):
+        clauses, params = analytics._filters(
+            year=2026,
+            period_mode="all_time",
+        )
+
+        self.assertNotIn("transaction_date >= %s", clauses)
+        self.assertNotIn("transaction_date < %s", clauses)
+        self.assertEqual([], params)
+
     def test_filters_keep_month_only_fallback_for_backward_compatibility(self):
         clauses, params = analytics._filters(month=6)
 
@@ -150,11 +175,8 @@ class AnalyticsDateFilterTestCase(unittest.TestCase):
         self.assertEqual(date(2026, 7, 1), params[2])
         self.assertEqual("Divya", params[3])
 
-    @patch(
-        "app.repositories.analytics_repository.get_monthly_totals",
-        return_value=[{"bulan": "2026-06", "total": 0}],
-    )
-    def test_monthly_allocation_forwards_owner_filter(self, monthly_totals_mock):
+    @patch("app.repositories.analytics_repository._fetch_all", return_value=[])
+    def test_monthly_allocation_forwards_owner_filter(self, fetch_all_mock):
         connection = object()
 
         result = analytics.get_monthly_allocation(
@@ -165,18 +187,18 @@ class AnalyticsDateFilterTestCase(unittest.TestCase):
             name="Divya",
         )
 
-        monthly_totals_mock.assert_called_once_with(
-            connection,
-            workspace_id="workspace-1",
-            year=2026,
-            month=6,
-            direction="expense",
-            name="Divya",
-        )
-        self.assertEqual(
-            [{"month": "2026-06", "Needs": 0, "Wants": 0, "Savings": 0}],
-            result,
-        )
+        query = fetch_all_mock.call_args.args[1]
+        params = fetch_all_mock.call_args.args[2]
+
+        self.assertIn("t.transaction_date >= %s", query)
+        self.assertIn("t.transaction_date < %s", query)
+        self.assertIn("user_name", query)
+        self.assertIn("raw_payload->>'Nama'", query)
+        self.assertEqual("workspace-1", params[0])
+        self.assertEqual(date(2026, 6, 1), params[1])
+        self.assertEqual(date(2026, 7, 1), params[2])
+        self.assertEqual("Divya", params[3])
+        self.assertEqual([], result)
 
 
 if __name__ == "__main__":

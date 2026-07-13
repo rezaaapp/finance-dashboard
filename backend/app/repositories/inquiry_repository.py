@@ -4,6 +4,7 @@ from app.repositories.analytics_repository import (
     _classification_category_expr,
     _classification_financial_type_expr,
 )
+from app.services.period_service import ResolvedPeriod, resolve_period
 
 
 def _escape_like(value: str) -> str:
@@ -15,23 +16,46 @@ def _escape_like(value: str) -> str:
     )
 
 
-def _period_filter(year=None, month=None):
+def _period_filter(
+    year=None,
+    month=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = []
     params = []
+    resolved_period = period or resolve_period(
+        year=year,
+        month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+    )
 
-    if year and month:
-        clauses.append("t.transaction_date >= make_date(%s, %s, 1)")
-        clauses.append("t.transaction_date < make_date(%s, %s, 1) + interval '1 month'")
-        params.extend([year, month, year, month])
-    elif year:
-        clauses.append("t.transaction_date >= make_date(%s, 1, 1)")
-        clauses.append("t.transaction_date < make_date(%s, 1, 1) + interval '1 year'")
-        params.extend([year, year])
+    if resolved_period.has_date_bounds:
+        clauses.append("t.transaction_date >= %s")
+        clauses.append("t.transaction_date < %s")
+        params.extend([resolved_period.start_date, resolved_period.end_exclusive])
+    elif month and not resolved_period.is_all_time:
+        clauses.append("extract(month from t.transaction_date)::int = %s")
+        params.append(int(month))
 
     return clauses, params
 
 
-def _search_params(*, workspace_id: str, query_normalized: str, year=None, month=None):
+def _search_params(
+    *,
+    workspace_id: str,
+    query_normalized: str,
+    year=None,
+    month=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = [
         "t.workspace_id = %s",
         "t.search_text_normalized like %s escape '\\'",
@@ -40,7 +64,14 @@ def _search_params(*, workspace_id: str, query_normalized: str, year=None, month
         workspace_id,
         f"%{_escape_like(query_normalized)}%",
     ]
-    period_clauses, period_params = _period_filter(year, month)
+    period_clauses, period_params = _period_filter(
+        year,
+        month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+        period=period,
+    )
 
     return " and ".join([*clauses, *period_clauses]), [*params, *period_params]
 
@@ -54,12 +85,21 @@ def _classification_join():
     """
 
 
-def get_keyword_summary(connection, *, workspace_id: str, query_normalized: str, year=None, month=None):
+def get_keyword_summary(
+    connection,
+    *,
+    workspace_id: str,
+    query_normalized: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
     where_clause, params = _search_params(
         workspace_id=workspace_id,
         query_normalized=query_normalized,
         year=year,
         month=month,
+        period=period,
     )
 
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -82,12 +122,21 @@ def get_keyword_summary(connection, *, workspace_id: str, query_normalized: str,
         return cursor.fetchone()
 
 
-def get_keyword_insight_metrics(connection, *, workspace_id: str, query_normalized: str, year=None, month=None):
+def get_keyword_insight_metrics(
+    connection,
+    *,
+    workspace_id: str,
+    query_normalized: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
     where_clause, params = _search_params(
         workspace_id=workspace_id,
         query_normalized=query_normalized,
         year=year,
         month=month,
+        period=period,
     )
 
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -151,12 +200,21 @@ def get_keyword_insight_metrics(connection, *, workspace_id: str, query_normaliz
     }
 
 
-def get_keyword_preview(connection, *, workspace_id: str, query_normalized: str, year=None, month=None):
+def get_keyword_preview(
+    connection,
+    *,
+    workspace_id: str,
+    query_normalized: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
     where_clause, params = _search_params(
         workspace_id=workspace_id,
         query_normalized=query_normalized,
         year=year,
         month=month,
+        period=period,
     )
 
     with connection.cursor(row_factory=dict_row) as cursor:
@@ -189,6 +247,7 @@ def get_keyword_detail(
     query_normalized: str,
     year=None,
     month=None,
+    period: ResolvedPeriod | None = None,
     limit=25,
     offset=0,
 ):
@@ -197,6 +256,7 @@ def get_keyword_detail(
         query_normalized=query_normalized,
         year=year,
         month=month,
+        period=period,
     )
 
     with connection.cursor(row_factory=dict_row) as cursor:

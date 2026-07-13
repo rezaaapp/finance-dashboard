@@ -127,6 +127,9 @@ class DashboardViewModelTestCase(unittest.TestCase):
             "app.api.dashboard.analytics.get_personal_analytics",
             return_value={"users": []},
         ), patch(
+            "app.api.dashboard.analytics.get_monthly_allocation",
+            return_value=[{"month": "2026-06"}],
+        ), patch(
             "app.api.dashboard.analytics.get_budget_forecast",
             return_value={"forecast": []},
         ), patch(

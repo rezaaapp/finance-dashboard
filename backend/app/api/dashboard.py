@@ -27,9 +27,30 @@ from app.repositories.workspace_invitation_repository import (
 from app.security.workspace_permissions import require_workspace_manager
 from app.repositories import analytics_repository as analytics
 from app.services.financial_insight_service import generate_rule_based_insights
+from app.services.period_service import resolve_period
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from scripts.data_processing import load_and_process_data_from_spreadsheet
 from app.services.finance_service import *
+
+
+def resolve_request_period(
+    *,
+    year=None,
+    month=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
+):
+    try:
+        return resolve_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def validate_google_sheet_sources(sources):
@@ -231,6 +252,9 @@ def build_dashboard_view_model_payload(
     current_user: dict,
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
 ):
     workspace_id = str(workspace["id"])
@@ -238,8 +262,31 @@ def build_dashboard_view_model_payload(
         connection,
         workspace_id=workspace_id,
     )
-    selected_year = year if year is not None else (available_years[0] if available_years else None)
-    selected_month = month
+    period = resolve_request_period(
+        year=year,
+        month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+    )
+
+    selected_year = (
+        period.year
+        if period.year is not None
+        else (available_years[0] if available_years and period.mode == "default" else None)
+    )
+
+    if period.mode == "default" and selected_year is not None:
+        period = resolve_request_period(
+            year=selected_year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
+        selected_year = period.year
+
+    selected_month = period.month if period.mode == "year_month" else None
     analytics_user_name = name or None
     google_sheet_sources = get_google_sheet_sources(
         connection,
@@ -279,6 +326,7 @@ def build_dashboard_view_model_payload(
         workspace_id=workspace_id,
         year=selected_year,
         month=selected_month,
+        period=period,
     )
     dashboard_payload = {
         "summary": summary_data,
@@ -288,6 +336,7 @@ def build_dashboard_view_model_payload(
             year=selected_year,
             month=selected_month,
             direction="expense",
+            period=period,
         ),
         "monthly_saving": analytics.get_monthly_totals(
             connection,
@@ -295,6 +344,7 @@ def build_dashboard_view_model_payload(
             year=selected_year,
             month=selected_month,
             direction="saving_transfer",
+            period=period,
         ),
         "monthly_income": analytics.get_monthly_totals(
             connection,
@@ -302,24 +352,28 @@ def build_dashboard_view_model_payload(
             year=selected_year,
             month=selected_month,
             direction="income",
+            period=period,
         ),
         "top_spending": analytics.get_top_spending(
             connection,
             workspace_id=workspace_id,
             year=selected_year,
             month=selected_month,
+            period=period,
         ),
         "spending_by_category": analytics.get_spending_by_category(
             connection,
             workspace_id=workspace_id,
             year=selected_year,
             month=selected_month,
+            period=period,
         ),
         "financial_types": analytics.get_financial_type_breakdown(
             connection,
             workspace_id=workspace_id,
             year=selected_year,
             month=selected_month,
+            period=period,
         ),
         "monthly_financial_types": (
             analytics.get_monthly_financial_type_breakdown(
@@ -357,6 +411,7 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
                 name=analytics_user_name,
+                period=period,
             ),
             "category_heatmap": analytics.get_category_heatmap(
                 connection,
@@ -364,6 +419,7 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
                 name=analytics_user_name,
+                period=period,
             ),
             "transactions": analytics.get_transactions(
                 connection,
@@ -371,6 +427,7 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
                 name=analytics_user_name,
+                period=period,
             ),
             "category_trends": analytics.get_category_trends(
                 connection,
@@ -378,12 +435,14 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
                 name=analytics_user_name,
+                period=period,
             ),
             "personal_analytics": analytics.get_personal_analytics(
                 connection,
                 workspace_id=workspace_id,
                 year=selected_year,
                 month=selected_month,
+                period=period,
             ),
             "monthly_allocation": analytics.get_monthly_allocation(
                 connection,
@@ -391,6 +450,7 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
                 name=analytics_user_name,
+                period=period,
             ),
             "budget_forecast": analytics.get_budget_forecast(
                 connection,
@@ -404,6 +464,7 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
                 insight_settings=insight_settings,
+                period=period,
             ),
         })
     else:
@@ -428,6 +489,10 @@ def build_dashboard_view_model_payload(
         "selected_period": {
             "year": selected_year,
             "month": selected_month,
+            "mode": str(period.mode),
+            "start_date": period.start_date.isoformat() if period.start_date else None,
+            "end_date": period.end_date.isoformat() if period.end_date else None,
+            "period_mode": period_mode,
             "name": analytics_user_name,
         },
         "available_years": available_years,
@@ -484,15 +549,26 @@ def resolve_workspace_for_request(
 def summary(
     year: int = None,
     month: int = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_summary(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                period=period,
             )
 
     return get_summary(year, month, **legacy_sheet_context(sheet_context))
@@ -520,9 +596,19 @@ def refresh_data(
 def monthly_spending(
     year: int = None,
     month: int = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_monthly_totals(
                 connection,
@@ -530,6 +616,7 @@ def monthly_spending(
                 year=year,
                 month=month,
                 direction="expense",
+                period=period,
             )
 
     return get_monthly_spending(year, month, **legacy_sheet_context(sheet_context))
@@ -538,9 +625,19 @@ def monthly_spending(
 def monthly_saving(
     year: int = None,
     month: int = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_monthly_totals(
                 connection,
@@ -548,6 +645,7 @@ def monthly_saving(
                 year=year,
                 month=month,
                 direction="saving_transfer",
+                period=period,
             )
 
     return get_monthly_saving(year, month, **legacy_sheet_context(sheet_context))
@@ -556,9 +654,19 @@ def monthly_saving(
 def monthly_income(
     year: int = None,
     month: int = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_monthly_totals(
                 connection,
@@ -566,6 +674,7 @@ def monthly_income(
                 year=year,
                 month=month,
                 direction="income",
+                period=period,
             )
 
     return get_monthly_income(year, month, **legacy_sheet_context(sheet_context))
@@ -574,15 +683,26 @@ def monthly_income(
 def top_spending(
     year: int  = None, 
     month: int = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_top_spending(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                period=period,
             )
 
     return get_top_spending(year, month, **legacy_sheet_context(sheet_context))
@@ -591,15 +711,26 @@ def top_spending(
 def spending_by_category(
     year: int  = None,
     month: int  = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_spending_by_category(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                period=period,
             )
 
     return get_spending_by_category(year, month, **legacy_sheet_context(sheet_context))
@@ -609,15 +740,26 @@ def spending_by_category(
 def financial_types(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_financial_type_breakdown(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                period=period,
             )
 
     return [
@@ -649,10 +791,20 @@ def monthly_financial_types(
 def category_heatmap(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_category_heatmap(
                 connection,
@@ -660,6 +812,7 @@ def category_heatmap(
                 year=year,
                 month=month,
                 name=name,
+                period=period,
             )
 
     return get_category_heatmap(year, month, name, **legacy_sheet_context(sheet_context))
@@ -669,10 +822,20 @@ def category_heatmap(
 def transactions(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_transactions(
                 connection,
@@ -680,6 +843,7 @@ def transactions(
                 year=year,
                 month=month,
                 name=name,
+                period=period,
             )
 
     return get_transactions(year, month, name, **legacy_sheet_context(sheet_context))
@@ -689,10 +853,20 @@ def transactions(
 def category_trends(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_category_trends(
                 connection,
@@ -700,6 +874,7 @@ def category_trends(
                 year=year,
                 month=month,
                 name=name,
+                period=period,
             )
 
     return get_category_trends(year, month, name, **legacy_sheet_context(sheet_context))
@@ -708,10 +883,20 @@ def category_trends(
 def source_dana_analytics(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_source_dana_analytics(
                 connection,
@@ -719,6 +904,7 @@ def source_dana_analytics(
                 year=year,
                 month=month,
                 name=name,
+                period=period,
             )
 
     return get_source_dana_analytics(year, month, name, **legacy_sheet_context(sheet_context))
@@ -727,10 +913,20 @@ def source_dana_analytics(
 def monthly_allocation(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_monthly_allocation(
                 connection,
@@ -738,6 +934,7 @@ def monthly_allocation(
                 year=year,
                 month=month,
                 name=name,
+                period=period,
             )
 
     return get_monthly_allocation(year, month, name, **legacy_sheet_context(sheet_context))
@@ -754,15 +951,26 @@ def spending_per_person(
 def personal_analytics(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_personal_analytics(
                 connection,
                 workspace_id=sheet_context["workspace_id"],
                 year=year,
                 month=month,
+                period=period,
             )
 
     return get_personal_analytics(year, month, **legacy_sheet_context(sheet_context))
@@ -771,10 +979,20 @@ def personal_analytics(
 def grocery_vs_food(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             return analytics.get_grocery_vs_food(
                 connection,
@@ -782,6 +1000,7 @@ def grocery_vs_food(
                 year=year,
                 month=month,
                 name=name,
+                period=period,
             )
 
     return get_grocery_vs_food(year, month, name, **legacy_sheet_context(sheet_context))
@@ -790,9 +1009,19 @@ def grocery_vs_food(
 def anomalies(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     sheet_context=Depends(get_active_sheet_context),
 ):
     if sheet_context.get("workspace_id"):
+        period = resolve_request_period(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
+        )
         with get_db_connection() as connection:
             insight_settings = get_effective_insight_settings(
                 connection,
@@ -805,6 +1034,7 @@ def anomalies(
                 year=year,
                 month=month,
                 insight_settings=insight_settings,
+                period=period,
             )
 
     return get_anomalies(year, month, **legacy_sheet_context(sheet_context))
@@ -865,6 +1095,9 @@ def available_years(years=Depends(get_transaction_available_years)):
 def dashboard_view_model(
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     name: str | None = None,
     current_user=Depends(require_current_user),
     active_workspace_id: str | None = Header(default=None, alias="X-Workspace-Id"),
@@ -885,6 +1118,9 @@ def dashboard_view_model(
             current_user=current_user,
             year=year,
             month=month,
+            start_date=start_date,
+            end_date=end_date,
+            period_mode=period_mode,
             name=name,
         )
 

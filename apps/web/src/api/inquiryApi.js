@@ -14,17 +14,20 @@ const getAuthHeaders = () => {
 };
 
 
-const buildPeriodPayload = (query, year, month) => ({
+const buildPeriodPayload = ({ query, year, month, start_date, end_date, period_mode }) => ({
   query,
   ...(year && { year: Number(year) }),
   ...(year && month && { month: Number(month) }),
+  ...(start_date && { start_date }),
+  ...(end_date && { end_date }),
+  ...(period_mode && { period_mode }),
 });
 
 
-export const searchInquiry = async ({ query, year, month }) => {
+export const searchInquiry = async ({ query, year, month, start_date, end_date, period_mode }) => {
   const response = await axios.post(
     INQUIRY_API_URL,
-    buildPeriodPayload(query, year, month),
+    buildPeriodPayload({ query, year, month, start_date, end_date, period_mode }),
     {
       headers: getAuthHeaders(),
     }
@@ -34,7 +37,16 @@ export const searchInquiry = async ({ query, year, month }) => {
 };
 
 
-export const getInquiryDetail = async ({ query, year, month, limit = 25, offset = 0 }) => {
+export const getInquiryDetail = async ({
+  query,
+  year,
+  month,
+  start_date,
+  end_date,
+  period_mode,
+  limit = 25,
+  offset = 0,
+}) => {
   const response = await axios.get(
     `${INQUIRY_API_URL}/detail`,
     {
@@ -44,6 +56,9 @@ export const getInquiryDetail = async ({ query, year, month, limit = 25, offset 
         offset,
         ...(year && { year: Number(year) }),
         ...(year && month && { month: Number(month) }),
+        ...(start_date && { start_date }),
+        ...(end_date && { end_date }),
+        ...(period_mode && { period_mode }),
       },
       headers: getAuthHeaders(),
     }
