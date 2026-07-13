@@ -9,6 +9,7 @@ from app.repositories.budget_repository import (
     get_budgets_by_period,
 )
 from app.imports.utils.fingerprint import normalize_owner_name
+from app.services.period_service import PeriodMode, ResolvedPeriod, resolve_period
 
 
 FINANCIAL_TYPES = ("need", "want", "saving", "income", "uncategorized")
@@ -271,41 +272,64 @@ def _direction_condition(direction):
     return "direction = %s"
 
 
-def _period_bounds(year=None, month=None):
-    if not year:
+def _period_bounds(year=None, month=None, start_date=None, end_date=None, period_mode=None):
+    period = resolve_period(
+        year=year,
+        month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+    )
+
+    if not period.has_date_bounds:
         return None
 
-    selected_year = int(year)
-    selected_month = int(month) if month else None
-    period_start = date(selected_year, selected_month or 1, 1)
-
-    if selected_month:
-        if selected_month == 12:
-            period_end = date(selected_year + 1, 1, 1)
-        else:
-            period_end = date(selected_year, selected_month + 1, 1)
-    else:
-        period_end = date(selected_year + 1, 1, 1)
-
-    return period_start, period_end
+    return period.start_date, period.end_exclusive
 
 
-def _append_period_filter(clauses, params, *, date_expr: str, year=None, month=None):
-    period_bounds = _period_bounds(year, month)
+def _append_period_filter(
+    clauses,
+    params,
+    *,
+    date_expr: str,
+    year=None,
+    month=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
+    period: ResolvedPeriod | None = None,
+):
+    resolved_period = period or resolve_period(
+        year=year,
+        month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+    )
 
-    if period_bounds:
-        period_start, period_end = period_bounds
+    if resolved_period.has_date_bounds:
+        period_start = resolved_period.start_date
+        period_end = resolved_period.end_exclusive
         clauses.append(f"{date_expr} >= %s")
         clauses.append(f"{date_expr} < %s")
         params.extend([period_start, period_end])
         return
 
-    if month:
+    if month and not resolved_period.is_all_time:
         clauses.append(f"extract(month from {date_expr})::int = %s")
         params.append(int(month))
 
 
-def _filters(year=None, month=None, direction=None, name=None):
+def _filters(
+    year=None,
+    month=None,
+    direction=None,
+    name=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = [
         "workspace_id = %s",
         "transaction_date is not null",
@@ -319,6 +343,10 @@ def _filters(year=None, month=None, direction=None, name=None):
         date_expr="transaction_date",
         year=year,
         month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+        period=period,
     )
 
     if direction:
@@ -398,7 +426,14 @@ def _empty_summary_totals():
     }
 
 
-def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month=None):
+def _fetch_summary_totals(
+    connection,
+    *,
+    workspace_id: str,
+    year: int | None = None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = [
         "t.workspace_id = %s",
         "t.transaction_date is not null",
@@ -411,6 +446,7 @@ def _fetch_summary_totals(connection, *, workspace_id: str, year: int, month=Non
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     financial_type_expr = _classification_financial_type_expr()
@@ -501,6 +537,7 @@ def _personal_period_totals(
     workspace_id: str,
     year=None,
     month=None,
+    period: ResolvedPeriod | None = None,
 ) -> dict:
     clauses = [
         "t.workspace_id = %s",
@@ -514,6 +551,7 @@ def _personal_period_totals(
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     financial_type_expr = _classification_financial_type_expr()
@@ -658,7 +696,71 @@ def get_available_years(connection, *, workspace_id: str):
     return [row["year"] for row in rows if row["year"] is not None]
 
 
-def get_summary(connection, *, workspace_id: str, year=None, month=None):
+def get_summary(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
+    resolved_period = period or resolve_period(year=year, month=month)
+
+    if resolved_period.mode in {
+        PeriodMode.DATE_RANGE,
+        PeriodMode.PRESET,
+        PeriodMode.ALL_TIME,
+    }:
+        current_totals = _fetch_summary_totals(
+            connection,
+            workspace_id=workspace_id,
+            period=resolved_period,
+        )
+        total_income = current_totals["income"]
+        total_expense = current_totals["expense"]
+        total_saving = current_totals["saving"]
+
+        return {
+            "total_pengeluaran": total_expense,
+            "total_saving": total_saving,
+            "total_income": total_income,
+            "trend_pengeluaran": 0,
+            "trend_saving": 0,
+            "trend_income": 0,
+            "total_expenses": total_expense,
+            "total_expenses_previous": 0,
+            "total_expenses_difference": total_expense,
+            "total_expenses_change_pct": None,
+            "total_expenses_trend": "unavailable",
+            "total_saving_previous": 0,
+            "total_saving_difference": total_saving,
+            "total_saving_change_pct": None,
+            "total_saving_trend": "unavailable",
+            "total_income_previous": 0,
+            "total_income_difference": total_income,
+            "total_income_change_pct": None,
+            "total_income_trend": "unavailable",
+            "saving_ratio": round(total_saving / total_expense * 100, 2)
+            if total_expense > 0 else 0,
+            "surplus": float(total_income - total_expense - total_saving),
+            "transaction_count": current_totals["transaction_count"],
+            "net_cashflow": float(total_income - total_expense - total_saving),
+            "comparison": {
+                "current_year": resolved_period.year,
+                "current_month": resolved_period.month,
+                "previous_year": None,
+                "previous_month": None,
+                "label": "no previous data",
+                "total_expenses_label": "no previous data",
+                "total_saving_label": "no previous data",
+                "total_income_label": "no previous data",
+            },
+            "data_source": {
+                "year": str(year or ""),
+                "name": "Supabase Transactions",
+            },
+        }
+
     if year:
         current_year = int(year)
         current_month = int(month) if month else None
@@ -810,8 +912,9 @@ def get_monthly_totals(
     month=None,
     direction="expense",
     name=None,
+    period: ResolvedPeriod | None = None,
 ):
-    where_clause, params = _filters(year, month, direction, name)
+    where_clause, params = _filters(year, month, direction, name, period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -835,8 +938,15 @@ def get_monthly_totals(
     ]
 
 
-def get_spending_by_category(connection, *, workspace_id: str, year=None, month=None):
-    where_clause, params = _filters(year, month, "expense")
+def get_spending_by_category(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
+    where_clause, params = _filters(year, month, "expense", period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -1063,7 +1173,14 @@ def get_budget_history_by_category(
     return dict(history_by_category)
 
 
-def get_financial_type_breakdown(connection, *, workspace_id: str, year=None, month=None):
+def get_financial_type_breakdown(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = [
         "t.workspace_id = %s",
         "t.transaction_date is not null",
@@ -1076,6 +1193,7 @@ def get_financial_type_breakdown(connection, *, workspace_id: str, year=None, mo
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     financial_type_expr = _classification_financial_type_expr()
@@ -1179,8 +1297,16 @@ def get_monthly_financial_type_breakdown(connection, *, workspace_id: str, year:
     return [month_rows[month] for month in sorted(month_rows)]
 
 
-def get_top_spending(connection, *, workspace_id: str, year=None, month=None, limit=10):
-    where_clause, params = _filters(year, month, "expense")
+def get_top_spending(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    limit=10,
+    period: ResolvedPeriod | None = None,
+):
+    where_clause, params = _filters(year, month, "expense", period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -1217,7 +1343,15 @@ def get_top_spending(connection, *, workspace_id: str, year=None, month=None, li
     ]
 
 
-def get_transactions(connection, *, workspace_id: str, year=None, month=None, name=None):
+def get_transactions(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    name=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = [
         "t.workspace_id = %s",
         "t.transaction_date is not null",
@@ -1230,6 +1364,7 @@ def get_transactions(connection, *, workspace_id: str, year=None, month=None, na
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     if name:
@@ -1288,7 +1423,15 @@ def get_transactions(connection, *, workspace_id: str, year=None, month=None, na
     ]
 
 
-def get_category_trends(connection, *, workspace_id: str, year=None, month=None, name=None):
+def get_category_trends(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    name=None,
+    period: ResolvedPeriod | None = None,
+):
     clauses = [
         "t.workspace_id = %s",
         "t.transaction_date is not null",
@@ -1301,6 +1444,7 @@ def get_category_trends(connection, *, workspace_id: str, year=None, month=None,
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     if name:
@@ -1366,13 +1510,22 @@ def get_category_trends(connection, *, workspace_id: str, year=None, month=None,
     }
 
 
-def get_category_heatmap(connection, *, workspace_id: str, year=None, month=None, name=None):
+def get_category_heatmap(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    name=None,
+    period: ResolvedPeriod | None = None,
+):
     trends = get_category_trends(
         connection,
         workspace_id=workspace_id,
         year=year,
         month=month,
         name=name,
+        period=period,
     )
     rows = []
     max_total = 0
@@ -1409,8 +1562,16 @@ def get_category_heatmap(connection, *, workspace_id: str, year=None, month=None
     }
 
 
-def get_grocery_vs_food(connection, *, workspace_id: str, year=None, month=None, name=None):
-    where_clause, params = _filters(year, month, "expense", name)
+def get_grocery_vs_food(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    name=None,
+    period: ResolvedPeriod | None = None,
+):
+    where_clause, params = _filters(year, month, "expense", name, period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -1455,8 +1616,9 @@ def _aggregate_source(
     month=None,
     name=None,
     direction="expense",
+    period: ResolvedPeriod | None = None,
 ):
-    where_clause, params = _filters(year, month, direction, name)
+    where_clause, params = _filters(year, month, direction, name, period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -1477,7 +1639,15 @@ def _aggregate_source(
     ]
 
 
-def get_source_dana_analytics(connection, *, workspace_id: str, year=None, month=None, name=None):
+def get_source_dana_analytics(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    name=None,
+    period: ResolvedPeriod | None = None,
+):
     return {
         "income_sources": _aggregate_source(
             connection,
@@ -1486,6 +1656,7 @@ def get_source_dana_analytics(connection, *, workspace_id: str, year=None, month
             month=month,
             name=name,
             direction="income",
+            period=period,
         ),
         "saving_sources": _aggregate_source(
             connection,
@@ -1494,6 +1665,7 @@ def get_source_dana_analytics(connection, *, workspace_id: str, year=None, month
             month=month,
             name=name,
             direction="saving_transfer",
+            period=period,
         ),
         "spending_sources": _aggregate_source(
             connection,
@@ -1502,11 +1674,20 @@ def get_source_dana_analytics(connection, *, workspace_id: str, year=None, month
             month=month,
             name=name,
             direction="expense",
+            period=period,
         ),
     }
 
 
-def get_monthly_allocation(connection, *, workspace_id: str, year=None, month=None, name=None):
+def get_monthly_allocation(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    name=None,
+    period: ResolvedPeriod | None = None,
+):
     financial_type_expr = _classification_financial_type_expr()
     clauses = [
         "t.workspace_id = %s",
@@ -1521,6 +1702,7 @@ def get_monthly_allocation(connection, *, workspace_id: str, year=None, month=No
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     if name:
@@ -1578,8 +1760,15 @@ def get_monthly_allocation(connection, *, workspace_id: str, year=None, month=No
     ]
 
 
-def _get_personal_monthly_comparison(connection, *, workspace_id: str, year=None, month=None):
-    where_clause, params = _filters(year, month, "expense")
+def _get_personal_monthly_comparison(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
+    where_clause, params = _filters(year, month, "expense", period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -1606,8 +1795,15 @@ def _get_personal_monthly_comparison(connection, *, workspace_id: str, year=None
     ]
 
 
-def _get_personal_top_categories(connection, *, workspace_id: str, year=None, month=None):
-    where_clause, params = _filters(year, month, "expense")
+def _get_personal_top_categories(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
+    where_clause, params = _filters(year, month, "expense", period=period)
     rows = _fetch_all(
         connection,
         f"""
@@ -1636,19 +1832,38 @@ def _get_personal_top_categories(connection, *, workspace_id: str, year=None, mo
     return dict(categories_by_user)
 
 
-def get_personal_analytics(connection, *, workspace_id: str, year=None, month=None):
+def get_personal_analytics(
+    connection,
+    *,
+    workspace_id: str,
+    year=None,
+    month=None,
+    period: ResolvedPeriod | None = None,
+):
     transactions = get_transactions(
         connection,
         workspace_id=workspace_id,
         year=year,
         month=month,
+        period=period,
     )
-    comparison_period = _personal_comparison_period(year, month)
+    comparison_period = (
+        _personal_comparison_period(year, month)
+        if not period or period.mode == PeriodMode.YEAR_MONTH
+        else {
+            "current_year": period.year,
+            "current_month": period.month,
+            "previous_year": None,
+            "previous_month": None,
+            "label": "no previous data",
+        }
+    )
     current_totals = _personal_period_totals(
         connection,
         workspace_id=workspace_id,
         year=year,
         month=month,
+        period=period,
     )
     previous_totals = (
         _personal_period_totals(
@@ -1694,6 +1909,7 @@ def get_personal_analytics(connection, *, workspace_id: str, year=None, month=No
             workspace_id=workspace_id,
             year=year,
             month=month,
+            period=period,
         ),
         "top_categories": {
             "all": [
@@ -1706,6 +1922,7 @@ def get_personal_analytics(connection, *, workspace_id: str, year=None, month=No
                     workspace_id=workspace_id,
                     year=year,
                     month=month,
+                    period=period,
                 )[:5]
             ],
             **_get_personal_top_categories(
@@ -1713,6 +1930,7 @@ def get_personal_analytics(connection, *, workspace_id: str, year=None, month=No
                 workspace_id=workspace_id,
                 year=year,
                 month=month,
+                period=period,
             ),
         },
     }
@@ -1725,6 +1943,7 @@ def get_anomalies(
     year=None,
     month=None,
     insight_settings: dict | None = None,
+    period: ResolvedPeriod | None = None,
 ):
     anomaly_warning_multiplier = float(
         (insight_settings or {}).get("anomaly_warning_multiplier", 2.0)
@@ -1744,6 +1963,7 @@ def get_anomalies(
         date_expr="t.transaction_date",
         year=year,
         month=month,
+        period=period,
     )
 
     financial_type_expr = _classification_financial_type_expr()

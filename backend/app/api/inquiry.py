@@ -17,6 +17,9 @@ class InquiryRequest(BaseModel):
     query: str
     year: int | None = None
     month: int | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    period_mode: str | None = None
 
 
 @router.post("")
@@ -32,6 +35,9 @@ def search_inquiry(
                 query=payload.query,
                 year=payload.year,
                 month=payload.month,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                period_mode=payload.period_mode,
             )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -47,6 +53,9 @@ def inquiry_detail(
     query: str = Query(...),
     year: int | None = None,
     month: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    period_mode: str | None = None,
     limit: int = Query(25, ge=1, le=25),
     offset: int = Query(0, ge=0),
     workspace=Depends(get_current_workspace),
@@ -59,6 +68,9 @@ def inquiry_detail(
                 query=query,
                 year=year,
                 month=month,
+                start_date=start_date,
+                end_date=end_date,
+                period_mode=period_mode,
                 limit=limit,
                 offset=offset,
             )

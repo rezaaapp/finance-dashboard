@@ -12,22 +12,31 @@ const getAuthHeaders = () => {
   };
 };
 
-const buildParams = (year, month, name) => ({
-  ...(year && { year }),
-  ...(month && { month }),
-  ...(name && { name }),
-});
-
-const buildConfig = (year, month, name) => ({
-  params: buildParams(year, month, name),
-  headers: getAuthHeaders(),
-});
-
 const normalizePeriodParams = (params = {}) => (
   params && typeof params === "object"
     ? params
     : { year: params }
 );
+
+const buildParams = (year, month, name) => {
+  const params = normalizePeriodParams(year);
+  const selectedMonth = params.month ?? month;
+  const selectedName = params.name ?? name;
+
+  return {
+    ...(params.year && { year: params.year }),
+    ...(selectedMonth && { month: selectedMonth }),
+    ...(params.start_date && { start_date: params.start_date }),
+    ...(params.end_date && { end_date: params.end_date }),
+    ...(params.period_mode && { period_mode: params.period_mode }),
+    ...(selectedName && { name: selectedName }),
+  };
+};
+
+const buildConfig = (year, month, name) => ({
+  params: buildParams(year, month, name),
+  headers: getAuthHeaders(),
+});
 
 export const getSummary = async (year, month) => {
 
@@ -89,10 +98,9 @@ export const getSpendingByCategory = async (year, month) => {
 };
 
 export const getFinancialTypes = async (params = {}) => {
-  const { year, month } = normalizePeriodParams(params);
   const response = await axios.get(
     `${DASHBOARD_API_URL}/financial-types`,
-    buildConfig(year, month)
+    buildConfig(params)
   );
 
   return response.data;
@@ -109,10 +117,9 @@ export const getMonthlyFinancialTypes = async (params = {}) => {
 };
 
 export const getRuleBasedInsights = async (params = {}) => {
-  const { year, month } = normalizePeriodParams(params);
   const response = await axios.get(
     `${DASHBOARD_API_URL}/rule-based-insights`,
-    buildConfig(year, month)
+    buildConfig(params)
   );
 
   return response.data;

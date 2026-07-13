@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from app.repositories import inquiry_repository
+from app.services.period_service import resolve_period
 from app.services.transaction_normalizer import normalize_search_text
 
 
@@ -24,14 +25,6 @@ def validate_query(query: str) -> tuple[str, str]:
         raise ValueError("Query must be 100 characters or fewer")
 
     return raw_query, normalize_search_text(raw_query)
-
-
-def validate_period(year=None, month=None):
-    if month is not None and not year:
-        raise ValueError("Year is required when month is provided")
-
-    if month is not None and (int(month) < 1 or int(month) > 12):
-        raise ValueError("Month must be between 1 and 12")
 
 
 def clamp_detail_limit(limit: int | None) -> int:
@@ -142,15 +135,32 @@ def build_insights(summary: dict, metrics: dict) -> list[dict]:
     return insights
 
 
-def search_transactions(connection, *, workspace_id: str, query: str, year=None, month=None) -> dict:
+def search_transactions(
+    connection,
+    *,
+    workspace_id: str,
+    query: str,
+    year=None,
+    month=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
+) -> dict:
     display_query, normalized_query = validate_query(query)
-    validate_period(year, month)
+    period = resolve_period(
+        year=year,
+        month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+    )
     summary = inquiry_repository.get_keyword_summary(
         connection,
         workspace_id=workspace_id,
         query_normalized=normalized_query,
         year=year,
         month=month,
+        period=period,
     )
     preview_rows = inquiry_repository.get_keyword_preview(
         connection,
@@ -158,6 +168,7 @@ def search_transactions(connection, *, workspace_id: str, query: str, year=None,
         query_normalized=normalized_query,
         year=year,
         month=month,
+        period=period,
     )
     metrics = inquiry_repository.get_keyword_insight_metrics(
         connection,
@@ -165,6 +176,7 @@ def search_transactions(connection, *, workspace_id: str, query: str, year=None,
         query_normalized=normalized_query,
         year=year,
         month=month,
+        period=period,
     )
     total_transactions = int(summary["total_transactions"] or 0)
     total_amount = _as_float(summary["total_amount"])
@@ -204,11 +216,20 @@ def get_transaction_detail(
     query: str,
     year=None,
     month=None,
+    start_date=None,
+    end_date=None,
+    period_mode=None,
     limit=None,
     offset=None,
 ) -> dict:
     display_query, normalized_query = validate_query(query)
-    validate_period(year, month)
+    period = resolve_period(
+        year=year,
+        month=month,
+        start_date=start_date,
+        end_date=end_date,
+        period_mode=period_mode,
+    )
     detail_limit = clamp_detail_limit(limit)
     detail_offset = normalize_offset(offset)
     detail = inquiry_repository.get_keyword_detail(
@@ -217,6 +238,7 @@ def get_transaction_detail(
         query_normalized=normalized_query,
         year=year,
         month=month,
+        period=period,
         limit=detail_limit,
         offset=detail_offset,
     )
