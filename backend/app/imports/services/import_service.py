@@ -74,6 +74,7 @@ from app.services.google_token_service import (
     GoogleOAuthNeedsReconnectError,
     get_valid_google_access_token,
 )
+from app.services.category_normalization import canonicalize_category
 from app.services.sheet_header_validator import canonicalize_header
 
 
@@ -84,12 +85,11 @@ DEFAULT_IMPORT_REVIEW_PAGE_SIZE = 100
 DEFAULT_IMPORT_HISTORY_PAGE_SIZE = 20
 MAX_IMPORT_PAGE_SIZE = 100
 DEFAULT_IMPORT_CATEGORIES = (
-    "Bills",
     "Education",
     "Entertainment",
     "Family",
     "Food",
-    "Groceries",
+    "Grocery",
     "Health",
     "Household",
     "Income",
@@ -97,7 +97,9 @@ DEFAULT_IMPORT_CATEGORIES = (
     "Saving",
     "Shopping",
     "Subscription",
-    "Transport",
+    "Tagihan Bulanan",
+    "Transportasi Non Rutin",
+    "Transportasi Rutin",
 )
 MISSING_SPREADSHEET_TARGET_MESSAGE = (
     "Target Spreadsheet belum dikonfigurasi. "
@@ -912,7 +914,7 @@ class ImportService:
         }
 
         for category in historical_categories:
-            normalized_category = str(category or "").strip()
+            normalized_category = canonicalize_category(category, fallback="")
             if normalized_category:
                 categories_by_key.setdefault(
                     normalized_category.casefold(),

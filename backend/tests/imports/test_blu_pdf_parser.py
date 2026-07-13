@@ -1540,12 +1540,11 @@ class BluPdfParserTestCase(unittest.TestCase):
 
         self.assertEqual(
             [
-                "Bills",
                 "Education",
                 "Entertainment",
                 "Family",
                 "Food",
-                "Groceries",
+                "Grocery",
                 "Health",
                 "Household",
                 "Income",
@@ -1553,7 +1552,9 @@ class BluPdfParserTestCase(unittest.TestCase):
                 "Saving",
                 "Shopping",
                 "Subscription",
-                "Transport",
+                "Tagihan Bulanan",
+                "Transportasi Non Rutin",
+                "Transportasi Rutin",
             ],
             payload["categories"],
         )
@@ -1574,13 +1575,14 @@ class BluPdfParserTestCase(unittest.TestCase):
                 workspace_id="workspace-1",
             )
 
-        self.assertIn("Groceries", payload["categories"])
+        self.assertIn("Grocery", payload["categories"])
         self.assertIn("Food", payload["categories"])
-        self.assertIn("Makanan", payload["categories"])
         self.assertIn("Parkir", payload["categories"])
         self.assertIn("Pacaran", payload["categories"])
         self.assertNotIn("groceries", payload["categories"])
+        self.assertNotIn("Groceries", payload["categories"])
         self.assertNotIn("food", payload["categories"])
+        self.assertNotIn("Makanan", payload["categories"])
         self.assertNotIn("Makan Bulanan", payload["categories"])
         self.assertEqual(
             sorted(

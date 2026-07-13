@@ -23,7 +23,7 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import EmptyState from "../components/EmptyState";
 import AppShell from "../components/AppShell";
@@ -40,6 +40,7 @@ import IncomeVelocityDashboard from "../components/analytics/IncomeVelocityDashb
 import SourceDanaAnalytics from "../components/analytics/SourceDanaAnalytics";
 import MonthlyAllocationTrend from "../components/analytics/MonthlyAllocationTrend";
 import SidebarDataSourceIndicator from "../components/SidebarDataSourceIndicator";
+import PeriodSelector from "../components/PeriodSelector";
 import WorkspaceInvitationNotification from "../components/WorkspaceInvitationNotification";
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
 import EnvironmentBadge from "../components/environment/EnvironmentBadge";
@@ -52,6 +53,13 @@ import ImportTransactions from "./ImportTransactions";
 import ReviewUncategorized from "./ReviewUncategorized";
 import SearchPage from "./Search";
 import { formatPrivateRupiah, PRIVACY_MODES } from "../utils/privacy";
+import {
+  createDefaultPeriod,
+  createYearMonthPeriod,
+  formatPeriodLabel as formatGlobalPeriodLabel,
+  getCompatibilityPeriod,
+  toPeriodQuery,
+} from "../utils/periodState";
 
 import {
   getDashboardViewModel,
@@ -129,32 +137,6 @@ const hasSummaryData = (summary = {}) => (
   || Number(summary.total_income || 0) > 0
   || Number(summary.transaction_count || 0) > 0
 );
-
-const MONTH_LABELS = [
-  "All Month",
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-const getPeriodLabel = (year, month) => {
-  if (!year) {
-    return "No synced period yet";
-  }
-
-  const monthLabel = MONTH_LABELS[Number(month)] || "All Month";
-
-  return month ? `${monthLabel} ${year}` : `All Month ${year}`;
-};
 
 const getSummaryAmount = (summary, keys) => (
   keys.reduce((value, key) => (
@@ -795,11 +777,10 @@ const DashboardHome = ({
   income,
   monthlyFinancialTypes,
   onOpenSettings,
+  periodLabel,
   privacyMode,
   ruleBasedInsights,
   saving,
-  selectedMonth,
-  selectedYear,
   spending,
   summary,
   theme,
@@ -813,7 +794,6 @@ const DashboardHome = ({
   const totalSaving = Number(getSummaryAmount(summary, ["total_saving"]));
   const netCashflow = totalIncome - totalExpenses;
   const transactionCount = Number(summary.transaction_count || 0);
-  const periodLabel = getPeriodLabel(selectedYear, selectedMonth);
   const cashflowTone = netCashflow >= 0
     ? "Pemasukan masih menutup pengeluaran pada periode ini."
     : "Pengeluaran lebih besar dari pemasukan pada periode ini.";
@@ -1176,8 +1156,14 @@ const Dashboard = ({
   const [invitationError, setInvitationError] = useState("");
 
   const [years, setYears] = useState([]);
-  const [selectedYear, setSelectedYear] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState("");
+  const [periodState, setPeriodState] = useState(() => createDefaultPeriod());
+  const compatibilityPeriod = useMemo(
+    () => getCompatibilityPeriod(periodState, years[0] || ""),
+    [periodState, years],
+  );
+  const selectedYear = compatibilityPeriod.selectedYear;
+  const selectedMonth = compatibilityPeriod.selectedMonth;
+  const periodQuery = useMemo(() => toPeriodQuery(periodState), [periodState]);
   const [activeView, commitActiveView] = useState(() => getInitialView());
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingSettingsNavigation, setPendingSettingsNavigation] = useState("");
@@ -1373,8 +1359,7 @@ const Dashboard = ({
     setGoogleConnection({ connected: false });
     setGoogleSheetSources([]);
     setYears([]);
-    setSelectedYear("");
-    setSelectedMonth("");
+    setPeriodState(createDefaultPeriod());
   };
 
   const handleAcceptInvitation = async (invitationId) => {
@@ -1467,7 +1452,7 @@ const Dashboard = ({
         loadPendingInvitations(),
         refreshDashboardData(selectedYear),
       ]);
-      await fetchDashboardData(selectedYear, selectedMonth);
+      await fetchDashboardData(periodState);
 
       if (activeView === "analytics") {
         setAnalyticsRetryKey((current) => current + 1);
@@ -1494,20 +1479,21 @@ const Dashboard = ({
   // FETCH ALL DASHBOARD DATA
   // =========================
   const fetchDashboardData = useCallback(async (
-    year = "",
-    month = ""
+    periodInput = periodState
   ) => {
     try {
       setLoading(true);
       const analyticsUserName = selectedAnalyticsUser === "all"
         ? ""
         : selectedAnalyticsUser;
+      const query = toPeriodQuery(periodInput);
+      const compatibility = getCompatibilityPeriod(periodInput, years[0] || "");
       setFinancialInsightsLoading(true);
       setFinancialInsightsError("");
 
       const viewModel = await getDashboardViewModel(
-        year,
-        month,
+        query,
+        undefined,
         analyticsUserName
       );
       const dashboardData = viewModel?.dashboard || {};
@@ -1517,7 +1503,7 @@ const Dashboard = ({
       setCurrentSheetName(
         viewModel?.current_sheet_name
         || summaryData?.data_source?.name
-        || (year ? `Google Sheet ${year}` : "")
+        || (compatibility.selectedYear ? `Google Sheet ${compatibility.selectedYear}` : "")
       );
       setSpending(dashboardData.monthly_spending || []);
       setSaving(dashboardData.monthly_saving || []);
@@ -1528,7 +1514,7 @@ const Dashboard = ({
       const nextMonthlyFinancialTypes = dashboardData.monthly_financial_types || [];
       const derivedMonthlyAllocation = buildMonthlyAllocationFromFinancialTypes(
         nextMonthlyFinancialTypes,
-        year
+        compatibility.selectedYear
       );
       setMonthlyFinancialTypes(nextMonthlyFinancialTypes);
       setRuleBasedInsights(dashboardData.rule_based_insights || {});
@@ -1560,7 +1546,7 @@ const Dashboard = ({
       setFinancialInsightsLoading(false);
       setLoading(false);
     }
-  }, [onLogout, selectedAnalyticsUser]);
+  }, [onLogout, periodState, selectedAnalyticsUser, years]);
 
   const refreshBudgetForecast = useCallback(async () => {
     if (!hasPremiumAccess || selectedYear === "" || selectedMonth === "") {
@@ -1629,10 +1615,12 @@ const Dashboard = ({
       setYears(availableYears);
 
       if (availableYears.length > 0) {
-        setSelectedYear(viewModel?.selected_period?.year || availableYears[0]);
+        setPeriodState(createYearMonthPeriod(
+          viewModel?.selected_period?.year || availableYears[0],
+          viewModel?.selected_period?.month || "",
+        ));
       } else {
-        setSelectedYear("");
-        setSelectedMonth("");
+        setPeriodState(createDefaultPeriod());
       }
 
       if (!googleConnectionResponse.connected && !hasGoogleSheet) {
@@ -1685,13 +1673,10 @@ const Dashboard = ({
   // FETCH DASHBOARD WHEN YEAR CHANGES
   // =========================
   useEffect(() => {
-    if (activeView === "dashboard" && selectedYear !== "") {
-      fetchDashboardData(
-        selectedYear,
-        selectedMonth
-      );
+    if (activeView === "dashboard" && Object.keys(periodQuery).length > 0) {
+      fetchDashboardData(periodState);
     }
-  }, [activeView, fetchDashboardData, selectedYear, selectedMonth]);
+  }, [activeView, fetchDashboardData, periodQuery, periodState]);
 
   useEffect(() => {
     if (activeView === "budgeting") {
@@ -1705,7 +1690,7 @@ const Dashboard = ({
   useEffect(() => {
     if (
       activeView !== "analytics"
-      || selectedYear === ""
+      || Object.keys(periodQuery).length === 0
       || !hasPremiumAccess
     ) {
       return;
@@ -1726,22 +1711,22 @@ const Dashboard = ({
         setAnalyticsError("");
 
         const results = await Promise.allSettled([
-          getPersonalAnalytics(selectedYear, selectedMonth),
+          getPersonalAnalytics(periodQuery),
           getSourceDanaAnalytics(
-            selectedYear,
-            selectedMonth,
+            periodQuery,
+            undefined,
             analyticsUserName
           ),
           getMonthlyAllocation(
-            selectedYear,
-            selectedMonth,
+            periodQuery,
+            undefined,
             analyticsUserName
           ),
-          getGroceryVsFood(selectedYear, selectedMonth, analyticsUserName),
-          getCategoryHeatmap(selectedYear, selectedMonth, analyticsUserName),
-          getTransactions(selectedYear, selectedMonth, analyticsUserName),
-          getCategoryTrends(selectedYear, selectedMonth, analyticsUserName),
-          getAnomalies(selectedYear, selectedMonth),
+          getGroceryVsFood(periodQuery, undefined, analyticsUserName),
+          getCategoryHeatmap(periodQuery, undefined, analyticsUserName),
+          getTransactions(periodQuery, undefined, analyticsUserName),
+          getCategoryTrends(periodQuery, undefined, analyticsUserName),
+          getAnomalies(periodQuery),
         ]);
         const unauthorizedResult = results.find((result) => (
           result.status === "rejected"
@@ -1848,8 +1833,8 @@ const Dashboard = ({
     monthlyFinancialTypes,
     onLogout,
     selectedAnalyticsUser,
-    selectedMonth,
     selectedYear,
+    periodQuery,
   ]);
 
   // =========================
@@ -1952,7 +1937,7 @@ const Dashboard = ({
       ? REVIEW_UNCATEGORIZED_METADATA
       : PRIMARY_NAVIGATION_ITEMS.find((item) => getNavigationItemActive(item, activeView))
         || PRIMARY_NAVIGATION_ITEMS[0];
-  const analyticsPeriodLabel = getPeriodLabel(selectedYear, selectedMonth);
+  const analyticsPeriodLabel = formatGlobalPeriodLabel(periodState, { compact: true });
   const analyticsUserLabel = getAnalyticsUserLabel(
     personalAnalytics,
     selectedAnalyticsUser
@@ -2033,7 +2018,7 @@ const Dashboard = ({
             <EnvironmentBadge systemInfoState={systemInfoState} />
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_minmax(150px,auto)_auto]">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(220px,300px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(240px,320px)_auto_minmax(150px,auto)_auto]">
             <WorkspaceSwitcher
               workspaces={workspaces}
               activeWorkspaceId={activeWorkspaceId}
@@ -2048,42 +2033,14 @@ const Dashboard = ({
               onDecline={handleDeclineInvitation}
             />
 
-            <select
-              value={selectedYear}
-              onChange={(event) => setSelectedYear(event.target.value)}
-              className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
-            >
-              {years.length === 0 && (
-                <option value="">
-                  No synced data
-                </option>
-              )}
-              {years.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedMonth}
-              onChange={(event) => setSelectedMonth(event.target.value)}
-              className="form-control w-full rounded-xl px-3 py-2 text-sm sm:px-4 sm:text-base"
-            >
-              <option value="">All Month</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
-            </select>
+            <div className="col-span-2 sm:col-span-1">
+              <PeriodSelector
+                period={periodState}
+                availableYears={years}
+                fallbackYear={selectedYear}
+                onChange={setPeriodState}
+              />
+            </div>
 
             <button
               type="button"
@@ -2107,7 +2064,7 @@ const Dashboard = ({
               <span className="hidden lg:inline">Refresh data</span>
             </button>
 
-            <div className="col-span-2 flex justify-end sm:col-span-6 xl:col-span-1">
+            <div className="col-span-2 flex justify-end sm:col-span-5 xl:col-span-1">
               <ProfileWidget auth={auth} onLogout={onLogout} />
             </div>
           </div>
@@ -2149,11 +2106,10 @@ const Dashboard = ({
             income={income}
             monthlyFinancialTypes={monthlyFinancialTypes}
             onOpenSettings={() => setActiveView("configuration")}
+            periodLabel={formatGlobalPeriodLabel(periodState, { compact: true })}
             privacyMode={privacyMode}
             ruleBasedInsights={ruleBasedInsights}
             saving={saving}
-            selectedMonth={selectedMonth}
-            selectedYear={selectedYear}
             spending={spending}
             summary={summary}
             theme={theme}

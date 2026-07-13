@@ -1,6 +1,8 @@
 import re
 from collections.abc import Mapping
 
+from app.services.category_normalization import canonicalize_category
+
 
 VALID_DIRECTIONS = {"income", "expense", "saving_transfer"}
 VALID_FINANCIAL_TYPES = {"income", "need", "want", "saving", "uncategorized"}
@@ -53,6 +55,7 @@ NEED_KEYWORDS = (
     "bensin",
     "parkir",
     "tagihan",
+    "bills",
     "tagihan non rutin",
     "tagihan tahunan",
     "listrik",
@@ -82,10 +85,10 @@ WANT_KEYWORDS = (
 )
 
 CATEGORY_RULES = (
-    ("Groceries", ("groceries", "grocery", "belanja bulanan")),
+    ("Grocery", ("groceries", "grocery", "belanja bulanan")),
     ("Food", ("food", "makanan", "jajan", "resto", "restaurant")),
-    ("Transport", ("transport", "transportasi", "bensin", "parkir")),
-    ("Bills", ("tagihan", "listrik", "internet")),
+    ("Transportasi Rutin", ("transport", "transportasi", "bensin", "parkir")),
+    ("Tagihan Bulanan", ("tagihan", "listrik", "internet", "bills")),
     ("Housing", ("sewa", "apartemen")),
     ("Health", ("kesehatan", "obat", "dokter")),
     ("Entertainment", ("entertainment", "hiburan")),
@@ -149,7 +152,7 @@ def _normalize_category(value: str) -> str:
             return category
 
     cleaned = _clean_label(value)
-    return cleaned or "Uncategorized"
+    return canonicalize_category(cleaned)
 
 
 def _matches_user_rule(field_value: str, *, pattern: str, match_type: str) -> bool:
@@ -234,7 +237,7 @@ def _result(
             if financial_type in VALID_FINANCIAL_TYPES
             else "uncategorized"
         ),
-        "category": category or "Uncategorized",
+        "category": canonicalize_category(category),
         "confidence_score": round(float(confidence_score), 2),
         "method": "rule",
         "explanation": explanation,

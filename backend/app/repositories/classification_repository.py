@@ -1,5 +1,7 @@
 from psycopg.rows import dict_row
 
+from app.services.category_normalization import canonicalize_category
+
 from app.repositories.analytics_repository import _classification_financial_type_expr
 
 
@@ -51,6 +53,7 @@ def upsert_transaction_classification(
     method: str,
     explanation: str,
 ) -> str:
+    category = canonicalize_category(category)
     existing = _fetch_current_classification(
         connection,
         workspace_id=workspace_id,
@@ -160,16 +163,17 @@ def _chunk_rows(rows: list[dict], chunk_size: int):
 
 def _classification_params(workspace_id: str, row: dict):
     allocation_type = _legacy_allocation_type(row["financial_type"])
+    category = canonicalize_category(row["category"])
 
     return (
         row["direction"],
         row["financial_type"],
-        row["category"],
+        category,
         row["confidence_score"],
         row["method"],
         row["explanation"],
         allocation_type,
-        row["category"],
+        category,
         row["confidence_score"],
         row["explanation"],
         row["method"],

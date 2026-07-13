@@ -9,6 +9,7 @@ from app.repositories.budget_repository import (
     get_budgets_by_period,
 )
 from app.imports.utils.fingerprint import normalize_owner_name
+from app.services.category_normalization import canonicalize_category
 from app.services.period_service import PeriodMode, ResolvedPeriod, resolve_period
 
 
@@ -52,13 +53,43 @@ def _raw_category_expr():
     return "lower(trim(coalesce(raw_category, '')))"
 
 
-def _category_label_expr():
-    return """
-        coalesce(
-            nullif(raw_payload->>'_category_normalized', ''),
-            nullif(raw_category, ''),
-            'Uncategorized'
-        )
+def _category_label_expr(table_alias: str | None = None):
+    prefix = f"{table_alias}." if table_alias else ""
+    raw_payload_expr = f"{prefix}raw_payload"
+    raw_category_expr = f"{prefix}raw_category"
+
+    return f"""
+        case
+            when lower(trim(coalesce(
+                nullif({raw_payload_expr}->>'_category_normalized', ''),
+                nullif({raw_category_expr}, ''),
+                ''
+            ))) in ('groceries', 'grocery')
+                then 'Grocery'
+            when lower(trim(coalesce(
+                nullif({raw_payload_expr}->>'_category_normalized', ''),
+                nullif({raw_category_expr}, ''),
+                ''
+            ))) in ('bills', 'tagihan rutin', 'tagihan bulanan')
+                then 'Tagihan Bulanan'
+            when lower(trim(coalesce(
+                nullif({raw_payload_expr}->>'_category_normalized', ''),
+                nullif({raw_category_expr}, ''),
+                ''
+            ))) in ('makanan', 'food')
+                then 'Food'
+            when lower(trim(coalesce(
+                nullif({raw_payload_expr}->>'_category_normalized', ''),
+                nullif({raw_category_expr}, ''),
+                ''
+            ))) in ('transport', 'transportasi')
+                then 'Transportasi Rutin'
+            else coalesce(
+                nullif({raw_payload_expr}->>'_category_normalized', ''),
+                nullif({raw_category_expr}, ''),
+                'Uncategorized'
+            )
+        end
     """
 
 
@@ -205,13 +236,47 @@ def _classification_financial_type_expr():
 
 def _classification_category_expr():
     return """
-        coalesce(
-            nullif(c.category, ''),
-            nullif(c.category_normalized, ''),
-            nullif(t.raw_payload->>'_category_normalized', ''),
-            nullif(t.raw_category, ''),
-            'Uncategorized'
-        )
+        case
+            when lower(trim(coalesce(
+                nullif(c.category, ''),
+                nullif(c.category_normalized, ''),
+                nullif(t.raw_payload->>'_category_normalized', ''),
+                nullif(t.raw_category, ''),
+                ''
+            ))) in ('groceries', 'grocery')
+                then 'Grocery'
+            when lower(trim(coalesce(
+                nullif(c.category, ''),
+                nullif(c.category_normalized, ''),
+                nullif(t.raw_payload->>'_category_normalized', ''),
+                nullif(t.raw_category, ''),
+                ''
+            ))) in ('bills', 'tagihan rutin', 'tagihan bulanan')
+                then 'Tagihan Bulanan'
+            when lower(trim(coalesce(
+                nullif(c.category, ''),
+                nullif(c.category_normalized, ''),
+                nullif(t.raw_payload->>'_category_normalized', ''),
+                nullif(t.raw_category, ''),
+                ''
+            ))) in ('makanan', 'food')
+                then 'Food'
+            when lower(trim(coalesce(
+                nullif(c.category, ''),
+                nullif(c.category_normalized, ''),
+                nullif(t.raw_payload->>'_category_normalized', ''),
+                nullif(t.raw_category, ''),
+                ''
+            ))) in ('transport', 'transportasi')
+                then 'Transportasi Rutin'
+            else coalesce(
+                nullif(c.category, ''),
+                nullif(c.category_normalized, ''),
+                nullif(t.raw_payload->>'_category_normalized', ''),
+                nullif(t.raw_category, ''),
+                'Uncategorized'
+            )
+        end
     """
 
 
@@ -1032,13 +1097,14 @@ def get_budget_spending_by_category(
 
 def get_available_budget_categories(connection, *, workspace_id: str) -> list[str]:
     financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
     rows = _fetch_all(
         connection,
         f"""
         select category
         from (
             select
-                trim(t.raw_category) as category,
+                {category_expr} as category,
                 {financial_type_expr} as financial_type
             from transactions t
             left join transaction_classifications c
@@ -1057,7 +1123,7 @@ def get_available_budget_categories(connection, *, workspace_id: str) -> list[st
     categories_by_key = {}
 
     for row in rows:
-        category = str(row["category"] or "").strip()
+        category = canonicalize_category(row["category"], fallback="")
 
         if not category:
             continue
@@ -1389,7 +1455,7 @@ def get_transactions(
                 t.transaction_date,
                 t.title,
                 {category_expr} as category,
-                {_category_label_expr().replace("raw_payload", "t.raw_payload").replace("raw_category", "t.raw_category")} as raw_category,
+                {_category_label_expr("t")} as raw_category,
                 {_owner_name_expr("t")} as name,
                 t.amount,
                 t.created_at,
@@ -2187,23 +2253,35 @@ def get_budget_forecast(connection, *, workspace_id: str, year=None, month=None)
         year=selected_year,
         month=selected_month,
     )
-    history_by_category = get_budget_history_by_category(
+    raw_history_by_category = get_budget_history_by_category(
         connection,
         workspace_id=workspace_id,
         periods=history_periods,
     )
+    history_by_category = defaultdict(list)
+    for category, rows in raw_history_by_category.items():
+        history_by_category[canonicalize_category(category)].extend(rows)
+    history_by_category = dict(history_by_category)
     history_by_key = {
         category.strip().casefold(): rows
         for category, rows in history_by_category.items()
     }
-    spending_by_category = {
-        row["Kategori"]: float(row["Harga"] or 0)
-        for row in spending_rows
-    }
-    budget_by_category = {
-        budget["category"]: budget
-        for budget in budgets
-    }
+    spending_by_category = defaultdict(float)
+    for row in spending_rows:
+        spending_by_category[canonicalize_category(row["Kategori"])] += float(
+            row["Harga"] or 0
+        )
+
+    budget_by_category = {}
+    for budget in budgets:
+        category = canonicalize_category(budget["category"])
+        if category in budget_by_category:
+            existing = budget_by_category[category]
+            existing["amount"] = float(existing["amount"] or 0) + float(
+                budget["amount"] or 0
+            )
+        else:
+            budget_by_category[category] = {**budget, "category": category}
     category_names = sorted(
         {*budget_by_category.keys(), *spending_by_category.keys()},
         key=lambda value: value.lower(),

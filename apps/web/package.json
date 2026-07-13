@@ -12,7 +12,7 @@
     "build:local-dev": "node scripts/validate-env.mjs --mode local-dev && vite build --mode local-dev",
     "build:local-prod": "node scripts/validate-env.mjs --mode local-prod && vite build --mode local-prod",
     "lint": "eslint .",
-    "test": "node --test src/utils/adminUsersProvisioning.test.js src/utils/environment.test.js src/utils/settingsDirtyState.test.js src/utils/uatCredentials.test.js",
+    "test": "node --test src/utils/adminUsersProvisioning.test.js src/utils/environment.test.js src/utils/periodState.test.js src/utils/settingsDirtyState.test.js src/utils/uatCredentials.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

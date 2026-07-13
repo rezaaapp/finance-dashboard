@@ -82,7 +82,7 @@ const normalizeCategoryOptions = (categories) => {
 
 const DEFAULT_BUDGET_CATEGORIES = [
   "Food",
-  "Groceries",
+  "Grocery",
   "Transport",
   "Shopping",
   "Entertainment",

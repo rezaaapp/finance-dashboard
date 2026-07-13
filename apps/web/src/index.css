@@ -427,6 +427,136 @@ textarea:focus-visible,
   box-shadow: var(--shadow-focus);
 }
 
+.period-selector {
+  position: relative;
+  min-width: 0;
+}
+
+.period-selector__trigger {
+  min-height: 44px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  padding: 0 14px;
+  font-weight: 700;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.period-selector__trigger:hover,
+.period-selector__trigger:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.period-selector__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-selector__panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 60;
+  width: min(92vw, 420px);
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-panel);
+  box-shadow: var(--shadow-panel);
+  padding: 16px;
+}
+
+.period-selector__header {
+  display: grid;
+  gap: 2px;
+}
+
+.period-selector__section-label {
+  margin-bottom: 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.period-selector__preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.period-selector__option {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-panel-soft);
+  color: var(--color-text);
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.period-selector__option:hover,
+.period-selector__option:focus-visible,
+.period-selector__option.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+}
+
+.period-selector__month-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.period-selector__month-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .period-selector {
+    position: static;
+  }
+
+  .period-selector__panel {
+    position: fixed;
+    inset: auto 12px 88px;
+    width: auto;
+    max-height: calc(100vh - 120px);
+    overflow: auto;
+  }
+
+  .period-selector__preset-grid,
+  .period-selector__month-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .primary-button,
 .secondary-button,
 .theme-toggle {
