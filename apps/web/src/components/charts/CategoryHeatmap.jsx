@@ -119,12 +119,34 @@ const formatPeriod = (periodString = "") => {
   );
 };
 
+const normalizeCategoryKey = (value = "") => (
+  String(value || "").trim().toLowerCase()
+);
+
+const financialTypeLabels = {
+  need: "Need",
+  want: "Want",
+  saving: "Saving",
+  income: "Income",
+  uncategorized: "Uncategorized",
+};
+
+const financialTypeClassNames = {
+  need: "bg-[var(--color-accent-bg)] text-accent",
+  want: "bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]",
+  saving: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+  income: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
+  uncategorized: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-200",
+};
+
 const TransactionDetailModal = memo(({
   isOpen,
   onClose,
   category,
   period,
   transactions,
+  isLoading,
+  error,
   privacyMode,
 }) => {
   const totalAmount = useMemo(() => (
@@ -176,7 +198,15 @@ const TransactionDetailModal = memo(({
         </div>
 
         <div className="px-5 py-4">
-          {transactions.length === 0 ? (
+          {isLoading ? (
+            <div className="empty-state-panel p-5 text-center text-sm">
+              Menyiapkan detail transaksi...
+            </div>
+          ) : error ? (
+            <div className="alert-panel alert-panel--danger p-4 text-sm">
+              {error}
+            </div>
+          ) : transactions.length === 0 ? (
             <div className="empty-state-panel p-5 text-center text-sm">
               No transaction records found for this period.
             </div>
@@ -184,6 +214,11 @@ const TransactionDetailModal = memo(({
             <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
               {transactions.map((transaction, index) => {
                 const isDivya = transaction.user === "Divya";
+                const financialType = transaction.financial_type || "uncategorized";
+                const financialTypeLabel = financialTypeLabels[financialType]
+                  || financialTypeLabels.uncategorized;
+                const financialTypeClassName = financialTypeClassNames[financialType]
+                  || financialTypeClassNames.uncategorized;
 
                 return (
                   <div
@@ -206,6 +241,11 @@ const TransactionDetailModal = memo(({
                             }`}
                           >
                             {transaction.user}
+                          </span>
+                          <span
+                            className={`rounded-full px-2.5 py-1 font-bold ${financialTypeClassName}`}
+                          >
+                            {financialTypeLabel}
                           </span>
                         </div>
                       </div>
@@ -251,6 +291,7 @@ TransactionDetailModal.displayName = "TransactionDetailModal";
 const CategoryHeatmap = ({
   data,
   rawTransactions = [],
+  onLoadCellTransactions,
   theme = "dark",
   privacyMode,
 }) => {
@@ -258,6 +299,8 @@ const CategoryHeatmap = ({
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState("");
   const [selectedTransactions, setSelectedTransactions] = useState([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
   const displayPrivacyMode = privacyMode === "guest" ? "normal" : privacyMode;
   const rows = useMemo(() => (
     [...(data?.rows ?? [])]
@@ -310,11 +353,20 @@ const CategoryHeatmap = ({
 
     rawTransactions.forEach((transaction) => {
       const periodString = transaction.date.slice(0, 7);
-      const key = `${transaction.category}__${periodString}`;
-      const currentTransactions = grouped.get(key) ?? [];
+      const categoryKeys = [
+        transaction.category,
+        transaction.raw_category,
+      ]
+        .map(normalizeCategoryKey)
+        .filter(Boolean);
 
-      currentTransactions.push(transaction);
-      grouped.set(key, currentTransactions);
+      [...new Set(categoryKeys)].forEach((categoryKey) => {
+        const key = `${categoryKey}__${periodString}`;
+        const currentTransactions = grouped.get(key) ?? [];
+
+        currentTransactions.push(transaction);
+        grouped.set(key, currentTransactions);
+      });
     });
 
     return grouped;
@@ -322,17 +374,37 @@ const CategoryHeatmap = ({
 
   const closeModal = useCallback(() => {
     setIsOpen(false);
+    setDetailError("");
+    setDetailLoading(false);
   }, []);
 
-  const handleCellClick = useCallback((category, periodString) => {
-    const filtered = transactionsByCell.get(`${category}__${periodString}`)
+  const handleCellClick = useCallback(async (category, periodString) => {
+    const categoryKey = normalizeCategoryKey(category);
+    const filtered = transactionsByCell.get(`${categoryKey}__${periodString}`)
       ?? [];
 
     setSelectedCategory(category);
     setSelectedPeriod(periodString);
     setSelectedTransactions(filtered);
+    setDetailError("");
     setIsOpen(true);
-  }, [transactionsByCell]);
+
+    if (filtered.length > 0 || !onLoadCellTransactions) {
+      return;
+    }
+
+    try {
+      setDetailLoading(true);
+      const loadedTransactions = await onLoadCellTransactions(category, periodString);
+      setSelectedTransactions(loadedTransactions);
+    } catch {
+      setDetailError(
+        "Detail transaksi belum dapat dimuat. Coba buka sel ini lagi."
+      );
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [onLoadCellTransactions, transactionsByCell]);
 
   const handleCellKeyDown = useCallback((event, category, periodString) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -543,6 +615,8 @@ const CategoryHeatmap = ({
         category={selectedCategory}
         period={selectedPeriod}
         transactions={selectedTransactions}
+        isLoading={detailLoading}
+        error={detailError}
         privacyMode={privacyMode}
       />
     </div>

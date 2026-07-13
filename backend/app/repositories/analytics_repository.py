@@ -62,20 +62,144 @@ def _category_label_expr():
 
 
 def _classification_financial_type_expr():
+    raw_category_expr = "lower(trim(coalesce(t.raw_category, '')))"
+    category_expr = """
+        lower(
+            trim(
+                coalesce(
+                    c.category_normalized,
+                    c.category,
+                    t.raw_payload->>'_category_normalized',
+                    t.raw_category,
+                    ''
+                )
+            )
+        )
+    """
+    explicit_expense_condition = f"""
+        {category_expr} in (
+            'tagihan non rutin',
+            'tagihan tahunan',
+            'gift',
+            'transportasi non rutin'
+        )
+    """
+    income_condition = f"""
+        not ({explicit_expense_condition}) and (
+            t.direction = 'income'
+            or {category_expr} in (
+                'income',
+                'gaji',
+                'salary',
+                'bonus',
+                'pendapatan',
+                'pemasukan'
+            )
+        )
+    """
+    saving_condition = f"""
+        not ({explicit_expense_condition}) and (
+            t.direction = 'saving_transfer'
+            or {category_expr} in (
+                'saving',
+                'tabungan',
+                'investasi',
+                'reksadana',
+                'saham',
+                'emas',
+                'deposito',
+                'dana darurat',
+                'rumah',
+                'pendidikan',
+                'mobil',
+                'umroh'
+            )
+        )
+    """
+    need_condition = f"""
+        not ({explicit_expense_condition}) and (
+            {category_expr} like '%%groceries%%'
+            or {category_expr} like '%%grocery%%'
+            or {category_expr} like '%%belanja bulanan%%'
+            or {category_expr} like '%%makanan pokok%%'
+            or {category_expr} like '%%transportasi%%'
+            or {category_expr} like '%%bensin%%'
+            or {category_expr} like '%%parkir%%'
+            or {category_expr} like '%%tagihan%%'
+            or {category_expr} like '%%bills%%'
+            or {category_expr} like '%%listrik%%'
+            or {category_expr} like '%%internet%%'
+            or {category_expr} like '%%sewa%%'
+            or {category_expr} like '%%apartemen%%'
+            or {category_expr} like '%%housing%%'
+            or {category_expr} like '%%living%%'
+            or {category_expr} like '%%household%%'
+            or {category_expr} like '%%rumah tangga%%'
+            or {category_expr} like '%%laundry%%'
+            or {category_expr} like '%%kesehatan%%'
+            or {category_expr} like '%%health%%'
+            or {category_expr} like '%%obat%%'
+            or {category_expr} like '%%dokter%%'
+            or {category_expr} like '%%asuransi%%'
+            or {category_expr} like '%%ibadah%%'
+        )
+    """
+    want_condition = f"""
+        not ({explicit_expense_condition}) and (
+            {category_expr} like '%%food%%'
+            or {category_expr} like '%%makanan%%'
+            or {category_expr} like '%%jajan%%'
+            or {category_expr} like '%%resto%%'
+            or {category_expr} like '%%restaurant%%'
+            or {category_expr} like '%%cafe%%'
+            or {category_expr} like '%%hiburan%%'
+            or {category_expr} like '%%entertainment%%'
+            or {category_expr} like '%%fashion%%'
+            or {category_expr} like '%%skin care%%'
+            or {category_expr} like '%%skincare%%'
+            or {category_expr} like '%%kosmetik%%'
+            or {category_expr} like '%%gift%%'
+            or {category_expr} like '%%shopping%%'
+            or {category_expr} like '%%subscription%%'
+            or {category_expr} like '%%transportasi non rutin%%'
+            or {category_expr} like '%%travel%%'
+            or {category_expr} like '%%liburan%%'
+            or {category_expr} like '%%pacaran%%'
+        )
+    """
+
     return """
         case
             when c.financial_type in (
-                'need', 'want', 'saving', 'income', 'uncategorized'
+                'need', 'want', 'saving', 'income'
             ) then c.financial_type
+            when lower(c.allocation_type) = 'needs' then 'need'
+            when lower(c.allocation_type) = 'wants' then 'want'
+            when lower(c.allocation_type) = 'savings' then 'saving'
             when c.direction = 'income' then 'income'
             when c.direction = 'saving_transfer' then 'saving'
-            when c.direction = 'expense' then 'uncategorized'
-            when t.direction = 'income' then 'income'
-            when t.direction = 'saving_transfer' then 'saving'
+            when {category_expr} in (
+                'tagihan non rutin',
+                'tagihan tahunan'
+            ) then 'need'
+            when {category_expr} in (
+                'gift',
+                'transportasi non rutin'
+            ) then 'want'
+            when {income_condition} then 'income'
+            when {saving_condition} then 'saving'
+            when {need_condition} then 'need'
+            when {want_condition} then 'want'
             when t.direction = 'expense' then 'uncategorized'
             else 'uncategorized'
         end
-    """
+    """.format(
+        category_expr=category_expr,
+        income_condition=income_condition,
+        saving_condition=saving_condition,
+        need_condition=need_condition,
+        want_condition=want_condition,
+    )
 
 
 def _classification_category_expr():
@@ -1094,22 +1218,59 @@ def get_top_spending(connection, *, workspace_id: str, year=None, month=None, li
 
 
 def get_transactions(connection, *, workspace_id: str, year=None, month=None, name=None):
-    where_clause, params = _filters(year, month, None, name)
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
+
+    if name:
+        clauses.append(f"{_owner_name_expr('t')} = %s")
+        params.append(normalize_owner_name(name))
+
+    financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
     rows = _fetch_all(
         connection,
         f"""
         select
             transaction_date,
             title,
-            {_category_label_expr()} as category,
-            {_owner_name_expr()} as name,
+            category,
+            raw_category,
+            financial_type,
+            name,
             amount
-        from transactions
-        where {where_clause}
+        from (
+            select
+                t.transaction_date,
+                t.title,
+                {category_expr} as category,
+                {_category_label_expr().replace("raw_payload", "t.raw_payload").replace("raw_category", "t.raw_category")} as raw_category,
+                {_owner_name_expr("t")} as name,
+                t.amount,
+                t.created_at,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where {" and ".join(clauses)}
+        ) transaction_rows
+        where financial_type in ('need', 'want', 'uncategorized')
         order by transaction_date desc, created_at desc
-        limit 500
+        limit 5000
         """,
-        (workspace_id, *params),
+        tuple(params),
     )
 
     return [
@@ -1117,6 +1278,8 @@ def get_transactions(connection, *, workspace_id: str, year=None, month=None, na
             "date": row["transaction_date"].isoformat()
             if row["transaction_date"] else "",
             "category": row["category"],
+            "raw_category": row["raw_category"],
+            "financial_type": row["financial_type"],
             "item_name": row["title"],
             "user": row["name"] or "-",
             "amount": float(row["amount"] or 0),
@@ -1126,20 +1289,51 @@ def get_transactions(connection, *, workspace_id: str, year=None, month=None, na
 
 
 def get_category_trends(connection, *, workspace_id: str, year=None, month=None, name=None):
-    where_clause, params = _filters(year, month, "expense", name)
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
+        year=year,
+        month=month,
+    )
+
+    if name:
+        clauses.append(f"{_owner_name_expr('t')} = %s")
+        params.append(normalize_owner_name(name))
+
+    financial_type_expr = _classification_financial_type_expr()
+    category_expr = _classification_category_expr()
     rows = _fetch_all(
         connection,
         f"""
         select
-            {_category_label_expr()} as category,
-            {_month_expr()} as bulan,
+            category,
+            bulan,
             coalesce(sum(amount), 0) as total
-        from transactions
-        where {where_clause}
+        from (
+            select
+                {category_expr} as category,
+                to_char(t.transaction_date, 'YYYY-MM') as bulan,
+                t.amount,
+                {financial_type_expr} as financial_type
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where {" and ".join(clauses)}
+        ) category_transactions
+        where financial_type in ('need', 'want', 'uncategorized')
         group by 1, 2
         order by 2, 1
         """,
-        (workspace_id, *params),
+        tuple(params),
     )
     months = sorted({row["bulan"] for row in rows})
     categories = sorted({row["category"] for row in rows})
@@ -1313,23 +1507,74 @@ def get_source_dana_analytics(connection, *, workspace_id: str, year=None, month
 
 
 def get_monthly_allocation(connection, *, workspace_id: str, year=None, month=None, name=None):
-    spending = get_monthly_totals(
-        connection,
-        workspace_id=workspace_id,
+    financial_type_expr = _classification_financial_type_expr()
+    clauses = [
+        "t.workspace_id = %s",
+        "t.transaction_date is not null",
+        "t.transaction_date <= current_date",
+    ]
+    params = [workspace_id]
+
+    _append_period_filter(
+        clauses,
+        params,
+        date_expr="t.transaction_date",
         year=year,
         month=month,
-        direction="expense",
-        name=name,
     )
 
+    if name:
+        clauses.append(f"{_owner_name_expr('t')} = %s")
+        params.append(normalize_owner_name(name))
+
+    rows = _fetch_all(
+        connection,
+        f"""
+        with classified as (
+            select
+                to_char(t.transaction_date, 'YYYY-MM') as month,
+                {financial_type_expr} as financial_type,
+                coalesce(t.amount, 0) as amount
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where {" and ".join(clauses)}
+        )
+        select
+            month,
+            financial_type,
+            coalesce(sum(amount), 0) as total
+        from classified
+        where financial_type in ('need', 'want', 'saving')
+        group by 1, 2
+        order by 1, 2
+        """,
+        tuple(params),
+    )
+
+    allocation_by_month = defaultdict(lambda: {
+        "Needs": 0.0,
+        "Wants": 0.0,
+        "Savings": 0.0,
+    })
+    labels = {
+        "need": "Needs",
+        "want": "Wants",
+        "saving": "Savings",
+    }
+
+    for row in rows:
+        month_key = row["month"]
+        allocation_by_month[month_key]["month"] = month_key
+        allocation_by_month[month_key][labels[row["financial_type"]]] = float(
+            row["total"] or 0
+        )
+
     return [
-        {
-            "month": row["bulan"],
-            "Needs": row["total"],
-            "Wants": 0,
-            "Savings": 0,
-        }
-        for row in spending
+        allocation_by_month[month_key]
+        for month_key in sorted(allocation_by_month)
     ]
 
 

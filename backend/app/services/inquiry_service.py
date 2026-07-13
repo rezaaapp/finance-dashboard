@@ -72,6 +72,7 @@ def serialize_transaction(row: dict) -> dict:
         if row["transaction_date"] else "",
         "transaction_name": row["title"],
         "category": row["category"] or "-",
+        "financial_type": row.get("financial_type") or "uncategorized",
         "amount": _as_float(row["amount"]),
         "source_dana": row["source_fund"] or "-",
         **({"note": row["note"]} if "note" in row else {}),

@@ -385,6 +385,13 @@ def build_dashboard_view_model_payload(
                 year=selected_year,
                 month=selected_month,
             ),
+            "monthly_allocation": analytics.get_monthly_allocation(
+                connection,
+                workspace_id=workspace_id,
+                year=selected_year,
+                month=selected_month,
+                name=analytics_user_name,
+            ),
             "budget_forecast": analytics.get_budget_forecast(
                 connection,
                 workspace_id=workspace_id,
@@ -406,6 +413,7 @@ def build_dashboard_view_model_payload(
             "transactions": [],
             "category_trends": {},
             "personal_analytics": {},
+            "monthly_allocation": [],
             "budget_forecast": {},
             "anomalies": [],
         })

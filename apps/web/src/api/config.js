@@ -94,4 +94,9 @@ export const INQUIRY_API_URL = DASHBOARD_API_URL.replace(
   "/api/inquiry"
 );
 
+export const CLASSIFICATIONS_API_URL = DASHBOARD_API_URL.replace(
+  /\/api\/dashboard$/,
+  "/api/classifications"
+);
+
 export const AUTH_BASE_URL = AUTH_API_URL.replace(/\/api\/auth$/, "/auth");

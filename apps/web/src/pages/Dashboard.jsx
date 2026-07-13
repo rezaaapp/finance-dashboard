@@ -49,6 +49,7 @@ import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
 import ImportTransactions from "./ImportTransactions";
+import ReviewUncategorized from "./ReviewUncategorized";
 import SearchPage from "./Search";
 import { formatPrivateRupiah, PRIVACY_MODES } from "../utils/privacy";
 
@@ -93,6 +94,33 @@ const hasMonthlyFinancialTypeData = (rows = []) => (
       Number(row?.[key] || 0) > 0
     ))
   ))
+);
+
+const buildMonthlyAllocationFromFinancialTypes = (rows = [], year = "") => (
+  rows
+    .map((row) => {
+      const monthNumber = Number(row?.month || 0);
+
+      if (!year || !monthNumber) {
+        return null;
+      }
+
+      return {
+        month: `${year}-${String(monthNumber).padStart(2, "0")}`,
+        Needs: Number(row?.need || 0),
+        Wants: Number(row?.want || 0),
+        Savings: Number(row?.saving || 0),
+      };
+    })
+    .filter((row) => row && (
+      row.Needs > 0
+      || row.Wants > 0
+      || row.Savings > 0
+    ))
+);
+
+const normalizeCategoryKey = (value = "") => (
+  String(value || "").trim().toLowerCase()
 );
 
 const hasSummaryData = (summary = {}) => (
@@ -194,6 +222,10 @@ const getInitialView = () => {
     return "search";
   }
 
+  if (window.location.pathname.startsWith("/settings/uncategorized")) {
+    return "uncategorized-review";
+  }
+
   if (window.location.pathname.startsWith("/settings")) {
     return "configuration";
   }
@@ -245,13 +277,22 @@ const PRIMARY_NAVIGATION_ITEMS = [
     title: "Settings",
     description: "Kelola workspace, koneksi, dan preferensi penggunaan Omon.",
     icon: Settings,
-    isActive: (activeView) => activeView === "configuration" || activeView === "admin",
+    isActive: (activeView) => (
+      activeView === "configuration"
+      || activeView === "admin"
+      || activeView === "uncategorized-review"
+    ),
   },
 ];
 
 const ADMIN_PAGE_METADATA = {
   title: "User Management",
   description: "Kelola akses pengguna untuk kebutuhan operasional internal.",
+};
+
+const REVIEW_UNCATEGORIZED_METADATA = {
+  title: "Review Uncategorized",
+  description: "Kelola transaksi yang belum punya klasifikasi agar insight lebih rapi.",
 };
 
 const LockedFeature = ({ title, message }) => (
@@ -428,6 +469,19 @@ const DesktopNavigation = ({
               >
                 Google Sheets
               </button>
+
+              <p className="mt-3 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Classification
+              </p>
+
+              <button
+                type="button"
+                onClick={() => onNavigate("uncategorized-review")}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-soft transition-colors duration-200 hover:bg-[var(--color-panel-hover)] hover:text-accent"
+                aria-current={activeView === "uncategorized-review" ? "page" : undefined}
+              >
+                Review Uncategorized
+              </button>
             </div>
           </div>
         ) : (
@@ -506,6 +560,23 @@ const DesktopNavigation = ({
               }`}
               >
                 Google Sheets
+              </button>
+
+              <p className="mt-4 mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Classification
+              </p>
+
+              <button
+                type="button"
+                onClick={() => onNavigate("uncategorized-review")}
+                className={`w-full rounded-lg py-2 pl-9 pr-4 text-left text-sm transition-colors duration-200 ${
+                activeView === "uncategorized-review"
+                  ? "bg-[var(--color-accent-bg)] text-accent"
+                  : "text-[rgba(255,255,255,0.72)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white"
+              }`}
+                aria-current={activeView === "uncategorized-review" ? "page" : undefined}
+              >
+                Review Uncategorized
               </button>
             </div>
           </div>
@@ -724,7 +795,6 @@ const DashboardHome = ({
   income,
   monthlyFinancialTypes,
   onOpenSettings,
-  onRefresh,
   privacyMode,
   ruleBasedInsights,
   saving,
@@ -756,8 +826,6 @@ const DashboardHome = ({
           description="Coba pilih periode lain atau sinkronkan Google Sheet agar Dashboard mulai menampilkan pola keuanganmu."
           actionLabel="Buka Settings"
           onAction={onOpenSettings}
-          secondaryLabel="Refresh Dashboard"
-          onSecondaryAction={onRefresh}
           icon={Database}
         />
       </div>
@@ -787,14 +855,6 @@ const DashboardHome = ({
             </div>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <button
-                type="button"
-                onClick={onRefresh}
-                className="primary-button rounded-lg px-4 py-2 text-sm font-bold"
-              >
-                <RefreshCw size={16} />
-                Refresh data
-              </button>
               <button
                 type="button"
                 onClick={onOpenSettings}
@@ -1402,8 +1462,20 @@ const Dashboard = ({
   const handleRefreshData = async () => {
     try {
       setLoading(true);
-      await refreshDashboardData(selectedYear);
+      await Promise.all([
+        loadWorkspaceOptions(activeWorkspaceId),
+        loadPendingInvitations(),
+        refreshDashboardData(selectedYear),
+      ]);
       await fetchDashboardData(selectedYear, selectedMonth);
+
+      if (activeView === "analytics") {
+        setAnalyticsRetryKey((current) => current + 1);
+      }
+
+      if (activeView === "budgeting") {
+        await refreshBudgetForecast();
+      }
     } catch (err) {
       console.error("Failed to refresh dashboard data.");
 
@@ -1453,13 +1525,23 @@ const Dashboard = ({
       setTopSpending(dashboardData.top_spending || []);
       setCategoryData(dashboardData.spending_by_category || []);
       setFinancialTypes(dashboardData.financial_types || []);
-      setMonthlyFinancialTypes(dashboardData.monthly_financial_types || []);
+      const nextMonthlyFinancialTypes = dashboardData.monthly_financial_types || [];
+      const derivedMonthlyAllocation = buildMonthlyAllocationFromFinancialTypes(
+        nextMonthlyFinancialTypes,
+        year
+      );
+      setMonthlyFinancialTypes(nextMonthlyFinancialTypes);
       setRuleBasedInsights(dashboardData.rule_based_insights || {});
       setGroceryVsFood(dashboardData.grocery_vs_food || []);
       setCategoryHeatmap(dashboardData.category_heatmap || {});
       setRawTransactions(dashboardData.transactions || []);
       setCategoryTrends(dashboardData.category_trends || {});
       setPersonalAnalytics(dashboardData.personal_analytics || {});
+      setMonthlyAllocation(
+        derivedMonthlyAllocation.length
+          ? derivedMonthlyAllocation
+          : dashboardData.monthly_allocation || []
+      );
       setBudgetForecast(dashboardData.budget_forecast || {});
       setAnomalies(dashboardData.anomalies || []);
       setFinancialInsightsError("");
@@ -1503,6 +1585,31 @@ const Dashboard = ({
       setBudgetForecast({});
     }
   }, [hasPremiumAccess, onLogout, selectedMonth, selectedYear]);
+
+  const loadHeatmapCellTransactions = useCallback(async (
+    category,
+    periodString
+  ) => {
+    const [yearValue, monthValue] = String(periodString || "").split("-");
+    const analyticsUserName = selectedAnalyticsUser === "all"
+      ? ""
+      : selectedAnalyticsUser;
+    const transactions = await getTransactions(
+      yearValue || selectedYear,
+      monthValue || "",
+      analyticsUserName
+    );
+    const categoryKey = normalizeCategoryKey(category);
+    const periodKey = String(periodString || "").slice(0, 7);
+
+    return (transactions || []).filter((transaction) => (
+      String(transaction.date || "").slice(0, 7) === periodKey
+      && [
+        transaction.category,
+        transaction.raw_category,
+      ].some((value) => normalizeCategoryKey(value) === categoryKey)
+    ));
+  }, [selectedAnalyticsUser, selectedYear]);
 
   // =========================
   // INITIAL DATA
@@ -1609,21 +1716,16 @@ const Dashboard = ({
       ? ""
       : selectedAnalyticsUser;
 
+    const getFulfilledValue = (result, fallback) => (
+      result.status === "fulfilled" ? result.value : fallback
+    );
+
     const fetchAnalyticsData = async () => {
       try {
         setAnalyticsLoading(true);
         setAnalyticsError("");
 
-        const [
-          personalAnalyticsData,
-          sourceDanaAnalyticsData,
-          monthlyAllocationData,
-          groceryVsFoodData,
-          categoryHeatmapData,
-          transactionsData,
-          categoryTrendsData,
-          anomaliesData,
-        ] = await Promise.all([
+        const results = await Promise.allSettled([
           getPersonalAnalytics(selectedYear, selectedMonth),
           getSourceDanaAnalytics(
             selectedYear,
@@ -1641,17 +1743,72 @@ const Dashboard = ({
           getCategoryTrends(selectedYear, selectedMonth, analyticsUserName),
           getAnomalies(selectedYear, selectedMonth),
         ]);
+        const unauthorizedResult = results.find((result) => (
+          result.status === "rejected"
+          && result.reason?.response?.status === 401
+        ));
+
+        if (unauthorizedResult) {
+          onLogout();
+          return;
+        }
+
+        const [
+          personalAnalyticsResult,
+          sourceDanaAnalyticsResult,
+          monthlyAllocationResult,
+          groceryVsFoodResult,
+          categoryHeatmapResult,
+          transactionsResult,
+          categoryTrendsResult,
+          anomaliesResult,
+        ] = results;
+        const hasPartialFailure = results.some((result) => result.status === "rejected");
 
         if (isMounted) {
-          setPersonalAnalytics(personalAnalyticsData);
-          setSourceDanaAnalytics(sourceDanaAnalyticsData);
-          setMonthlyAllocation(monthlyAllocationData);
-          setGroceryVsFood(groceryVsFoodData);
-          setCategoryHeatmap(categoryHeatmapData);
-          setRawTransactions(transactionsData);
-          setCategoryTrends(categoryTrendsData);
-          setAnomalies(anomaliesData);
-          setAnalyticsError("");
+          setPersonalAnalytics((currentData) => getFulfilledValue(
+            personalAnalyticsResult,
+            currentData
+          ));
+          setSourceDanaAnalytics((currentData) => getFulfilledValue(
+            sourceDanaAnalyticsResult,
+            currentData
+          ));
+          setMonthlyAllocation((currentData) => {
+            const derivedMonthlyAllocation = buildMonthlyAllocationFromFinancialTypes(
+              monthlyFinancialTypes,
+              selectedYear
+            );
+
+            return derivedMonthlyAllocation.length
+              ? derivedMonthlyAllocation
+              : getFulfilledValue(monthlyAllocationResult, currentData);
+          });
+          setGroceryVsFood((currentData) => getFulfilledValue(
+            groceryVsFoodResult,
+            currentData
+          ));
+          setCategoryHeatmap((currentData) => getFulfilledValue(
+            categoryHeatmapResult,
+            currentData
+          ));
+          setRawTransactions((currentData) => getFulfilledValue(
+            transactionsResult,
+            currentData
+          ));
+          setCategoryTrends((currentData) => getFulfilledValue(
+            categoryTrendsResult,
+            currentData
+          ));
+          setAnomalies((currentData) => getFulfilledValue(
+            anomaliesResult,
+            currentData
+          ));
+          setAnalyticsError(
+            hasPartialFailure
+              ? "Sebagian data Analytics belum dapat dimuat. Data yang tersedia tetap ditampilkan."
+              : ""
+          );
         }
       } catch (err) {
         console.error("Failed to fetch analytics data.");
@@ -1688,6 +1845,7 @@ const Dashboard = ({
     activeView,
     analyticsRetryKey,
     hasPremiumAccess,
+    monthlyFinancialTypes,
     onLogout,
     selectedAnalyticsUser,
     selectedMonth,
@@ -1790,8 +1948,10 @@ const Dashboard = ({
 
   const currentPage = activeView === "admin"
     ? ADMIN_PAGE_METADATA
-    : PRIMARY_NAVIGATION_ITEMS.find((item) => getNavigationItemActive(item, activeView))
-      || PRIMARY_NAVIGATION_ITEMS[0];
+    : activeView === "uncategorized-review"
+      ? REVIEW_UNCATEGORIZED_METADATA
+      : PRIMARY_NAVIGATION_ITEMS.find((item) => getNavigationItemActive(item, activeView))
+        || PRIMARY_NAVIGATION_ITEMS[0];
   const analyticsPeriodLabel = getPeriodLabel(selectedYear, selectedMonth);
   const analyticsUserLabel = getAnalyticsUserLabel(
     personalAnalytics,
@@ -1873,7 +2033,7 @@ const Dashboard = ({
             <EnvironmentBadge systemInfoState={systemInfoState} />
           </div>
 
-          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto_auto]">
+          <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-[minmax(180px,260px)_minmax(120px,140px)_minmax(150px,170px)_auto_auto_auto] sm:items-center xl:w-auto xl:grid-cols-[minmax(220px,280px)_minmax(120px,140px)_minmax(150px,170px)_auto_minmax(150px,auto)_auto]">
             <WorkspaceSwitcher
               workspaces={workspaces}
               activeWorkspaceId={activeWorkspaceId}
@@ -1939,11 +2099,12 @@ const Dashboard = ({
             <button
               type="button"
               onClick={handleRefreshData}
-              className="primary-button h-11 min-w-11 w-full rounded-lg px-4 py-2 font-semibold sm:w-11 sm:px-0"
+              className="primary-button h-11 min-w-11 w-full rounded-lg px-4 py-2 font-semibold sm:w-auto"
               aria-label="Refresh data"
               title="Refresh data"
             >
               <RefreshCw size={18} />
+              <span className="hidden lg:inline">Refresh data</span>
             </button>
 
             <div className="col-span-2 flex justify-end sm:col-span-6 xl:col-span-1">
@@ -1988,7 +2149,6 @@ const Dashboard = ({
             income={income}
             monthlyFinancialTypes={monthlyFinancialTypes}
             onOpenSettings={() => setActiveView("configuration")}
-            onRefresh={handleRefreshData}
             privacyMode={privacyMode}
             ruleBasedInsights={ruleBasedInsights}
             saving={saving}
@@ -2135,6 +2295,7 @@ const Dashboard = ({
                         <CategoryHeatmap
                           data={categoryHeatmap}
                           rawTransactions={rawTransactions}
+                          onLoadCellTransactions={loadHeatmapCellTransactions}
                           theme={theme}
                           privacyMode={privacyMode}
                         />
@@ -2188,6 +2349,11 @@ const Dashboard = ({
           />
         ) : activeView === "import" ? (
           <ImportTransactions privacyMode={privacyMode} />
+        ) : activeView === "uncategorized-review" ? (
+          <ReviewUncategorized
+            onUnauthorized={onLogout}
+            privacyMode={privacyMode}
+          />
         ) : (
           <Configuration
             key={activeWorkspaceId || "default-workspace"}

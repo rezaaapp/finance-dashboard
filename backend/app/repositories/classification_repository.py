@@ -1,5 +1,7 @@
 from psycopg.rows import dict_row
 
+from app.repositories.analytics_repository import _classification_financial_type_expr
+
 
 def _legacy_allocation_type(financial_type: str) -> str:
     if financial_type == "want":
@@ -339,12 +341,67 @@ def get_uncategorized_transaction_groups(
     *,
     workspace_id: str,
     limit: int = 100,
+    sample_limit: int = 5,
 ) -> list[dict]:
     safe_limit = max(1, min(int(limit or 100), 500))
+    safe_sample_limit = max(1, min(int(sample_limit or 5), 20))
+    financial_type_expr = _classification_financial_type_expr()
+
+    def fetch_samples(cursor, *, group_type: str, pattern: str) -> list[dict]:
+        conditions = {
+            "raw_category": "lower(trim(coalesce(t.raw_category, ''))) = lower(trim(%s))",
+            "title_keyword": "lower(split_part(trim(coalesce(t.title, '')), ' ', 1)) = lower(trim(%s))",
+            "source_fund": "lower(trim(coalesce(t.source_fund, ''))) = lower(trim(%s))",
+        }
+        condition = conditions.get(group_type)
+
+        if not condition:
+            return []
+
+        cursor.execute(
+            f"""
+            select
+                t.id,
+                t.transaction_date,
+                t.title,
+                t.raw_category,
+                t.source_fund,
+                t.user_name,
+                t.amount
+            from transactions t
+            left join transaction_classifications c
+              on c.workspace_id = t.workspace_id
+             and c.transaction_id = t.id
+             and c.is_current = true
+            where t.workspace_id = %s
+              and t.transaction_date is not null
+              and t.transaction_date <= current_date
+              and ({financial_type_expr}) = 'uncategorized'
+              and {condition}
+            order by t.transaction_date desc nulls last, abs(t.amount) desc, t.created_at desc
+            limit %s
+            """,
+            (workspace_id, pattern, safe_sample_limit),
+        )
+
+        return [
+            {
+                "id": str(row["id"]),
+                "date": row["transaction_date"].isoformat()
+                if row["transaction_date"]
+                else "",
+                "title": row["title"] or "-",
+                "raw_category": row["raw_category"] or "-",
+                "source_fund": row["source_fund"] or "-",
+                "user": row["user_name"] or "-",
+                "amount": float(row["amount"] or 0),
+            }
+            for row in cursor.fetchall()
+        ]
 
     with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
-            """
+            f"""
             with base as (
                 select
                     t.id,
@@ -352,7 +409,7 @@ def get_uncategorized_transaction_groups(
                     t.title,
                     t.source_fund,
                     t.amount,
-                    coalesce(c.financial_type, 'uncategorized') as financial_type
+                    {financial_type_expr} as financial_type
                 from transactions t
                 left join transaction_classifications c
                   on c.workspace_id = t.workspace_id
@@ -361,7 +418,7 @@ def get_uncategorized_transaction_groups(
                 where t.workspace_id = %s
                   and t.transaction_date is not null
                   and t.transaction_date <= current_date
-                  and coalesce(c.financial_type, 'uncategorized') = 'uncategorized'
+                  and ({financial_type_expr}) = 'uncategorized'
             ),
             grouped as (
                 select
@@ -406,16 +463,28 @@ def get_uncategorized_transaction_groups(
             (workspace_id, safe_limit),
         )
 
-        return [
+        groups = [
             {
                 "group_type": row["group_type"],
                 "pattern": row["pattern"],
                 "rows": int(row["rows"] or 0),
                 "total_amount": float(row["total_amount"] or 0),
+                "average_amount": (
+                    float(row["total_amount"] or 0) / int(row["rows"] or 1)
+                ),
                 "sample_count": int(row["sample_count"] or 0),
             }
             for row in cursor.fetchall()
         ]
+
+        for group in groups:
+            group["samples"] = fetch_samples(
+                cursor,
+                group_type=group["group_type"],
+                pattern=group["pattern"],
+            )
+
+        return groups
 
 
 def get_matching_classification_rows(

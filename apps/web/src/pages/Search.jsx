@@ -91,6 +91,34 @@ const formatSearchAmount = (value, privacyMode) => (
   formatPrivateRupiah(value || 0, privacyMode)
 );
 
+const financialTypeLabels = {
+  need: "Need",
+  want: "Want",
+  saving: "Saving",
+  income: "Income",
+  uncategorized: "Uncategorized",
+};
+
+const financialTypeClassNames = {
+  need: "bg-[var(--color-accent-bg)] text-accent",
+  want: "bg-[var(--color-alert-bg)] text-[var(--color-alert-text)]",
+  saving: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+  income: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
+  uncategorized: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-200",
+};
+
+const FinancialTypeBadge = ({ value }) => {
+  const financialType = getSafeText(value, "uncategorized").toLowerCase();
+  const label = financialTypeLabels[financialType] || financialTypeLabels.uncategorized;
+  const className = financialTypeClassNames[financialType] || financialTypeClassNames.uncategorized;
+
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${className}`}>
+      {label}
+    </span>
+  );
+};
+
 
 const readRecentSearches = () => {
   try {
@@ -321,6 +349,7 @@ const InquiryEvidenceLayer = ({
                   <th className="px-4 py-3 font-bold">Tanggal</th>
                   <th className="px-4 py-3 font-bold">Transaksi</th>
                   <th className="px-4 py-3 font-bold">Kategori</th>
+                  <th className="px-4 py-3 font-bold">Tipe</th>
                   <th className="px-4 py-3 font-bold">Source Dana</th>
                   <th className="px-4 py-3 text-right font-bold">Nominal</th>
                   <th className="px-4 py-3 font-bold">Catatan</th>
@@ -337,6 +366,9 @@ const InquiryEvidenceLayer = ({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {getSafeText(transaction.category)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <FinancialTypeBadge value={transaction.financial_type} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {getSafeText(transaction.source_dana)}
@@ -436,9 +468,10 @@ const InquiryPreviewList = ({
               <p className="truncate font-bold text-main">
                 {getSafeText(transaction.transaction_name, "Transaksi tanpa nama")}
               </p>
-              <p className="mt-1 text-sm text-muted">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
                 {getSafeText(transaction.transaction_date)} · {getSafeText(transaction.category)} · {getSafeText(transaction.source_dana)}
-              </p>
+                <FinancialTypeBadge value={transaction.financial_type} />
+              </div>
             </div>
 
             <p className="text-base font-bold text-main sm:text-right">
