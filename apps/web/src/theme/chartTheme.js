@@ -87,6 +87,7 @@ export const chartTheme = {
     alert: dashboardChartPalette.gold,
     positive: "var(--chart-positive)",
     negative: "var(--chart-negative)",
+    average: "var(--chart-average, var(--color-alert))",
   },
   light: {
     grid: "var(--chart-grid)",
@@ -100,5 +101,6 @@ export const chartTheme = {
     alert: dashboardChartPalette.gold,
     positive: "var(--chart-positive)",
     negative: "var(--chart-negative)",
+    average: "var(--chart-average, var(--color-alert))",
   },
 };

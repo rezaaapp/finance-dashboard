@@ -6,6 +6,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  ReferenceLine,
 } from "recharts";
 
 import {
@@ -27,6 +28,11 @@ const MonthlyChart = ({
   const chartData = maskChartRows(data, [dataKey], privacyMode);
   const hasData = chartData.some((row) => Number(row[dataKey] || 0) > 0);
   const activeRows = data.filter((row) => Number(row[dataKey] || 0) > 0);
+  const activeChartRows = chartData.filter((row) => Number(row[dataKey] || 0) > 0);
+  const average = activeChartRows.length
+    ? activeChartRows.reduce((total, row) => total + Number(row[dataKey] || 0), 0)
+      / activeChartRows.length
+    : 0;
   const singlePeriodRow = activeRows.length === 1 ? activeRows[0] : null;
 
   return (
@@ -87,6 +93,18 @@ const MonthlyChart = ({
               }}
               wrapperStyle={{ zIndex: 20 }}
               formatter={(value) => formatPrivateRupiah(value, privacyMode)}
+            />
+
+            <ReferenceLine
+              y={average}
+              stroke={colors.average}
+              strokeDasharray="6 6"
+              label={{
+                value: `Avg ${formatPrivateCompact(average, privacyMode)}`,
+                fill: colors.average,
+                fontSize: 12,
+                position: "insideTopRight",
+              }}
             />
 
             <Line

@@ -45,7 +45,6 @@ import WorkspaceInvitationNotification from "../components/WorkspaceInvitationNo
 import WorkspaceSwitcher from "../components/WorkspaceSwitcher";
 import EnvironmentBadge from "../components/environment/EnvironmentBadge";
 import TopSpendingTable from "../components/tables/TopSpendingTable";
-import AnomalyTable from "../components/tables/AnomalyTable";
 import AdminUsers from "./AdminUsers";
 import BudgetingAlerts from "./BudgetingAlerts";
 import Configuration from "./Configuration";
@@ -71,7 +70,6 @@ import {
   getSourceDanaAnalytics,
   getMonthlyAllocation,
   getPersonalAnalytics,
-  getAnomalies,
   getBudgetForecast,
 } from "../api/dashboardApi";
 import { getWorkspaces } from "../api/workspacesApi";
@@ -767,13 +765,11 @@ const FinancialMetricCard = ({
 };
 
 const DashboardHome = ({
-  anomalies,
   categoryData,
   financialInsightsError,
   financialInsightsLoading,
   financialTypes,
   hasDashboardPeriodData,
-  hasPremiumAccess,
   income,
   monthlyFinancialTypes,
   onOpenSettings,
@@ -962,18 +958,6 @@ const DashboardHome = ({
             data={topSpending}
             privacyMode={privacyMode}
           />
-
-          {hasPremiumAccess ? (
-            <AnomalyTable
-              data={anomalies}
-              privacyMode={privacyMode}
-            />
-          ) : (
-            <LockedFeature
-              title="Decision Alert Terkunci"
-              message="Decision alert tersedia untuk Owner dan Member premium. Dashboard dasar tetap bisa digunakan untuk memahami ringkasan periode ini."
-            />
-          )}
         </div>
       </DashboardSection>
     </div>
@@ -1141,7 +1125,6 @@ const Dashboard = ({
   const [monthlyAllocation, setMonthlyAllocation] = useState([]);
   const [personalAnalytics, setPersonalAnalytics] = useState({});
   const [budgetForecast, setBudgetForecast] = useState({});
-  const [anomalies, setAnomalies] = useState([]);
   const [currentSheetName, setCurrentSheetName] = useState("");
   const [hasActiveGoogleSheet, setHasActiveGoogleSheet] = useState(false);
   const [googleConnection, setGoogleConnection] = useState({ connected: false });
@@ -1353,7 +1336,6 @@ const Dashboard = ({
     setAnalyticsLoading(false);
     setAnalyticsError("");
     setBudgetForecast({});
-    setAnomalies([]);
     setCurrentSheetName("");
     setHasActiveGoogleSheet(false);
     setGoogleConnection({ connected: false });
@@ -1529,7 +1511,6 @@ const Dashboard = ({
           : dashboardData.monthly_allocation || []
       );
       setBudgetForecast(dashboardData.budget_forecast || {});
-      setAnomalies(dashboardData.anomalies || []);
       setFinancialInsightsError("");
 
       setError("");
@@ -1643,7 +1624,6 @@ const Dashboard = ({
         setAnalyticsLoading(false);
         setAnalyticsError("");
         setBudgetForecast({});
-        setAnomalies([]);
         setCurrentSheetName("");
       }
     } catch (err) {
@@ -1726,7 +1706,6 @@ const Dashboard = ({
           getCategoryHeatmap(periodQuery, undefined, analyticsUserName),
           getTransactions(periodQuery, undefined, analyticsUserName),
           getCategoryTrends(periodQuery, undefined, analyticsUserName),
-          getAnomalies(periodQuery),
         ]);
         const unauthorizedResult = results.find((result) => (
           result.status === "rejected"
@@ -1746,7 +1725,6 @@ const Dashboard = ({
           categoryHeatmapResult,
           transactionsResult,
           categoryTrendsResult,
-          anomaliesResult,
         ] = results;
         const hasPartialFailure = results.some((result) => result.status === "rejected");
 
@@ -1785,10 +1763,6 @@ const Dashboard = ({
             categoryTrendsResult,
             currentData
           ));
-          setAnomalies((currentData) => getFulfilledValue(
-            anomaliesResult,
-            currentData
-          ));
           setAnalyticsError(
             hasPartialFailure
               ? "Sebagian data Analytics belum dapat dimuat. Data yang tersedia tetap ditampilkan."
@@ -1811,7 +1785,6 @@ const Dashboard = ({
           setCategoryHeatmap({});
           setRawTransactions([]);
           setCategoryTrends({});
-          setAnomalies([]);
           setAnalyticsError("Analytics belum dapat dimuat. Periksa koneksi, lalu coba lagi.");
         }
       } finally {
@@ -2096,13 +2069,11 @@ const Dashboard = ({
           renderOnboardingState()
         ) : activeView === "dashboard" ? (
           <DashboardHome
-            anomalies={anomalies}
             categoryData={categoryData}
             financialInsightsError={financialInsightsError}
             financialInsightsLoading={financialInsightsLoading}
             financialTypes={financialTypes}
             hasDashboardPeriodData={hasDashboardPeriodData}
-            hasPremiumAccess={hasPremiumAccess}
             income={income}
             monthlyFinancialTypes={monthlyFinancialTypes}
             onOpenSettings={() => setActiveView("configuration")}
