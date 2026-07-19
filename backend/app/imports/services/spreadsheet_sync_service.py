@@ -427,7 +427,7 @@ class SpreadsheetSyncService:
             destination_start_row=destination_start_row,
             destination_end_row=destination_end_row,
             column_index=1,
-            pattern="yyyy-mm-dd hh:mm",
+            pattern="mm/dd/yyyy",
         )
 
         result = {

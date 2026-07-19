@@ -135,7 +135,7 @@ class SpreadsheetValueResolver:
         parsed_datetime = self._parse_datetime(datetime_value)
 
         if parsed_datetime:
-            return parsed_datetime.strftime("%m/%d/%Y %H:%M")
+            return parsed_datetime.strftime("%m/%d/%Y")
 
         return str(datetime_value or "").strip()
 
@@ -151,10 +151,12 @@ class SpreadsheetValueResolver:
             return None
 
         for date_format in (
-            "%m/%d/%Y %H:%M",
-            "%m/%d/%Y %H:%M:%S",
             "%d/%m/%Y %H:%M",
             "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y",
+            "%m/%d/%Y %H:%M",
+            "%m/%d/%Y %H:%M:%S",
+            "%m/%d/%Y",
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d %H:%M",
         ):
