@@ -280,6 +280,8 @@ const ImportReview = ({
   }
 
   const summary = reviewData?.summary || {};
+  const isBcaReview = summary.provider === "bca";
+  const sectionContext = summary.section_context || {};
   const filters = reviewData?.filters || [];
   const totalDraftRows = pagination?.total ?? draftRows.length;
 
@@ -315,6 +317,20 @@ const ImportReview = ({
                 <span className="rounded-full bg-[var(--color-panel-hover)] px-3 py-1">
                   Source Dana: {summary.source_fund || "Blu"}
                 </span>
+                {isBcaReview && (
+                  <>
+                    <span className="rounded-full bg-[var(--color-panel-hover)] px-3 py-1">
+                      Provider: BCA
+                    </span>
+                    <span className="max-w-full break-words rounded-full bg-[var(--color-panel-hover)] px-3 py-1">
+                      Rekening: {sectionContext.display_label || "Rekening terpilih"}
+                      {sectionContext.masked_identity ? ` · ${sectionContext.masked_identity}` : ""}
+                    </span>
+                    <span className="rounded-full bg-[var(--color-panel-hover)] px-3 py-1">
+                      Status: Dipilih
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -628,6 +644,9 @@ const ImportReview = ({
                 <tbody>
                   {filteredRows.map((row) => {
                     const { date, time } = splitDateTime(row.datetime);
+                    const displayTime = isBcaReview && (
+                      row.transaction_time == null || time === "00:00"
+                    ) ? "-" : time;
                     const isSelected = selectedIds.includes(row.id);
 
                     return (
@@ -644,7 +663,7 @@ const ImportReview = ({
                           />
                         </td>
                         <td className="px-4 py-3 text-main">{date}</td>
-                        <td className="px-4 py-3 text-muted">{time}</td>
+                        <td className="px-4 py-3 text-muted">{displayTime}</td>
                         <td className="px-4 py-3">
                           <input
                             type="text"

@@ -2,9 +2,10 @@ import { CircleAlert, FileText, LoaderCircle, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { uploadImportFile } from "../../api/importApi";
+import { isBcaImportEnabled } from "../../utils/featureFlags";
+import BcaImportPanel from "./BcaImportPanel";
 
 const comingSoonProviders = [
-  "BCA PDF",
   "SeaBank PDF",
   "GoPay PDF",
   "OVO PDF",
@@ -28,6 +29,8 @@ const ImportLanding = ({ onReviewReady }) => {
   const [error, setError] = useState("");
   const [emptyResult, setEmptyResult] = useState(null);
   const [statementOwner, setStatementOwner] = useState("Reza");
+  const [bcaStatementOwner, setBcaStatementOwner] = useState("Reza");
+  const bcaImportEnabled = isBcaImportEnabled(import.meta.env);
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -167,6 +170,40 @@ const ImportLanding = ({ onReviewReady }) => {
             className="hidden"
           />
         </article>
+
+        {bcaImportEnabled ? (
+          <BcaImportPanel
+            onReviewReady={onReviewReady}
+            ownerOptions={ownerOptions}
+            statementOwner={bcaStatementOwner}
+            onStatementOwnerChange={setBcaStatementOwner}
+          />
+        ) : (
+          <article
+            aria-disabled="true"
+            className="rounded-lg border border-gray-200 bg-white p-5 opacity-70 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted dark:bg-[var(--color-panel-hover)]">
+                  <FileText size={22} />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-bold text-main">BCA PDF</h3>
+                  <p className="mt-1 text-sm font-semibold text-muted">Belum tersedia</p>
+                </div>
+              </div>
+              <ProviderBadge>Coming Soon</ProviderBadge>
+            </div>
+            <button
+              type="button"
+              disabled
+              className="mt-6 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-muted dark:border-[var(--color-border)] sm:w-auto"
+            >
+              Belum tersedia
+            </button>
+          </article>
+        )}
 
         {comingSoonProviders.map((provider) => (
           <article
