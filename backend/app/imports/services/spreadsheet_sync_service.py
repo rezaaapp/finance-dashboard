@@ -118,11 +118,9 @@ class SpreadsheetSyncService:
             workspace_id=str(workspace["id"]),
             current_user=current_user,
         )
-        resolved_source_dana = source_dana or self.value_resolver.resolve_source_dana_for_append(
-            connection,
-            workspace_id=str(workspace["id"]),
-            provider="Blu",
-        )
+        resolved_source_dana = str(source_dana or "").strip()
+        if not resolved_source_dana:
+            raise ValueError("source_dana is required for import spreadsheet sync")
         validation_warnings = []
         resolved_user_name = self._resolve_validated_dropdown_value(
             access_token=access_token,
@@ -279,7 +277,7 @@ class SpreadsheetSyncService:
             ),
             str(transaction.get("category", "")),
             transaction.get("amount", 0),
-            str(source_dana or transaction.get("source_dana") or transaction.get("source_fund") or "Blu"),
+            str(source_dana or transaction.get("source_dana") or transaction.get("source_fund") or ""),
             str(transaction.get("notes", "")),
         ]
 

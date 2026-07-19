@@ -10,7 +10,11 @@ from app.imports.models.import_models import (
     ImportUploadResult,
     ParsedImportResult,
 )
-from app.imports.parsers.blu_pdf_parser import BluPdfParser
+from app.imports.provider_registry import (
+    get_import_provider_config,
+    require_import_parser_class,
+    require_import_provider_config,
+)
 from app.imports.repositories.final_transaction_repository import (
     count_successful_import_transactions,
     create_import_transactions,
@@ -58,6 +62,7 @@ from app.imports.utils.fingerprint import (
     normalize_owner_name,
 )
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
+from app.imports.utils.pdf_text_extractor import extract_pdf_metadata
 from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.utils.temp_storage import delete_temp_import_file, save_temp_import_file
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
@@ -184,22 +189,14 @@ class ImportService:
         )
 
     def parse(self, file: BinaryIO, *, provider: str) -> ParsedImportResult:
-        if provider == "blu":
-            return BluPdfParser().parse(file)
-
-        return ParsedImportResult(provider=provider, transactions=[])
+        parser_class = require_import_parser_class(provider)
+        return parser_class().parse(file)
 
     def parse_extracted(self, extraction: dict, *, provider: str) -> ParsedImportResult:
-        if provider == "blu":
-            return BluPdfParser().parse_extracted_lines(
-                extraction.get("lines", []),
-                page_count=extraction.get("page_count", 0),
-                extracted_text_length=extraction.get("extracted_text_length", 0),
-            )
-
-        return ParsedImportResult(
-            provider=provider,
-            transactions=[],
+        parser_class = require_import_parser_class(provider)
+        parser = parser_class()
+        return parser.parse_extracted_lines(
+            extraction.get("lines", []),
             page_count=extraction.get("page_count", 0),
             extracted_text_length=extraction.get("extracted_text_length", 0),
         )
@@ -228,9 +225,12 @@ class ImportService:
         parsed_result: ParsedImportResult,
         *,
         statement_owner: str,
-        source_fund: str = "Blu",
+        source_fund: str,
     ) -> ParsedImportResult:
         normalized_statement_owner = normalize_owner_name(statement_owner)
+        normalized_source_fund = str(source_fund or "").strip()
+        if not normalized_source_fund:
+            raise ValueError("source_fund is required for imported transactions")
         owner_transactions = []
 
         for transaction in parsed_result.transactions:
@@ -243,11 +243,11 @@ class ImportService:
             owner_transaction = {
                 **transaction,
                 "statement_owner": normalized_statement_owner,
-                "source_fund": source_fund,
+                "source_fund": normalized_source_fund,
             }
             owner_transaction["transaction_fingerprint"] = build_transaction_fingerprint(
                 owner_name=normalized_statement_owner,
-                source_dana=source_fund,
+                source_dana=normalized_source_fund,
                 datetime_value=str(owner_transaction.get("datetime", "")),
                 merchant_normalized=str(owner_transaction.get("merchant_normalized", "")),
                 amount=owner_transaction.get("amount", 0),
@@ -259,7 +259,7 @@ class ImportService:
                 merchant_name=str(merchant_name),
                 amount=owner_transaction.get("amount", 0),
                 direction=str(owner_transaction.get("direction", "")),
-                source_fund=source_fund,
+                source_fund=normalized_source_fund,
             )
             owner_transaction["canonical_fingerprint_date"] = build_canonical_fingerprint_date(
                 owner_name=normalized_statement_owner,
@@ -267,7 +267,7 @@ class ImportService:
                 merchant_name=str(merchant_name),
                 amount=owner_transaction.get("amount", 0),
                 direction=str(owner_transaction.get("direction", "")),
-                source_fund=source_fund,
+                source_fund=normalized_source_fund,
             )
             owner_transactions.append(owner_transaction)
 
@@ -346,6 +346,9 @@ class ImportService:
             transaction for transaction in transactions
             if not transaction.get("is_existing", False)
         ]
+        for transaction in new_transactions:
+            if not str(transaction.get("source_fund") or "").strip():
+                raise ValueError("source_fund is required before draft persistence")
         draft_transactions = [
             ImportDraftTransaction(
                 import_job_id=import_job_id,
@@ -353,7 +356,7 @@ class ImportService:
                 canonical_fingerprint=str(transaction.get("canonical_fingerprint", "")),
                 canonical_fingerprint_date=str(transaction.get("canonical_fingerprint_date", "")),
                 statement_owner=str(transaction.get("statement_owner", "")),
-                source_fund=str(transaction.get("source_fund", "Blu") or "Blu"),
+                source_fund=str(transaction.get("source_fund") or "").strip(),
                 datetime=str(transaction.get("datetime", "")),
                 merchant_original=str(transaction.get("merchant_original", "")),
                 merchant_normalized=str(transaction.get("merchant_normalized", "")),
@@ -451,7 +454,7 @@ class ImportService:
 
             try:
                 with temp_path.open("rb") as temp_pdf:
-                    extraction = BluPdfParser().extract_pdf_metadata(temp_pdf)
+                    extraction = extract_pdf_metadata(temp_pdf)
             except Exception:
                 return self._fail_upload(
                     connection,
@@ -476,6 +479,7 @@ class ImportService:
             )
             provider = provider_detection["provider"]
             detection_source = provider_detection["detection_source"]
+            provider_config = get_import_provider_config(provider)
             update_import_job_provider(
                 connection,
                 job_id=job_id,
@@ -510,7 +514,11 @@ class ImportService:
                     user_error="PDF tidak memiliki text layer atau gagal dibaca.",
                 )
 
-            if provider != "blu":
+            if (
+                provider_config is None
+                or not provider_config.import_enabled
+                or not provider_config.parser_available
+            ):
                 return self._fail_upload(
                     connection,
                     job_id=job_id,
@@ -543,7 +551,7 @@ class ImportService:
             parsed_result = self.apply_statement_owner(
                 parsed_result,
                 statement_owner=normalized_statement_owner,
-                source_fund="Blu",
+                source_fund=provider_config.source_fund,
             )
 
             self._log_import_event(
@@ -558,7 +566,7 @@ class ImportService:
                 }),
             )
 
-            if provider == "blu" and not parsed_result.transactions:
+            if not parsed_result.transactions:
                 return self._fail_upload(
                     connection,
                     job_id=job_id,
@@ -567,9 +575,13 @@ class ImportService:
                     page_count=extraction["page_count"],
                     extracted_text_length=extraction["extracted_text_length"],
                     stage="parser",
-                    reason="Blu PDF text was extracted but no transactions were parsed",
+                    reason=(
+                        f"{provider_config.label} PDF text was extracted but no transactions were parsed"
+                    ),
                     error_code="no_parseable_transactions",
-                    user_error="PDF Blu terbaca, tapi transaksi tidak berhasil diparse.",
+                    user_error=(
+                        f"PDF {provider_config.label} terbaca, tapi transaksi tidak berhasil diparse."
+                    ),
                 )
 
             parsed_result = self.mark_existing_transactions(
@@ -858,6 +870,7 @@ class ImportService:
         if not summary:
             return None
 
+        provider_config = require_import_provider_config(summary["provider"])
         safe_limit = self._normalize_page_limit(
             limit,
             default_limit=DEFAULT_IMPORT_REVIEW_PAGE_SIZE,
@@ -888,7 +901,7 @@ class ImportService:
                 "filename": summary["filename"],
                 "provider": summary["provider"],
                 "statement_owner": summary.get("statement_owner", ""),
-                "source_fund": "Blu",
+                "source_fund": provider_config.source_fund,
                 "transactions_found": summary["transactions_found"],
                 "new_transactions": summary["new_transactions"],
                 "existing_transactions": summary["existing_transactions"],
@@ -1004,6 +1017,7 @@ class ImportService:
         if not review_summary:
             return None
 
+        provider_config = require_import_provider_config(review_summary["provider"])
         normalized_ids = self._normalize_draft_ids(draft_ids, item_updates)
         selected_drafts = list_import_draft_transactions_by_ids(
             connection,
@@ -1057,7 +1071,7 @@ class ImportService:
         resolved_source_dana = self.spreadsheet_value_resolver.resolve_source_dana_for_append(
             connection,
             workspace_id=workspace_id,
-            provider="Blu",
+            provider=provider_config.source_fund,
         )
         resolved_user_name = normalize_owner_name(review_summary.get("statement_owner", "")) or self._resolve_import_user_name(
             connection,
@@ -1075,7 +1089,9 @@ class ImportService:
                 ),
                 import_job_id=import_job_id,
                 user_name=resolved_user_name,
+                provider=provider_config.key,
                 source_fund=resolved_source_dana,
+                source_origin=provider_config.source_origin,
                 transaction=draft,
             )
             for draft in approval_drafts
@@ -1650,6 +1666,7 @@ class ImportService:
                 "message": "Tidak ada transaksi yang perlu disinkronkan ulang.",
             }
 
+        provider_config = require_import_provider_config(job["provider"])
         target_sheet = self._resolve_import_target_sheet(
             connection,
             workspace=workspace,
@@ -1668,7 +1685,7 @@ class ImportService:
         resolved_retry_source_dana = self.spreadsheet_value_resolver.resolve_source_dana_for_append(
             connection,
             workspace_id=workspace_id,
-            provider="Blu",
+            provider=provider_config.source_fund,
         )
         resolved_retry_user_name = self._resolve_import_user_name(
             connection,
@@ -1824,7 +1841,7 @@ class ImportService:
                 "canonical_fingerprint": draft.get("canonical_fingerprint", ""),
                 "canonical_fingerprint_date": draft.get("canonical_fingerprint_date", ""),
                 "statement_owner": draft.get("statement_owner", ""),
-                "source_fund": draft.get("source_fund", "") or "Blu",
+                "source_fund": str(draft.get("source_fund") or "").strip(),
                 "datetime": draft["datetime"],
                 "merchant_original": draft["merchant_original"],
                 "merchant_normalized": draft["merchant_normalized"],
@@ -1973,10 +1990,14 @@ class ImportService:
         return filters
 
     def _serialize_review_transaction(self, transaction: dict, *, summary: dict):
+        provider_config = require_import_provider_config(summary["provider"])
         return {
             "id": str(transaction["id"]),
             "statement_owner": transaction.get("statement_owner", "") or summary.get("statement_owner", ""),
-            "source_fund": transaction.get("source_fund", "") or "Blu",
+            "source_fund": (
+                str(transaction.get("source_fund") or "").strip()
+                or provider_config.source_fund
+            ),
             "canonical_fingerprint": transaction.get("canonical_fingerprint", ""),
             "canonical_fingerprint_date": transaction.get("canonical_fingerprint_date", ""),
             "datetime": transaction["datetime"],
@@ -2056,7 +2077,7 @@ class ImportService:
             ),
             "category": transaction.get("category") or "",
             "amount": float(transaction.get("amount", 0) or 0),
-            "source_dana": transaction.get("source_dana") or "Blu",
+            "source_dana": transaction.get("source_dana") or "",
             "sync_status": transaction.get("sync_status") or "pending",
             "sync_error_message": transaction.get("sync_error_message"),
         }

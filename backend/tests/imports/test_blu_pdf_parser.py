@@ -1102,7 +1102,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_summary"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch.object(BluPdfParser, "extract_pdf_metadata", return_value={
+             patch("app.imports.services.import_service.extract_pdf_metadata", return_value={
                  "lines": [],
                  "page_count": 1,
                  "extracted_text": "",
@@ -1136,9 +1136,8 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.set_import_job_temp_file"), \
              patch("app.imports.services.import_service.update_import_job_summary"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch.object(
-                 BluPdfParser,
-                 "extract_pdf_metadata",
+             patch(
+                 "app.imports.services.import_service.extract_pdf_metadata",
                  side_effect=ValueError("broken pdf"),
              ):
             result = ImportService().receive_upload(
@@ -1282,7 +1281,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_summary"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch.object(BluPdfParser, "extract_pdf_metadata", return_value={
+             patch("app.imports.services.import_service.extract_pdf_metadata", return_value={
                  "lines": ["bluAccount | bluSpending"],
                  "page_count": 1,
                  "extracted_text": "bluAccount | bluSpending",
@@ -1324,7 +1323,7 @@ class BluPdfParserTestCase(unittest.TestCase):
              patch("app.imports.services.import_service.update_import_job_provider"), \
              patch("app.imports.services.import_service.update_import_job_summary"), \
              patch("app.imports.services.import_service.update_import_job_status"), \
-             patch.object(BluPdfParser, "extract_pdf_metadata", return_value={
+             patch("app.imports.services.import_service.extract_pdf_metadata", return_value={
                  "lines": ["Other Bank Statement"],
                  "page_count": 1,
                  "extracted_text": "Other Bank Statement",
@@ -2903,7 +2902,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1"}), \
+        with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1", "provider": "blu"}), \
              patch("app.imports.services.import_service.list_retryable_import_transactions", return_value=retryable_transactions), \
              patch("app.imports.services.import_service.count_successful_import_transactions", return_value=10), \
              patch("app.imports.services.import_service.get_google_sheet_source", return_value={
@@ -2982,7 +2981,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             },
         ]
 
-        with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1"}), \
+        with patch("app.imports.services.import_service.get_import_history_detail", return_value={"id": "job-1", "provider": "blu"}), \
              patch("app.imports.services.import_service.list_retryable_import_transactions", return_value=retryable_transactions), \
              patch("app.imports.services.import_service.count_successful_import_transactions", return_value=0), \
              patch("app.imports.services.import_service.get_google_sheet_source", return_value={

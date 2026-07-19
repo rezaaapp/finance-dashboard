@@ -7,6 +7,8 @@ from typing import Any
 
 from psycopg.rows import dict_row
 
+from app.imports.provider_registry import list_import_provider_configs
+
 
 DEFAULT_REPAIR_MONTH = "2026-06"
 
@@ -23,6 +25,25 @@ class RepairStatement:
     name: str
     sql: str
     params: tuple[Any, ...]
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _provider_source_origin_case(provider_expression: str, fallback_expression: str) -> str:
+    clauses = " ".join(
+        (
+            f"when {_sql_literal(provider.key)} then "
+            f"{_sql_literal(provider.source_origin)}"
+        )
+        for provider in list_import_provider_configs()
+    )
+    return (
+        "case lower(btrim(coalesce("
+        f"{provider_expression}, ''))) {clauses} "
+        f"else {fallback_expression} end"
+    )
 
 
 def _owner_name_expr(table_alias: str | None = None) -> str:
@@ -148,6 +169,15 @@ def build_repair_statements(
 ) -> list[RepairStatement]:
     start_date = scope.start_date
     end_date = scope.end_date
+    import_job_source_origin = _provider_source_origin_case(
+        "(select jobs.provider from public.import_jobs as jobs "
+        "where jobs.id = transactions.import_job_id)",
+        "source_origin",
+    )
+    payload_source_origin = _provider_source_origin_case(
+        "raw_payload->>'_import_provider'",
+        "source_origin",
+    )
 
     return [
         RepairStatement(
@@ -196,11 +226,12 @@ def build_repair_statements(
         ),
         RepairStatement(
             name="backfill_source_origin_and_reference",
-            sql="""
-                update public.transactions
+            sql=f"""
+                update public.transactions as transactions
                 set
                   source_origin = case
-                    when import_job_id is not null or import_transaction_fingerprint is not null then 'blu_pdf'
+                    when import_job_id is not null then {import_job_source_origin}
+                    when import_transaction_fingerprint is not null then {payload_source_origin}
                     else 'google_sheet'
                   end,
                   source_reference = case

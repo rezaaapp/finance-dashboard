@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import re
-from hashlib import sha256
 from decimal import Decimal, InvalidOperation
 from typing import BinaryIO
 
-import pdfplumber
-
 from app.imports.models.import_models import ParsedImportResult
 from app.imports.parsers.base_parser import BaseParser
+from app.imports.utils.pdf_text_extractor import extract_pdf_metadata
 
 
 class BluPdfParser(BaseParser):
@@ -96,33 +94,7 @@ class BluPdfParser(BaseParser):
         )
 
     def extract_pdf_metadata(self, file: BinaryIO) -> dict:
-        file.seek(0)
-        lines: list[str] = []
-        extracted_text = ""
-        page_count = 0
-
-        with pdfplumber.open(file) as pdf:
-            page_count = len(pdf.pages)
-
-            for page in pdf.pages:
-                page_text = page.extract_text() or ""
-                extracted_text += page_text + "\n"
-
-                for raw_line in page_text.splitlines():
-                    line = self._normalize_line(raw_line)
-
-                    if not line:
-                        continue
-
-                    lines.append(line)
-
-        return {
-            "lines": lines,
-            "page_count": page_count,
-            "extracted_text": extracted_text,
-            "extracted_text_length": len(extracted_text.strip()),
-            "extracted_text_hash": sha256(extracted_text.encode("utf-8")).hexdigest(),
-        }
+        return extract_pdf_metadata(file, line_normalizer=self._normalize_line)
 
     def _parse_lines(self, lines: list[str]) -> list[dict]:
         transactions: list[dict] = []

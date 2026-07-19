@@ -1,31 +1,33 @@
 from __future__ import annotations
 
-
-BLU_CONTENT_MARKERS = (
-    "bluaccount | bluspending",
-    "bluspending -",
-    "bca digital",
-    "blubybcadigital.id",
-    "haloblu",
-)
+from app.imports.provider_registry import list_import_provider_configs
 
 
 def detect_import_provider(*, filename: str, extracted_text: str = "") -> dict:
     normalized_filename = str(filename or "").lower()
 
-    if normalized_filename.endswith(".pdf") and "blu" in normalized_filename:
-        return {
-            "provider": "blu",
-            "detection_source": "filename",
-        }
+    if normalized_filename.endswith(".pdf"):
+        for provider_config in list_import_provider_configs():
+            if not provider_config.import_enabled or not provider_config.parser_available:
+                continue
+
+            if any(marker in normalized_filename for marker in provider_config.filename_markers):
+                return {
+                    "provider": provider_config.key,
+                    "detection_source": "filename",
+                }
 
     normalized_text = str(extracted_text or "").lower()
 
-    if any(marker in normalized_text for marker in BLU_CONTENT_MARKERS):
-        return {
-            "provider": "blu",
-            "detection_source": "content",
-        }
+    for provider_config in list_import_provider_configs():
+        if not provider_config.import_enabled or not provider_config.parser_available:
+            continue
+
+        if any(marker in normalized_text for marker in provider_config.content_markers):
+            return {
+                "provider": provider_config.key,
+                "detection_source": "content",
+            }
 
     return {
         "provider": "unknown",
