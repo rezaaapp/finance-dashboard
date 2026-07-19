@@ -31,6 +31,7 @@ class ImportJob(BaseModel):
     rejected_transactions: int = 0
     temp_file_deleted_at: datetime | None = None
     expires_at: datetime | None = None
+    section_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ParsedImportResult(BaseModel):
@@ -45,6 +46,17 @@ class ImportPreviewItem(BaseModel):
     merchant_original: str = ""
     merchant_normalized: str = ""
     amount: float | int = 0
+
+
+class ImportSectionCandidate(BaseModel):
+    section_id: str
+    display_label: str
+    masked_identity: str
+    section_type: str
+    source_sequence_start: int = 0
+    source_sequence_end: int = 0
+    transaction_count_estimate: int = 0
+    is_selectable: bool = False
 
 
 class ImportDraftTransaction(BaseModel):
@@ -86,3 +98,6 @@ class ImportUploadResult(BaseModel):
     message: str | None = None
     error: str | None = None
     preview: list[ImportPreviewItem] = Field(default_factory=list)
+    section_candidates: list[ImportSectionCandidate] = Field(default_factory=list)
+    selected_section: ImportSectionCandidate | None = None
+    is_multi_account: bool = False

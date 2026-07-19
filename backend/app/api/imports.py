@@ -42,6 +42,8 @@ class ImportRetrySyncRequest(BaseModel):
 def upload_import_file(
     file: UploadFile = File(...),
     statement_owner: str = Form(...),
+    expected_provider: str | None = Form(default=None),
+    expected_section_id: str | None = Form(default=None),
     current_user=Depends(require_current_user),
     workspace=Depends(get_current_workspace),
 ):
@@ -54,6 +56,8 @@ def upload_import_file(
                 workspace_id=str(workspace["id"]),
                 file=file,
                 statement_owner=statement_owner,
+                expected_provider=expected_provider,
+                expected_section_id=expected_section_id,
             )
 
     return result.model_dump()

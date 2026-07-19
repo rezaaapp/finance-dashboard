@@ -3,14 +3,17 @@ from pathlib import Path
 from typing import BinaryIO
 import logging
 
-from app.imports.models.import_models import ImportPreviewItem
+from app.imports.models.import_models import ImportPreviewItem, ImportSectionCandidate
 from app.imports.models.import_models import (
     ImportDraftTransaction,
     ImportJobStatus,
     ImportUploadResult,
     ParsedImportResult,
 )
-from app.imports.parsers.base_parser import ImportParserError
+from app.imports.parsers.base_parser import (
+    ImportParserError,
+    InvalidSectionSelectionError,
+)
 from app.imports.provider_registry import (
     get_import_provider_config,
     require_import_parser_class,
@@ -49,6 +52,7 @@ from app.imports.repositories.import_repository import (
     set_import_job_temp_file,
     list_workspace_transaction_categories,
     update_import_job_provider,
+    update_import_job_section_context,
     update_import_job_status,
     update_import_job_summary,
 )
@@ -255,6 +259,9 @@ class ImportService:
                     account_identity_hash=str(
                         owner_transaction.get("_account_identity_hash", "")
                     ),
+                    section_identity=str(
+                        owner_transaction.get("_section_identity", "")
+                    ),
                     transaction_date=str(
                         owner_transaction.get("transaction_date")
                         or owner_transaction.get("datetime", "").split(" ", 1)[0]
@@ -404,8 +411,19 @@ class ImportService:
             draft_transactions=draft_transactions,
         )
 
-    def receive_upload(self, connection, *, workspace_id: str, file, statement_owner: str) -> ImportUploadResult:
+    def receive_upload(
+        self,
+        connection,
+        *,
+        workspace_id: str,
+        file,
+        statement_owner: str,
+        expected_provider: str | None = None,
+        expected_section_id: str | None = None,
+    ) -> ImportUploadResult:
         normalized_statement_owner = normalize_owner_name(statement_owner)
+        normalized_expected_provider = str(expected_provider or "").strip().lower()
+        normalized_expected_section_id = str(expected_section_id or "").strip()
 
         if not normalized_statement_owner:
             return ImportUploadResult(
@@ -557,6 +575,10 @@ class ImportService:
                 )
 
             if extraction["extracted_text_length"] == 0:
+                is_expected_bca = (
+                    filename_provider == "bca"
+                    or normalized_expected_provider == "bca"
+                )
                 return self._fail_upload(
                     connection,
                     job_id=job_id,
@@ -567,13 +589,30 @@ class ImportService:
                     stage="pdf_extraction",
                     reason="PDF text layer is empty",
                     error_code=(
-                        "scan_only_pdf" if filename_provider == "bca" else "unreadable_pdf"
+                        "scan_only_pdf" if is_expected_bca else "unreadable_pdf"
                     ),
                     user_error=(
                         "PDF BCA tidak memiliki text layer yang dapat dibaca."
-                        if filename_provider == "bca"
+                        if is_expected_bca
                         else "PDF tidak memiliki text layer atau gagal dibaca."
                     ),
+                )
+
+            if (
+                normalized_expected_provider
+                and normalized_expected_provider != provider
+            ):
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=provider,
+                    detection_source=detection_source,
+                    page_count=extraction["page_count"],
+                    extracted_text_length=extraction["extracted_text_length"],
+                    stage="provider_detection",
+                    reason="Expected provider does not match server detection",
+                    error_code="provider_mismatch",
+                    user_error="Provider yang dipilih tidak sesuai dengan isi PDF.",
                 )
 
             if (
@@ -607,8 +646,60 @@ class ImportService:
                 job_id=job_id,
                 provider=provider,
             )
+            section_candidates: list[ImportSectionCandidate] = []
+            selected_section: ImportSectionCandidate | None = None
+            is_multi_account = False
             try:
-                raw_parsed_result = self.parse_extracted(extraction, provider=provider)
+                if provider == "bca":
+                    parser_class = require_import_parser_class(provider)
+                    parser = parser_class()
+                    discovery = parser.discover_sections(
+                        extraction.get("lines", [])
+                    )
+                    section_candidates = discovery.candidates
+                    is_multi_account = len(section_candidates) > 1
+
+                    if is_multi_account and not normalized_expected_section_id:
+                        return self._fail_upload(
+                            connection,
+                            job_id=job_id,
+                            provider=provider,
+                            detection_source=detection_source,
+                            page_count=extraction["page_count"],
+                            extracted_text_length=extraction["extracted_text_length"],
+                            stage="section_discovery",
+                            reason="Multiple BCA sections require an explicit selection",
+                            error_code="section_selection_required",
+                            user_error=(
+                                "Pilih satu rekening atau Pocket BCA sebelum "
+                                "melanjutkan import."
+                            ),
+                            section_candidates=section_candidates,
+                            is_multi_account=True,
+                        )
+
+                    selected_section_id = (
+                        normalized_expected_section_id
+                        or section_candidates[0].section_id
+                    )
+                    raw_parsed_result = parser.parse_selected_section(
+                        discovery,
+                        selected_section_id=selected_section_id,
+                        page_count=extraction.get("page_count", 0),
+                        extracted_text_length=extraction.get(
+                            "extracted_text_length", 0
+                        ),
+                    )
+                    selected_section = raw_parsed_result.selected_section
+                else:
+                    if normalized_expected_section_id:
+                        raise InvalidSectionSelectionError(
+                            "Section selection is only supported for BCA PDFs"
+                        )
+                    raw_parsed_result = self.parse_extracted(
+                        extraction,
+                        provider=provider,
+                    )
             except ImportParserError as parser_error:
                 return self._fail_upload(
                     connection,
@@ -621,6 +712,8 @@ class ImportService:
                     reason=f"Parser rejected statement: {parser_error.error_code}",
                     error_code=parser_error.error_code,
                     user_error=parser_error.user_message,
+                    section_candidates=section_candidates,
+                    is_multi_account=is_multi_account,
                 )
             statement_empty = bool(
                 getattr(raw_parsed_result, "statement_empty", False)
@@ -628,6 +721,19 @@ class ImportService:
             parser_warnings = list(
                 getattr(raw_parsed_result, "warnings", []) or []
             )
+            if provider == "bca" and selected_section is not None:
+                update_import_job_section_context(
+                    connection,
+                    job_id=job_id,
+                    section_context={
+                        "section_id": selected_section.section_id,
+                        "display_label": selected_section.display_label,
+                        "masked_identity": selected_section.masked_identity,
+                        "section_type": selected_section.section_type,
+                        "transaction_count": len(raw_parsed_result.transactions),
+                        "is_multi_account": is_multi_account,
+                    },
+                )
             parsed_result = self.enrich_transactions(raw_parsed_result)
             parsed_result = self.apply_statement_owner(
                 parsed_result,
@@ -782,6 +888,9 @@ class ImportService:
                 )
                 for transaction in new_transactions[:5]
             ],
+            section_candidates=section_candidates,
+            selected_section=selected_section,
+            is_multi_account=is_multi_account,
         )
 
     def _fail_upload(
@@ -797,6 +906,8 @@ class ImportService:
         reason: str,
         error_code: str,
         user_error: str,
+        section_candidates: list[ImportSectionCandidate] | None = None,
+        is_multi_account: bool = False,
     ) -> ImportUploadResult:
         update_import_job_summary(
             connection,
@@ -833,6 +944,8 @@ class ImportService:
             message=user_error,
             error=user_error,
             preview=[],
+            section_candidates=section_candidates or [],
+            is_multi_account=is_multi_account,
         )
 
     def _get_upload_file_size(self, file) -> int | None:
@@ -1006,6 +1119,7 @@ class ImportService:
                 "transactions_found": summary["transactions_found"],
                 "new_transactions": summary["new_transactions"],
                 "existing_transactions": summary["existing_transactions"],
+                "section_context": summary.get("section_context") or {},
                 "created_at": summary["created_at"],
             },
             "filters": self._build_review_filters(filter_counts),
@@ -1180,6 +1294,7 @@ class ImportService:
             workspace_id=workspace_id,
             workspace=workspace,
         )
+        section_context = review_summary.get("section_context") or {}
         final_transaction_rows = [
             serialize_import_transaction_row(
                 workspace_id=workspace_id,
@@ -1193,7 +1308,23 @@ class ImportService:
                 provider=provider_config.key,
                 source_fund=resolved_source_dana,
                 source_origin=provider_config.source_origin,
-                transaction=draft,
+                transaction={
+                    **draft,
+                    **(
+                        {
+                            "_section_id": section_context.get("section_id"),
+                            "_section_label": section_context.get("display_label"),
+                            "_masked_section_identity": section_context.get(
+                                "masked_identity"
+                            ),
+                            "_is_multi_account_statement": bool(
+                                section_context.get("is_multi_account", False)
+                            ),
+                        }
+                        if provider_config.key == "bca"
+                        else {}
+                    ),
+                },
             )
             for draft in approval_drafts
         ]
@@ -2153,6 +2284,7 @@ class ImportService:
             "filename": job["filename"],
             "provider": job["provider"],
             "statement_owner": job.get("statement_owner") or "",
+            "section_context": job.get("section_context") or {},
             "status": job["status"],
             "import_time": job["created_at"],
             "transactions_found": int(job.get("transactions_found", 0) or 0),

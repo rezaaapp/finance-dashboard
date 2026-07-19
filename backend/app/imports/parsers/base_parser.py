@@ -24,6 +24,16 @@ class MalformedTransactionRowError(ImportParserError):
     user_message = "Ada baris transaksi yang tidak dapat dibaca dengan aman."
 
 
+class SectionSelectionRequiredError(ImportParserError):
+    error_code = "section_selection_required"
+    user_message = "Pilih satu rekening atau Pocket BCA sebelum melanjutkan import."
+
+
+class InvalidSectionSelectionError(ImportParserError):
+    error_code = "invalid_section_selection"
+    user_message = "Pilihan rekening atau Pocket tidak valid untuk PDF ini."
+
+
 class BaseParser(ABC):
     provider = ""
 

@@ -326,6 +326,12 @@ def serialize_import_transaction_row(
             "source_reference": transaction.get("source_reference"),
             "source_sequence": transaction.get("source_sequence"),
             "balance_after": transaction.get("balance_after"),
+            "section_id": transaction.get("_section_id"),
+            "section_label": transaction.get("_section_label"),
+            "masked_section_identity": transaction.get("_masked_section_identity"),
+            "is_multi_account_statement": bool(
+                transaction.get("_is_multi_account_statement", False)
+            ),
             "_technical_datetime_adapter": True,
         })
 
