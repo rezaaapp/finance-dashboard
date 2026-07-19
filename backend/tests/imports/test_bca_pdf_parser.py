@@ -49,7 +49,10 @@ sys.modules.setdefault("httpx", fake_httpx)
 
 from app.imports.models.import_models import ImportJobStatus, ParsedImportResult
 from app.imports.parsers.base_parser import (
+    InvalidSectionSelectionError,
     MalformedTransactionRowError,
+    NoParseableTransactionsError,
+    SectionSelectionRequiredError,
     UnsupportedStatementError,
 )
 from app.imports.parsers.bca_pdf_parser import BcaPdfParser
@@ -72,6 +75,10 @@ OVERLAP_PATH = FIXTURE_ROOT / "bca_statement_overlap_synthetic.txt"
 EMPTY_PATH = FIXTURE_ROOT / "bca_statement_empty_synthetic.txt"
 MALFORMED_PATH = FIXTURE_ROOT / "bca_statement_malformed_synthetic.txt"
 MULTI_ACCOUNT_PATH = FIXTURE_ROOT / "bca_statement_multi_account_synthetic.txt"
+THREE_SECTION_PATH = FIXTURE_ROOT / "bca_statement_three_section_synthetic.txt"
+AMBIGUOUS_SECTION_PATH = (
+    FIXTURE_ROOT / "bca_statement_ambiguous_sections_synthetic.txt"
+)
 GROUND_TRUTH_PATH = FIXTURE_ROOT / "bca_statement_synthetic_ground_truth.json"
 STATEMENT_PDF_PATH = FIXTURE_ROOT / "bca_statement_synthetic.pdf"
 PERMISSION_ENCRYPTED_PDF_PATH = (
@@ -105,6 +112,15 @@ class BcaPdfParserTestCase(unittest.TestCase):
             page_count=2,
             extracted_text_length=sum(len(line) for line in lines),
         )
+
+    def extraction_for_lines(self, lines: list[str], *, page_count: int = 1):
+        return {
+            "lines": lines,
+            "page_count": page_count,
+            "extracted_text": "\n".join(lines),
+            "extracted_text_length": sum(len(line) for line in lines),
+            "extracted_text_hash": "synthetic-hash",
+        }
 
     def apply_fingerprints(self, lines: list[str]) -> list[dict]:
         service = ImportService()
@@ -185,11 +201,170 @@ class BcaPdfParserTestCase(unittest.TestCase):
         self.assertIsNone(result.transactions[0]["balance_after"])
         self.assertEqual(["ambiguous_balance"], result.warnings)
 
-    def test_multi_account_statement_is_rejected(self):
-        with self.assertRaises(UnsupportedStatementError) as raised:
+    def test_multi_account_statement_requires_section_selection(self):
+        with self.assertRaises(SectionSelectionRequiredError) as raised:
             self.parse_lines(read_fixture_lines(MULTI_ACCOUNT_PATH))
 
+        self.assertEqual("section_selection_required", raised.exception.error_code)
+
+    def test_discovers_deterministic_masked_section_candidates(self):
+        lines = read_fixture_lines(THREE_SECTION_PATH)
+
+        first = self.parser.discover_sections(lines)
+        repeated = self.parser.discover_sections(lines)
+        candidates = first.candidates
+
+        self.assertEqual(3, len(candidates))
+        self.assertEqual(
+            ["Rekening 1", "Pocket 1", "Pocket 2"],
+            [candidate.display_label for candidate in candidates],
+        )
+        self.assertEqual(
+            ["account", "pocket", "pocket"],
+            [candidate.section_type for candidate in candidates],
+        )
+        self.assertEqual(
+            [2, 2, 0],
+            [candidate.transaction_count_estimate for candidate in candidates],
+        )
+        self.assertEqual(
+            [True, True, False],
+            [candidate.is_selectable for candidate in candidates],
+        )
+        self.assertEqual(
+            [candidate.model_dump() for candidate in candidates],
+            [candidate.model_dump() for candidate in repeated.candidates],
+        )
+        self.assertTrue(
+            all(candidate.masked_identity.startswith("**** ") for candidate in candidates)
+        )
+        for full_identity in ("1111222233", "4444555566", "7777888899"):
+            self.assertTrue(
+                all(full_identity not in candidate.masked_identity for candidate in candidates)
+            )
+            self.assertTrue(
+                all(full_identity not in candidate.section_id for candidate in candidates)
+            )
+
+    def test_multi_page_section_remains_single_and_preserves_sequence(self):
+        discovery = self.parser.discover_sections(
+            read_fixture_lines(THREE_SECTION_PATH)
+        )
+        result = self.parser.parse_selected_section(
+            discovery,
+            selected_section_id=discovery.candidates[0].section_id,
+        )
+
+        self.assertEqual(3, len(discovery.sections))
+        self.assertEqual(2, len(result.transactions))
+        self.assertEqual([1, 2], [item["source_sequence"] for item in result.transactions])
+        self.assertIn(
+            "DESKRIPSI LANJUTAN SINTETIS",
+            result.transactions[1]["merchant_original"],
+        )
+
+    def test_account_reference_in_description_is_masked_not_split(self):
+        lines = [
+            "REKENING TAHAPAN XPRESI",
+            "NASABAH SINTETIS NO. REKENING : 1111222233",
+            "PERIODE : JUNI 2026",
+            "TANGGAL KETERANGAN CBG MUTASI SALDO",
+            "01/06 TRSF E-BANKING DB 25,000.00 DB 975,000.00",
+            "NO. REKENING : 9999000012",
+            "PENERIMA SINTETIS",
+        ]
+
+        discovery = self.parser.discover_sections(lines)
+        result = self.parser.parse_selected_section(
+            discovery,
+            selected_section_id=discovery.candidates[0].section_id,
+        )
+
+        self.assertEqual(1, len(discovery.sections))
+        self.assertEqual(1, len(result.transactions))
+        self.assertNotIn("9999000012", result.transactions[0]["merchant_original"])
+        self.assertNotIn("9999000012", result.transactions[0]["raw_text"])
+        self.assertIn("**** 0012", result.transactions[0]["merchant_original"])
+
+    def test_selected_section_is_isolated(self):
+        discovery = self.parser.discover_sections(
+            read_fixture_lines(THREE_SECTION_PATH)
+        )
+        result = self.parser.parse_selected_section(
+            discovery,
+            selected_section_id=discovery.candidates[1].section_id,
+        )
+
+        self.assertEqual(2, len(result.transactions))
+        self.assertTrue(
+            any("POCKET SINTETIS" in item["merchant_original"] for item in result.transactions)
+        )
+        self.assertTrue(
+            all("SYNTH001" not in item["merchant_original"] for item in result.transactions)
+        )
+        self.assertEqual(discovery.candidates[1], result.selected_section)
+        self.assertTrue(result.is_multi_account)
+
+    def test_invalid_and_empty_section_selection_are_controlled(self):
+        discovery = self.parser.discover_sections(
+            read_fixture_lines(THREE_SECTION_PATH)
+        )
+
+        with self.assertRaises(InvalidSectionSelectionError) as invalid:
+            self.parser.parse_selected_section(
+                discovery,
+                selected_section_id="bca-section-not-from-this-file",
+            )
+        self.assertEqual("invalid_section_selection", invalid.exception.error_code)
+
+        with self.assertRaises(NoParseableTransactionsError) as empty:
+            self.parser.parse_selected_section(
+                discovery,
+                selected_section_id=discovery.candidates[2].section_id,
+            )
+        self.assertEqual("no_parseable_transactions", empty.exception.error_code)
+
+    def test_reappearing_account_boundary_is_unsupported(self):
+        with self.assertRaises(UnsupportedStatementError) as raised:
+            self.parser.discover_sections(read_fixture_lines(AMBIGUOUS_SECTION_PATH))
+
         self.assertEqual("unsupported_statement", raised.exception.error_code)
+
+    def test_same_transaction_in_different_pockets_has_distinct_fingerprint(self):
+        service = ImportService()
+        lines = read_fixture_lines(THREE_SECTION_PATH)
+        discovery = self.parser.discover_sections(lines)
+
+        def selected_fingerprints(candidate_index: int):
+            parsed = self.parser.parse_selected_section(
+                discovery,
+                selected_section_id=discovery.candidates[candidate_index].section_id,
+            )
+            enriched = service.enrich_transactions(parsed)
+            return service.apply_statement_owner(
+                enriched,
+                statement_owner="Synthetic User",
+                source_fund="BCA",
+            ).transactions
+
+        main_first = selected_fingerprints(0)
+        main_reimport = selected_fingerprints(0)
+        pocket = selected_fingerprints(1)
+        main_duplicate = next(
+            item for item in main_first if "LINTAS SECTION" in item["merchant_original"]
+        )
+        pocket_duplicate = next(
+            item for item in pocket if "LINTAS SECTION" in item["merchant_original"]
+        )
+
+        self.assertNotEqual(
+            main_duplicate["transaction_fingerprint"],
+            pocket_duplicate["transaction_fingerprint"],
+        )
+        self.assertEqual(
+            [item["transaction_fingerprint"] for item in main_first],
+            [item["transaction_fingerprint"] for item in main_reimport],
+        )
 
     def test_identical_transactions_remain_distinct_and_stable(self):
         first_import = self.apply_fingerprints(self.statement_lines)
@@ -305,6 +480,10 @@ class BcaPdfParserTestCase(unittest.TestCase):
             transaction={
                 **parsed_transaction,
                 "merchant_display": parsed_transaction["merchant_normalized"],
+                "_section_id": "bca-section-synthetic",
+                "_section_label": "Pocket 1",
+                "_masked_section_identity": "**** 5566",
+                "_is_multi_account_statement": True,
             },
         )
 
@@ -314,6 +493,10 @@ class BcaPdfParserTestCase(unittest.TestCase):
         self.assertIsNone(row["raw_payload"]["transaction_time"])
         self.assertTrue(row["raw_payload"]["_technical_datetime_adapter"])
         self.assertEqual(1, row["raw_payload"]["source_sequence"])
+        self.assertEqual("bca-section-synthetic", row["raw_payload"]["section_id"])
+        self.assertEqual("Pocket 1", row["raw_payload"]["section_label"])
+        self.assertEqual("**** 5566", row["raw_payload"]["masked_section_identity"])
+        self.assertTrue(row["raw_payload"]["is_multi_account_statement"])
 
         review_item = ImportService()._serialize_review_transaction(
             {
@@ -331,6 +514,57 @@ class BcaPdfParserTestCase(unittest.TestCase):
         self.assertEqual("01/06/2026", review_item["datetime"])
         self.assertEqual("01/06/2026", review_item["transaction_date"])
         self.assertIsNone(review_item["transaction_time"])
+
+    def test_review_and_history_expose_safe_section_context(self):
+        section_context = {
+            "section_id": "bca-section-synthetic",
+            "display_label": "Pocket 1",
+            "masked_identity": "**** 5566",
+            "section_type": "pocket",
+            "transaction_count": 2,
+            "is_multi_account": True,
+        }
+        summary = {
+            "id": "job-synthetic",
+            "filename": "statement.pdf",
+            "provider": "bca",
+            "statement_owner": "Synthetic User",
+            "transactions_found": 2,
+            "new_transactions": 2,
+            "existing_transactions": 0,
+            "created_at": "2026-06-30T10:00:00Z",
+            "section_context": section_context,
+        }
+        service = ImportService()
+
+        with patch(
+            "app.imports.services.import_service.get_import_review_summary",
+            return_value=summary,
+        ), patch(
+            "app.imports.services.import_service.get_import_review_filter_counts",
+            return_value={"total_count": 0},
+        ), patch(
+            "app.imports.services.import_service."
+            "list_import_draft_transactions_paginated",
+            return_value=[],
+        ):
+            review = service.get_review_payload(
+                connection=object(),
+                workspace_id="workspace-synthetic",
+                job_id="job-synthetic",
+            )
+
+        history = service._serialize_history_job({
+            **summary,
+            "status": "review",
+            "approved_transactions": 0,
+            "rejected_transactions": 0,
+            "sync_success": 0,
+            "sync_failed": 0,
+        })
+
+        self.assertEqual(section_context, review["summary"]["section_context"])
+        self.assertEqual(section_context, history["section_context"])
 
     def test_password_required_pdf_is_distinct_from_permission_encryption(self):
         with self.assertRaises(PdfPasswordRequiredError):
@@ -365,6 +599,89 @@ class BcaPdfParserTestCase(unittest.TestCase):
         self.assertTrue(result.no_new_transactions)
         self.assertIsNone(result.error_code)
 
+    def test_multi_section_upload_returns_candidates_without_drafts(self):
+        lines = read_fixture_lines(THREE_SECTION_PATH)
+
+        result = self._receive_with_extraction(
+            filename="bca-multi-synthetic.pdf",
+            extraction=self.extraction_for_lines(lines, page_count=3),
+            expected_provider="bca",
+        )
+
+        self.assertEqual(ImportJobStatus.FAILED, result.status)
+        self.assertEqual("section_selection_required", result.error_code)
+        self.assertEqual(3, len(result.section_candidates))
+        self.assertTrue(result.is_multi_account)
+        self.assertEqual([], self.last_persisted_drafts)
+        self.assertEqual([], self.last_section_contexts)
+
+    def test_selected_upload_persists_only_one_section_and_safe_context(self):
+        lines = read_fixture_lines(THREE_SECTION_PATH)
+        discovery = self.parser.discover_sections(lines)
+
+        result = self._receive_with_extraction(
+            filename="bca-multi-synthetic.pdf",
+            extraction=self.extraction_for_lines(lines, page_count=3),
+            expected_provider="bca",
+            expected_section_id=discovery.candidates[1].section_id,
+        )
+
+        self.assertEqual(ImportJobStatus.REVIEW, result.status)
+        self.assertEqual(2, result.transactions_found)
+        self.assertEqual(discovery.candidates[1], result.selected_section)
+        self.assertEqual(2, len(self.last_persisted_drafts))
+        self.assertTrue(
+            all("SYNTH001" not in draft["raw_text"] for draft in self.last_persisted_drafts)
+        )
+        self.assertEqual(1, len(self.last_section_contexts))
+        self.assertEqual(
+            {
+                "section_id": discovery.candidates[1].section_id,
+                "display_label": "Pocket 1",
+                "masked_identity": discovery.candidates[1].masked_identity,
+                "section_type": "pocket",
+                "transaction_count": 2,
+                "is_multi_account": True,
+            },
+            self.last_section_contexts[0],
+        )
+
+    def test_upload_rejects_invalid_or_empty_selected_section(self):
+        lines = read_fixture_lines(THREE_SECTION_PATH)
+        discovery = self.parser.discover_sections(lines)
+
+        invalid = self._receive_with_extraction(
+            filename="bca-multi-synthetic.pdf",
+            extraction=self.extraction_for_lines(lines, page_count=3),
+            expected_provider="bca",
+            expected_section_id="bca-section-foreign",
+        )
+        self.assertEqual("invalid_section_selection", invalid.error_code)
+        self.assertEqual(3, len(invalid.section_candidates))
+        self.assertEqual([], self.last_persisted_drafts)
+
+        empty = self._receive_with_extraction(
+            filename="bca-multi-synthetic.pdf",
+            extraction=self.extraction_for_lines(lines, page_count=3),
+            expected_provider="bca",
+            expected_section_id=discovery.candidates[2].section_id,
+        )
+        self.assertEqual("no_parseable_transactions", empty.error_code)
+        self.assertEqual([], self.last_persisted_drafts)
+
+    def test_expected_provider_is_validated_against_server_detection(self):
+        lines = read_fixture_lines(STATEMENT_PATH)
+
+        result = self._receive_with_extraction(
+            filename="statement.pdf",
+            extraction=self.extraction_for_lines(lines),
+            expected_provider="blu",
+        )
+
+        self.assertEqual(ImportJobStatus.FAILED, result.status)
+        self.assertEqual("provider_mismatch", result.error_code)
+        self.assertEqual([], self.last_persisted_drafts)
+
     def test_provider_mismatch_upload_is_controlled(self):
         extraction = {
             "lines": ["bluAccount | bluSpending"],
@@ -391,6 +708,22 @@ class BcaPdfParserTestCase(unittest.TestCase):
                 "extracted_text_length": 0,
                 "extracted_text_hash": "synthetic-hash",
             },
+        )
+
+        self.assertEqual(ImportJobStatus.FAILED, result.status)
+        self.assertEqual("scan_only_pdf", result.error_code)
+
+    def test_expected_bca_scan_only_upload_with_generic_filename_is_controlled(self):
+        result = self._receive_with_extraction(
+            filename="statement.pdf",
+            extraction={
+                "lines": [],
+                "page_count": 1,
+                "extracted_text": "",
+                "extracted_text_length": 0,
+                "extracted_text_hash": "synthetic-hash",
+            },
+            expected_provider="bca",
         )
 
         self.assertEqual(ImportJobStatus.FAILED, result.status)
@@ -424,8 +757,12 @@ class BcaPdfParserTestCase(unittest.TestCase):
         filename: str,
         extraction: dict | None = None,
         extraction_error: Exception | None = None,
+        expected_provider: str | None = None,
+        expected_section_id: str | None = None,
     ):
         upload = NamedBytesIO(b"%PDF-synthetic", filename)
+        captured_drafts = []
+        captured_section_contexts = []
         fake_job = {
             "id": "job-synthetic",
             "provider": "bca",
@@ -445,6 +782,11 @@ class BcaPdfParserTestCase(unittest.TestCase):
         ), patch(
             "app.imports.services.import_service.update_import_job_provider",
         ), patch(
+            "app.imports.services.import_service.update_import_job_section_context",
+            side_effect=lambda *args, **kwargs: captured_section_contexts.append(
+                kwargs["section_context"]
+            ),
+        ), patch(
             "app.imports.services.import_service.update_import_job_summary",
         ), patch(
             "app.imports.services.import_service.update_import_job_status",
@@ -452,13 +794,31 @@ class BcaPdfParserTestCase(unittest.TestCase):
             "app.imports.services.import_service.extract_pdf_metadata",
             return_value=extraction,
             side_effect=extraction_error,
+        ), patch(
+            "app.imports.services.import_service.create_import_draft_transactions",
+            side_effect=lambda *args, **kwargs: captured_drafts.extend(
+                kwargs["draft_transactions"]
+            ),
+        ), patch(
+            "app.imports.services.import_service."
+            "get_registered_transaction_fingerprint_statuses",
+            return_value={},
+        ), patch(
+            "app.imports.services.import_service."
+            "get_existing_transactions_by_canonical_fingerprint",
+            return_value={},
         ):
-            return ImportService().receive_upload(
+            result = ImportService().receive_upload(
                 connection=object(),
                 workspace_id="workspace-synthetic",
                 file=upload,
                 statement_owner="Synthetic User",
+                expected_provider=expected_provider,
+                expected_section_id=expected_section_id,
             )
+        self.last_persisted_drafts = captured_drafts
+        self.last_section_contexts = captured_section_contexts
+        return result
 
 
 if __name__ == "__main__":

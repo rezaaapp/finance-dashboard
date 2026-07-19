@@ -1,4 +1,5 @@
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from app.imports.repositories.fingerprint_registry_repository import (
     get_registered_transaction_fingerprints,
@@ -147,6 +148,26 @@ def update_import_job_provider(
         return cursor.fetchone()
 
 
+def update_import_job_section_context(
+    connection,
+    *,
+    job_id: str,
+    section_context: dict,
+):
+    with connection.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            update import_jobs
+            set section_context = %s
+            where id = %s
+            returning *
+            """,
+            (Jsonb(section_context), job_id),
+        )
+
+        return cursor.fetchone()
+
+
 def increment_import_job_rejected_count(
     connection,
     *,
@@ -270,6 +291,7 @@ def get_import_review_summary(connection, *, workspace_id: str, job_id: str):
                 new_transactions,
                 existing_transactions,
                 rejected_transactions,
+                coalesce(section_context, '{}'::jsonb) as section_context,
                 temp_file_deleted_at,
                 created_at
             from import_jobs
@@ -598,6 +620,7 @@ def refresh_import_job_aggregates(connection, *, workspace_id: str, job_id: str)
                 j.new_transactions,
                 j.existing_transactions,
                 j.rejected_transactions,
+                coalesce(j.section_context, '{}'::jsonb) as section_context,
                 j.temp_file_path,
                 j.temp_file_deleted_at,
                 j.expires_at,
@@ -664,6 +687,7 @@ def list_import_history(connection, *, workspace_id: str):
                 j.new_transactions,
                 j.existing_transactions,
                 j.rejected_transactions,
+                coalesce(j.section_context, '{}'::jsonb) as section_context,
                 j.temp_file_deleted_at,
                 coalesce(ts.approved_transactions, 0) as approved_transactions,
                 coalesce(ts.sync_success, 0) as sync_success,
@@ -754,6 +778,7 @@ def list_import_history_paginated(
                 j.new_transactions,
                 j.existing_transactions,
                 j.rejected_transactions,
+                coalesce(j.section_context, '{}'::jsonb) as section_context,
                 j.temp_file_deleted_at,
                 coalesce(ts.approved_transactions, 0) as approved_transactions,
                 coalesce(ts.sync_success, 0) as sync_success,
@@ -825,6 +850,7 @@ def get_import_history_detail(connection, *, workspace_id: str, job_id: str):
                 j.new_transactions,
                 j.existing_transactions,
                 j.rejected_transactions,
+                coalesce(j.section_context, '{}'::jsonb) as section_context,
                 j.temp_file_deleted_at,
                 j.expires_at,
                 coalesce(ts.approved_transactions, 0) as approved_transactions,

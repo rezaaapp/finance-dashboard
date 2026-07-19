@@ -3,17 +3,20 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, BinaryIO
 
 from pydantic import Field
 
-from app.imports.models.import_models import ParsedImportResult
+from app.imports.models.import_models import ImportSectionCandidate, ParsedImportResult
 from app.imports.parsers.base_parser import (
     BaseParser,
+    InvalidSectionSelectionError,
     MalformedTransactionRowError,
     NoParseableTransactionsError,
+    SectionSelectionRequiredError,
     UnsupportedStatementError,
 )
 from app.imports.utils.fingerprint import build_bca_signature_key
@@ -24,6 +27,26 @@ class BcaParsedImportResult(ParsedImportResult):
     statement_empty: bool = False
     warnings: list[str] = Field(default_factory=list)
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    section_candidates: list[ImportSectionCandidate] = Field(default_factory=list)
+    selected_section: ImportSectionCandidate | None = None
+    is_multi_account: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class BcaStatementSection:
+    candidate: ImportSectionCandidate
+    lines: tuple[str, ...]
+    account_identity_hash: str
+    section_identity_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class BcaSectionDiscovery:
+    sections: tuple[BcaStatementSection, ...]
+
+    @property
+    def candidates(self) -> list[ImportSectionCandidate]:
+        return [section.candidate for section in self.sections]
 
 
 class BcaPdfParser(BaseParser):
@@ -140,34 +163,140 @@ class BcaPdfParser(BaseParser):
         *,
         page_count: int = 0,
         extracted_text_length: int = 0,
+        expected_section_id: str | None = None,
     ) -> ParsedImportResult:
+        discovery = self.discover_sections(lines)
+        normalized_section_id = str(expected_section_id or "").strip()
+
+        if len(discovery.sections) > 1 and not normalized_section_id:
+            raise SectionSelectionRequiredError(
+                "BCA statement contains multiple account sections"
+            )
+
+        selected_section_id = (
+            normalized_section_id
+            or discovery.sections[0].candidate.section_id
+        )
+        return self.parse_selected_section(
+            discovery,
+            selected_section_id=selected_section_id,
+            page_count=page_count,
+            extracted_text_length=extracted_text_length,
+        )
+
+    def discover_sections(self, lines: list[str]) -> BcaSectionDiscovery:
         normalized_lines = [
             self._normalize_line(line)
             for line in lines
             if self._normalize_line(line)
         ]
-        account_identities = self._extract_account_identities(normalized_lines)
-        if len(account_identities) != 1:
-            raise UnsupportedStatementError(
-                "BCA import requires exactly one unambiguous account section"
-            )
-
         if not any(self.SUPPORTED_TITLE_PATTERN.match(line) for line in normalized_lines):
             raise UnsupportedStatementError("BCA statement product is not supported")
 
-        if not any(self.TABLE_HEADER_PATTERN.match(line) for line in normalized_lines):
-            raise UnsupportedStatementError("BCA transaction table header was not found")
+        raw_sections: list[dict[str, Any]] = []
+        current_section: dict[str, Any] | None = None
+        closed_identities: set[str] = set()
 
-        statement_year = self._extract_statement_year(normalized_lines)
-        account_identity_hash = self._hash_account_identity(account_identities[0])
+        for line_index, line in enumerate(normalized_lines):
+            account_identity = self._extract_section_header_identity(
+                normalized_lines,
+                line_index=line_index,
+            )
+
+            if account_identity:
+                if current_section is None:
+                    current_section = {
+                        "account_identity": account_identity,
+                        "lines": [],
+                    }
+                    raw_sections.append(current_section)
+                elif account_identity != current_section["account_identity"]:
+                    closed_identities.add(current_section["account_identity"])
+                    if account_identity in closed_identities:
+                        raise UnsupportedStatementError(
+                            "BCA account section reappeared after another section"
+                        )
+                    current_section = {
+                        "account_identity": account_identity,
+                        "lines": [],
+                    }
+                    raw_sections.append(current_section)
+
+            if current_section is not None:
+                current_section["lines"].append(line)
+
+        if not raw_sections:
+            raise UnsupportedStatementError("BCA account identity was not found")
+
+        sections: list[BcaStatementSection] = []
+        for section_index, raw_section in enumerate(raw_sections):
+            section_lines = list(raw_section["lines"])
+            if not any(self.TABLE_HEADER_PATTERN.match(line) for line in section_lines):
+                raise UnsupportedStatementError(
+                    "BCA transaction table header was not found for a section"
+                )
+            self._extract_statement_year(section_lines)
+
+            account_identity = str(raw_section["account_identity"])
+            transaction_count = self._estimate_transaction_count(section_lines)
+            section_type = "account" if section_index == 0 else "pocket"
+            display_number = 1 if section_index == 0 else section_index
+            section_id = self._build_section_id(account_identity)
+            candidate = ImportSectionCandidate(
+                section_id=section_id,
+                display_label=(
+                    f"Rekening {display_number}"
+                    if section_type == "account"
+                    else f"Pocket {display_number}"
+                ),
+                masked_identity=self._mask_account_identity(account_identity),
+                section_type=section_type,
+                source_sequence_start=1 if transaction_count else 0,
+                source_sequence_end=transaction_count,
+                transaction_count_estimate=transaction_count,
+                is_selectable=transaction_count > 0,
+            )
+            sections.append(BcaStatementSection(
+                candidate=candidate,
+                lines=tuple(section_lines),
+                account_identity_hash=self._hash_account_identity(account_identity),
+                section_identity_hash=self._hash_section_identity(account_identity),
+            ))
+
+        return BcaSectionDiscovery(sections=tuple(sections))
+
+    def parse_selected_section(
+        self,
+        discovery: BcaSectionDiscovery,
+        *,
+        selected_section_id: str,
+        page_count: int = 0,
+        extracted_text_length: int = 0,
+    ) -> BcaParsedImportResult:
+        selected_section = next(
+            (
+                section
+                for section in discovery.sections
+                if section.candidate.section_id == selected_section_id
+            ),
+            None,
+        )
+        if selected_section is None:
+            raise InvalidSectionSelectionError(
+                "Selected BCA section was not found in server discovery"
+            )
+
+        section_lines = list(selected_section.lines)
+        statement_year = self._extract_statement_year(section_lines)
         transactions, warnings, malformed_rows = self._parse_transaction_blocks(
-            normalized_lines,
+            section_lines,
             statement_year=statement_year,
-            account_identity_hash=account_identity_hash,
+            account_identity_hash=selected_section.account_identity_hash,
+            section_identity_hash=selected_section.section_identity_hash,
         )
         statement_empty = bool(
             not transactions
-            and any(self.EMPTY_MARKER_PATTERN.match(line) for line in normalized_lines)
+            and any(self.EMPTY_MARKER_PATTERN.match(line) for line in section_lines)
         )
 
         if not transactions and malformed_rows:
@@ -175,9 +304,11 @@ class BcaPdfParser(BaseParser):
                 "BCA statement contains transaction rows that cannot be parsed safely"
             )
 
-        if not transactions and not statement_empty:
+        if not transactions and (
+            not statement_empty or len(discovery.sections) > 1
+        ):
             raise NoParseableTransactionsError(
-                "BCA statement structure was recognized but yielded no transactions"
+                "Selected BCA section yielded no parseable transactions"
             )
 
         self._assign_occurrence_indexes(transactions)
@@ -190,20 +321,56 @@ class BcaPdfParser(BaseParser):
             statement_empty=statement_empty,
             warnings=warnings,
             provider_metadata=dict(self.PROVIDER_METADATA),
+            section_candidates=discovery.candidates,
+            selected_section=selected_section.candidate,
+            is_multi_account=len(discovery.sections) > 1,
         )
 
-    def _extract_account_identities(self, lines: list[str]) -> list[str]:
-        identities: list[str] = []
-        for line in lines:
-            account_match = self.ACCOUNT_PATTERN.search(line)
-            if not account_match:
+    def _estimate_transaction_count(self, lines: list[str]) -> int:
+        return sum(
+            1
+            for line in lines
+            if (
+                (date_match := self.DATE_ROW_PATTERN.match(line))
+                and not self.NON_TRANSACTION_ROW_PATTERN.match(
+                    date_match.group("body").strip()
+                )
+            )
+        )
+
+    def _extract_section_header_identity(
+        self,
+        lines: list[str],
+        *,
+        line_index: int,
+    ) -> str:
+        account_match = self.ACCOUNT_PATTERN.search(lines[line_index])
+        if account_match is None:
+            return ""
+
+        has_period = False
+        for metadata_line in lines[line_index + 1:line_index + 25]:
+            if (
+                self.DATE_ROW_PATTERN.match(metadata_line)
+                or self.SUMMARY_PATTERN.match(metadata_line)
+                or self.EMPTY_MARKER_PATTERN.match(metadata_line)
+                or self.ACCOUNT_PATTERN.search(metadata_line)
+            ):
+                return ""
+            if self.PERIOD_PATTERN.match(metadata_line):
+                has_period = True
                 continue
+            if self.TABLE_HEADER_PATTERN.match(metadata_line):
+                if not has_period:
+                    return ""
+                break
+        else:
+            return ""
 
-            normalized_account = re.sub(r"\D", "", account_match.group("account"))
-            if normalized_account and normalized_account not in identities:
-                identities.append(normalized_account)
+        if not has_period:
+            return ""
 
-        return identities
+        return re.sub(r"\D", "", account_match.group("account"))
 
     def _extract_statement_year(self, lines: list[str]) -> int:
         years = {
@@ -221,11 +388,17 @@ class BcaPdfParser(BaseParser):
         *,
         statement_year: int,
         account_identity_hash: str,
+        section_identity_hash: str,
     ) -> tuple[list[dict], list[str], int]:
         transactions: list[dict] = []
         warnings: list[str] = []
         malformed_rows = 0
         current_block: list[str] = []
+        account_header_indexes = {
+            line_index
+            for line_index in range(len(lines))
+            if self._extract_section_header_identity(lines, line_index=line_index)
+        }
 
         def flush_current_block():
             nonlocal current_block, malformed_rows
@@ -237,6 +410,7 @@ class BcaPdfParser(BaseParser):
                     current_block,
                     statement_year=statement_year,
                     account_identity_hash=account_identity_hash,
+                    section_identity_hash=section_identity_hash,
                     source_sequence=len(transactions) + 1,
                 )
             except MalformedTransactionRowError:
@@ -251,13 +425,16 @@ class BcaPdfParser(BaseParser):
                     transactions.append(transaction)
             current_block = []
 
-        for line in lines:
+        for line_index, line in enumerate(lines):
             if self.DATE_ROW_PATTERN.match(line):
                 flush_current_block()
                 current_block = [line]
                 continue
 
-            if self._is_structural_line(line):
+            if self._is_structural_line(
+                line,
+                is_account_header=line_index in account_header_indexes,
+            ):
                 flush_current_block()
                 continue
 
@@ -273,6 +450,7 @@ class BcaPdfParser(BaseParser):
         *,
         statement_year: int,
         account_identity_hash: str,
+        section_identity_hash: str,
         source_sequence: int,
     ) -> dict | None:
         date_match = self.DATE_ROW_PATTERN.match(block_lines[0])
@@ -321,6 +499,10 @@ class BcaPdfParser(BaseParser):
         if not merchant_original:
             merchant_original = transaction_type
         source_reference = self._extract_source_reference(description_lines)
+        merchant_original = self._mask_account_number_references(merchant_original)
+        sanitized_raw_text = self._mask_account_number_references(
+            " | ".join(block_lines)
+        )
 
         return {
             "transaction_date": transaction_date,
@@ -331,12 +513,13 @@ class BcaPdfParser(BaseParser):
             "direction": direction,
             "transaction_type": transaction_type,
             "review_group": self.REVIEW_GROUP,
-            "raw_text": " | ".join(block_lines),
+            "raw_text": sanitized_raw_text,
             "source_reference": source_reference,
             "balance_after": balance_after,
             "source_sequence": source_sequence,
             "source_occurrence": 1,
             "_account_identity_hash": account_identity_hash,
+            "_section_identity": section_identity_hash,
             "_parse_warnings": parse_warnings,
             **self.PROVIDER_METADATA,
         }
@@ -346,6 +529,7 @@ class BcaPdfParser(BaseParser):
         for transaction in transactions:
             signature = build_bca_signature_key(
                 account_identity_hash=transaction["_account_identity_hash"],
+                section_identity=transaction["_section_identity"],
                 transaction_date=transaction["transaction_date"],
                 merchant_name=transaction["merchant_original"],
                 amount=transaction["amount"],
@@ -413,9 +597,41 @@ class BcaPdfParser(BaseParser):
     def _hash_account_identity(self, account_identity: str) -> str:
         return hashlib.sha256(f"bca:{account_identity}".encode("utf-8")).hexdigest()
 
-    def _is_structural_line(self, line: str) -> bool:
+    def _hash_section_identity(self, account_identity: str) -> str:
+        return hashlib.sha256(
+            f"bca-section:{account_identity}".encode("utf-8")
+        ).hexdigest()
+
+    def _build_section_id(self, account_identity: str) -> str:
+        digest = hashlib.sha256(
+            f"bca-section-id-v1:{account_identity}".encode("utf-8")
+        ).hexdigest()
+        return f"bca-section-{digest[:24]}"
+
+    def _mask_account_identity(self, account_identity: str) -> str:
+        visible_suffix = account_identity[-4:]
+        return f"**** {visible_suffix}"
+
+    def _mask_account_number_references(self, value: str) -> str:
+        def replace_account(match: re.Match) -> str:
+            matched_value = match.group(0)
+            account_offset = match.start("account") - match.start(0)
+            account_identity = re.sub(r"\D", "", match.group("account"))
+            return (
+                matched_value[:account_offset]
+                + self._mask_account_identity(account_identity)
+            )
+
+        return self.ACCOUNT_PATTERN.sub(replace_account, str(value or ""))
+
+    def _is_structural_line(
+        self,
+        line: str,
+        *,
+        is_account_header: bool = False,
+    ) -> bool:
         return bool(
-            self.ACCOUNT_PATTERN.search(line)
+            is_account_header
             or self.PERIOD_PATTERN.match(line)
             or self.SUPPORTED_TITLE_PATTERN.match(line)
             or self.TABLE_HEADER_PATTERN.match(line)
