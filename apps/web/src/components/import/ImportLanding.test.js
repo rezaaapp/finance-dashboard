@@ -15,18 +15,29 @@ const importReviewSource = readFileSync(
   "utf8"
 );
 
-test("BCA import remains disabled and marked Coming Soon", () => {
+test("BCA import is available through a default-on rollback flag", () => {
   assert.match(importLandingSource, /isBcaImportEnabled\(import\.meta\.env\)/);
   assert.match(
     importLandingSource,
-    /aria-disabled="true"[\s\S]*BCA PDF[\s\S]*<ProviderBadge>Coming Soon<\/ProviderBadge>[\s\S]*<button[\s\S]*disabled/
+    /bcaImportEnabled[\s\S]*<BcaImportPanel/
   );
+  assert.match(bcaImportPanelSource, /Didukung/);
+  assert.match(
+    bcaImportPanelSource,
+    /status-badge--success[^>]*>Tersedia/
+  );
+  assert.doesNotMatch(bcaImportPanelSource, /Uji terbatas|Feature Preview/);
 });
 
-test("Blu card remains active with its existing upload copy", () => {
+test("Blu card remains active and uses the official provider logo", () => {
   assert.match(importLandingSource, /Blu PDF Statement/);
+  assert.match(importLandingSource, /\/brands\/blu-logo-white\.png/);
   assert.match(importLandingSource, /Unggah dan periksa PDF/);
   assert.match(importLandingSource, /uploadImportFile\(selectedFile, statementOwner\)/);
+});
+
+test("BCA card uses the official provider logo", () => {
+  assert.match(bcaImportPanelSource, /\/brands\/bca-logo-blue\.png/);
 });
 
 test("BCA selection uses accessible single-choice controls", () => {

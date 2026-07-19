@@ -1,7 +1,6 @@
 import {
   CircleAlert,
   FileCheck2,
-  FileText,
   LoaderCircle,
   RotateCcw,
   Upload,
@@ -240,17 +239,22 @@ const BcaImportPanel = ({
     <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] lg:col-span-2 xl:col-span-2">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-bg)] text-accent">
-            <FileText size={22} />
+          <span className="flex h-11 w-24 shrink-0 items-center justify-center rounded-lg bg-blue-50 px-1 dark:bg-white">
+            <img
+              src="/brands/bca-logo-blue.png"
+              alt=""
+              aria-hidden="true"
+              className="h-10 w-full object-contain"
+            />
           </span>
           <div className="min-w-0">
             <h3 className="text-base font-bold text-main">BCA PDF</h3>
-            <p className="mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
-              Uji terbatas
+            <p className="mt-1 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+              Didukung
             </p>
           </div>
         </div>
-        <span className="status-badge status-badge--info">Feature Preview</span>
+        <span className="status-badge status-badge--success self-start">Tersedia</span>
       </div>
 
       <p className="mt-4 text-sm leading-6 text-muted">
