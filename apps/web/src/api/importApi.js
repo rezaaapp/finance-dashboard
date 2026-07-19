@@ -1,7 +1,10 @@
 import axios from "axios";
 
 import { IMPORT_API_URL } from "./config";
+import { buildImportUploadFormData } from "./importUploadFormData";
 import { buildWorkspaceHeaders } from "./workspaceContext";
+
+export { buildImportUploadFormData } from "./importUploadFormData";
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("finance-dashboard-token");
@@ -12,16 +15,19 @@ const getAuthHeaders = () => {
   };
 };
 
-export const uploadImportFile = async (file, statementOwner) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("statement_owner", statementOwner);
+export const uploadImportFile = async (
+  file,
+  statementOwner,
+  options = {}
+) => {
+  const formData = buildImportUploadFormData(file, statementOwner, options);
 
   const response = await axios.post(
     `${IMPORT_API_URL}/upload`,
     formData,
     {
       headers: getAuthHeaders(),
+      signal: options.signal,
     }
   );
 
