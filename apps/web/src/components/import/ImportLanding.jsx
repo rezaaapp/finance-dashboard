@@ -102,11 +102,11 @@ const ImportLanding = ({ onReviewReady }) => {
     <div className="grid grid-cols-1 gap-6">
       <section>
         <h2 className="text-2xl font-bold text-main">
-          Unggah mutasi Blu
+          Unggah mutasi bank
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted sm:text-base">
-          Pilih pemilik transaksi, unggah PDF e-Statement Blu, lalu Omon akan
-          memeriksa transaksi baru sebelum Anda menyimpannya ke ledger Omon.
+          Pilih pemilik transaksi, unggah PDF e-Statement Blu atau BCA, lalu
+          Omon akan memeriksa transaksi baru sebelum Anda menyimpannya ke ledger Omon.
         </p>
       </section>
 
@@ -114,8 +114,13 @@ const ImportLanding = ({ onReviewReady }) => {
         <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-bg)] text-accent">
-                <FileText size={22} />
+              <span className="flex h-11 w-16 shrink-0 items-center justify-center rounded-lg bg-[#00a6a6] px-2">
+                <img
+                  src="/brands/blu-logo-white.png"
+                  alt=""
+                  aria-hidden="true"
+                  className="h-5 w-auto max-w-full object-contain"
+                />
               </span>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-bold text-main">
@@ -291,8 +296,8 @@ const ImportLanding = ({ onReviewReady }) => {
       )}
 
       <section className="alert-panel alert-panel--warning px-4 py-3 text-sm leading-6">
-        Saat ini Import hanya mendukung PDF e-Statement Blu dengan batas dan
-        validasi file dari sistem yang sudah berjalan. File akan diperiksa dulu;
+        Import mendukung PDF e-Statement Blu dan BCA. Untuk BCA, pilih tepat
+        satu rekening atau Pocket yang ingin direview. File akan diperiksa dulu;
         transaksi baru baru disimpan setelah Anda menyetujuinya.
       </section>
     </div>

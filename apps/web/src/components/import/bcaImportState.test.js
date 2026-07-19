@@ -46,8 +46,8 @@ const rawCandidates = [
   },
 ];
 
-test("BCA feature flag is disabled by default and requires explicit enablement", () => {
-  assert.equal(false, isBcaImportEnabled({}));
+test("BCA feature flag is enabled by default and supports emergency rollback", () => {
+  assert.equal(true, isBcaImportEnabled({}));
   assert.equal(false, isBcaImportEnabled({ VITE_BCA_IMPORT_ENABLED: "false" }));
   assert.equal(true, isBcaImportEnabled({ VITE_BCA_IMPORT_ENABLED: "true" }));
 });
