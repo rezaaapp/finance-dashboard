@@ -54,7 +54,7 @@ class ImportDraftTransaction(BaseModel):
     canonical_fingerprint: str = ""
     canonical_fingerprint_date: str = ""
     statement_owner: str = ""
-    source_fund: str = "Blu"
+    source_fund: str
     datetime: str = ""
     merchant_original: str = ""
     merchant_normalized: str = ""

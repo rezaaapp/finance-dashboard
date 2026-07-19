@@ -118,7 +118,7 @@ class SpreadsheetValueResolver:
         connection,
         *,
         workspace_id: str,
-        provider: str = "Blu",
+        provider: str,
     ) -> str:
         existing_sources = list_workspace_transaction_source_funds(
             connection,

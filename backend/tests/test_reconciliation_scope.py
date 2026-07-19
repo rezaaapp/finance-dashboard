@@ -76,6 +76,22 @@ class ReconciliationScopeTestCase(unittest.TestCase):
             statement.sql,
         )
 
+    def test_source_origin_backfill_uses_registered_provider_metadata(self):
+        statements = build_repair_statements(
+            workspace_id="workspace-123",
+            scope=resolve_reconciliation_scope(),
+        )
+        statement = next(
+            item
+            for item in statements
+            if item.name == "backfill_source_origin_and_reference"
+        )
+        normalized_sql = " ".join(statement.sql.lower().split())
+
+        self.assertIn("when 'blu' then 'blu_pdf'", normalized_sql)
+        self.assertIn("when 'bca' then 'bca_pdf'", normalized_sql)
+        self.assertIn("else source_origin end", normalized_sql)
+
     def test_normalize_owner_name_groups_reza_aliases(self):
         self.assertEqual("Reza", normalize_owner_name("Reza"))
         self.assertEqual("Reza", normalize_owner_name(" reza putra pratama "))
