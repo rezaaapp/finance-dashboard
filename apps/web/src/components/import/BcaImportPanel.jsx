@@ -236,8 +236,8 @@ const BcaImportPanel = ({
   ].includes(state.status);
 
   return (
-    <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)] lg:col-span-2 xl:col-span-2">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <article className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-[var(--color-border)] dark:bg-[var(--color-panel)]">
+      <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-11 w-24 shrink-0 items-center justify-center rounded-lg bg-blue-50 px-1 dark:bg-white">
             <img
@@ -254,12 +254,8 @@ const BcaImportPanel = ({
             </p>
           </div>
         </div>
-        <span className="status-badge status-badge--success self-start">Tersedia</span>
+        <span className="status-badge status-badge--success">Tersedia</span>
       </div>
-
-      <p className="mt-4 text-sm leading-6 text-muted">
-        Unggah e-Statement BCA, lalu pilih tepat satu rekening atau Pocket untuk direview.
-      </p>
 
       <label className="mt-5 block">
         <span className="text-sm font-semibold text-muted">
@@ -286,7 +282,7 @@ const BcaImportPanel = ({
           className="primary-button mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold sm:w-auto"
         >
           <Upload size={18} />
-          Pilih PDF BCA
+          Unggah dan periksa PDF
         </button>
       )}
 

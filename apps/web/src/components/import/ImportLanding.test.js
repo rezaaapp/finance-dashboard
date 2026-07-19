@@ -32,12 +32,21 @@ test("BCA import is available through a default-on rollback flag", () => {
 test("Blu card remains active and uses the official provider logo", () => {
   assert.match(importLandingSource, /Blu PDF Statement/);
   assert.match(importLandingSource, /\/brands\/blu-logo-white\.png/);
+  assert.match(
+    importLandingSource,
+    /<ProviderBadge variant="success">Tersedia<\/ProviderBadge>/
+  );
+  assert.doesNotMatch(importLandingSource, />Beta</);
   assert.match(importLandingSource, /Unggah dan periksa PDF/);
   assert.match(importLandingSource, /uploadImportFile\(selectedFile, statementOwner\)/);
 });
 
-test("BCA card uses the official provider logo", () => {
+test("BCA card uses the official provider logo and matches the provider grid", () => {
   assert.match(bcaImportPanelSource, /\/brands\/bca-logo-blue\.png/);
+  assert.match(bcaImportPanelSource, /Unggah dan periksa PDF/);
+  assert.doesNotMatch(bcaImportPanelSource, /Pilih PDF BCA/);
+  assert.doesNotMatch(bcaImportPanelSource, /(?:lg|xl):col-span-2/);
+  assert.doesNotMatch(bcaImportPanelSource, /Unggah e-Statement BCA, lalu pilih/);
 });
 
 test("BCA selection uses accessible single-choice controls", () => {
