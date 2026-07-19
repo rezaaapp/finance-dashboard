@@ -10,6 +10,7 @@ from app.imports.models.import_models import (
     ImportUploadResult,
     ParsedImportResult,
 )
+from app.imports.parsers.base_parser import ImportParserError
 from app.imports.provider_registry import (
     get_import_provider_config,
     require_import_parser_class,
@@ -56,13 +57,17 @@ from app.imports.services.incremental_import_engine import IncrementalImportEngi
 from app.imports.services.spreadsheet_sync_service import SpreadsheetSyncService
 from app.imports.services.spreadsheet_value_resolver import SpreadsheetValueResolver
 from app.imports.utils.fingerprint import (
+    build_bca_transaction_fingerprint,
     build_canonical_fingerprint,
     build_canonical_fingerprint_date,
     build_transaction_fingerprint,
     normalize_owner_name,
 )
 from app.imports.utils.merchant_normalizer import MerchantNormalizer
-from app.imports.utils.pdf_text_extractor import extract_pdf_metadata
+from app.imports.utils.pdf_text_extractor import (
+    PdfPasswordRequiredError,
+    extract_pdf_metadata,
+)
 from app.imports.utils.provider_detection import detect_import_provider
 from app.imports.utils.temp_storage import delete_temp_import_file, save_temp_import_file
 from app.repositories.google_oauth_repository import get_active_google_oauth_connection
@@ -245,30 +250,52 @@ class ImportService:
                 "statement_owner": normalized_statement_owner,
                 "source_fund": normalized_source_fund,
             }
-            owner_transaction["transaction_fingerprint"] = build_transaction_fingerprint(
-                owner_name=normalized_statement_owner,
-                source_dana=normalized_source_fund,
-                datetime_value=str(owner_transaction.get("datetime", "")),
-                merchant_normalized=str(owner_transaction.get("merchant_normalized", "")),
-                amount=owner_transaction.get("amount", 0),
-                direction=str(owner_transaction.get("direction", "")),
-            )
-            owner_transaction["canonical_fingerprint"] = build_canonical_fingerprint(
-                owner_name=normalized_statement_owner,
-                datetime_value=owner_transaction.get("datetime", ""),
-                merchant_name=str(merchant_name),
-                amount=owner_transaction.get("amount", 0),
-                direction=str(owner_transaction.get("direction", "")),
-                source_fund=normalized_source_fund,
-            )
-            owner_transaction["canonical_fingerprint_date"] = build_canonical_fingerprint_date(
-                owner_name=normalized_statement_owner,
-                datetime_value=owner_transaction.get("datetime", ""),
-                merchant_name=str(merchant_name),
-                amount=owner_transaction.get("amount", 0),
-                direction=str(owner_transaction.get("direction", "")),
-                source_fund=normalized_source_fund,
-            )
+            if parsed_result.provider == "bca":
+                bca_fingerprint = build_bca_transaction_fingerprint(
+                    account_identity_hash=str(
+                        owner_transaction.get("_account_identity_hash", "")
+                    ),
+                    transaction_date=str(
+                        owner_transaction.get("transaction_date")
+                        or owner_transaction.get("datetime", "").split(" ", 1)[0]
+                    ),
+                    merchant_name=str(merchant_name),
+                    amount=owner_transaction.get("amount", 0),
+                    direction=str(owner_transaction.get("direction", "")),
+                    occurrence_index=int(
+                        owner_transaction.get("source_occurrence", 1) or 1
+                    ),
+                    source_reference=owner_transaction.get("source_reference"),
+                    balance_after=owner_transaction.get("balance_after"),
+                )
+                owner_transaction["transaction_fingerprint"] = bca_fingerprint
+                owner_transaction["canonical_fingerprint"] = bca_fingerprint
+                owner_transaction["canonical_fingerprint_date"] = bca_fingerprint
+            else:
+                owner_transaction["transaction_fingerprint"] = build_transaction_fingerprint(
+                    owner_name=normalized_statement_owner,
+                    source_dana=normalized_source_fund,
+                    datetime_value=str(owner_transaction.get("datetime", "")),
+                    merchant_normalized=str(owner_transaction.get("merchant_normalized", "")),
+                    amount=owner_transaction.get("amount", 0),
+                    direction=str(owner_transaction.get("direction", "")),
+                )
+                owner_transaction["canonical_fingerprint"] = build_canonical_fingerprint(
+                    owner_name=normalized_statement_owner,
+                    datetime_value=owner_transaction.get("datetime", ""),
+                    merchant_name=str(merchant_name),
+                    amount=owner_transaction.get("amount", 0),
+                    direction=str(owner_transaction.get("direction", "")),
+                    source_fund=normalized_source_fund,
+                )
+                owner_transaction["canonical_fingerprint_date"] = build_canonical_fingerprint_date(
+                    owner_name=normalized_statement_owner,
+                    datetime_value=owner_transaction.get("datetime", ""),
+                    merchant_name=str(merchant_name),
+                    amount=owner_transaction.get("amount", 0),
+                    direction=str(owner_transaction.get("direction", "")),
+                    source_fund=normalized_source_fund,
+                )
             owner_transactions.append(owner_transaction)
 
         return ParsedImportResult(
@@ -455,6 +482,21 @@ class ImportService:
             try:
                 with temp_path.open("rb") as temp_pdf:
                     extraction = extract_pdf_metadata(temp_pdf)
+            except PdfPasswordRequiredError:
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=filename_provider,
+                    detection_source=(
+                        "filename" if filename_provider != "unknown" else "unknown"
+                    ),
+                    page_count=0,
+                    extracted_text_length=0,
+                    stage="pdf_extraction",
+                    reason="PDF requires a password",
+                    error_code="encrypted_pdf",
+                    user_error="PDF dilindungi password dan tidak dapat dibaca.",
+                )
             except Exception:
                 return self._fail_upload(
                     connection,
@@ -500,6 +542,20 @@ class ImportService:
                 extracted_text_hash=extraction.get("extracted_text_hash", "")[:16],
             )
 
+            if provider_detection.get("error_code") == "provider_mismatch":
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=provider,
+                    detection_source=detection_source,
+                    page_count=extraction["page_count"],
+                    extracted_text_length=extraction["extracted_text_length"],
+                    stage="provider_detection",
+                    reason="Filename and PDF content indicate different providers",
+                    error_code="provider_mismatch",
+                    user_error="Nama file dan isi PDF menunjukkan provider yang berbeda.",
+                )
+
             if extraction["extracted_text_length"] == 0:
                 return self._fail_upload(
                     connection,
@@ -510,8 +566,14 @@ class ImportService:
                     extracted_text_length=extraction["extracted_text_length"],
                     stage="pdf_extraction",
                     reason="PDF text layer is empty",
-                    error_code="unreadable_pdf",
-                    user_error="PDF tidak memiliki text layer atau gagal dibaca.",
+                    error_code=(
+                        "scan_only_pdf" if filename_provider == "bca" else "unreadable_pdf"
+                    ),
+                    user_error=(
+                        "PDF BCA tidak memiliki text layer yang dapat dibaca."
+                        if filename_provider == "bca"
+                        else "PDF tidak memiliki text layer atau gagal dibaca."
+                    ),
                 )
 
             if (
@@ -545,9 +607,28 @@ class ImportService:
                 job_id=job_id,
                 provider=provider,
             )
-            parsed_result = self.enrich_transactions(
-                self.parse_extracted(extraction, provider=provider)
+            try:
+                raw_parsed_result = self.parse_extracted(extraction, provider=provider)
+            except ImportParserError as parser_error:
+                return self._fail_upload(
+                    connection,
+                    job_id=job_id,
+                    provider=provider,
+                    detection_source=detection_source,
+                    page_count=extraction["page_count"],
+                    extracted_text_length=extraction["extracted_text_length"],
+                    stage="parser",
+                    reason=f"Parser rejected statement: {parser_error.error_code}",
+                    error_code=parser_error.error_code,
+                    user_error=parser_error.user_message,
+                )
+            statement_empty = bool(
+                getattr(raw_parsed_result, "statement_empty", False)
             )
+            parser_warnings = list(
+                getattr(raw_parsed_result, "warnings", []) or []
+            )
+            parsed_result = self.enrich_transactions(raw_parsed_result)
             parsed_result = self.apply_statement_owner(
                 parsed_result,
                 statement_owner=normalized_statement_owner,
@@ -564,9 +645,10 @@ class ImportService:
                     for transaction in parsed_result.transactions
                     if str(transaction.get("review_group", "")).strip()
                 }),
+                parse_warnings=parser_warnings,
             )
 
-            if not parsed_result.transactions:
+            if not parsed_result.transactions and not statement_empty:
                 return self._fail_upload(
                     connection,
                     job_id=job_id,
@@ -606,9 +688,12 @@ class ImportService:
                 transaction for transaction in existing_transactions
                 if transaction.get("registry_status") == "rejected"
             ]
-            no_new_transactions = (
-                len(parsed_result.transactions) > 0
-                and len(new_transactions) == 0
+            no_new_transactions = bool(
+                statement_empty
+                or (
+                    len(parsed_result.transactions) > 0
+                    and len(new_transactions) == 0
+                )
             )
             terminal_status = (
                 ImportJobStatus.COMPLETED
@@ -666,15 +751,31 @@ class ImportService:
             rejected_transactions=len(rejected_transactions),
             no_new_transactions=no_new_transactions,
             message=(
-                "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak."
-                if len(parsed_result.transactions) > 0 and len(new_transactions) == 0
-                else None
+                "Statement BCA valid dan tidak memiliki transaksi."
+                if statement_empty
+                else (
+                    "Semua transaksi dalam PDF ini sudah pernah diproses atau ditolak."
+                    if len(parsed_result.transactions) > 0 and len(new_transactions) == 0
+                    else None
+                )
             ),
-            page_count=parsed_result.page_count,
-            extracted_text_length=parsed_result.extracted_text_length,
+            page_count=(
+                extraction["page_count"]
+                if provider == "bca"
+                else parsed_result.page_count
+            ),
+            extracted_text_length=(
+                extraction["extracted_text_length"]
+                if provider == "bca"
+                else parsed_result.extracted_text_length
+            ),
             preview=[
                 ImportPreviewItem(
-                    datetime=str(transaction.get("datetime", "")),
+                    datetime=str(
+                        transaction.get("transaction_date", "")
+                        if provider == "bca"
+                        else transaction.get("datetime", "")
+                    ),
                     merchant_original=str(transaction.get("merchant_original", "")),
                     merchant_normalized=str(transaction.get("merchant_normalized", "")),
                     amount=transaction.get("amount", 0),
@@ -1991,7 +2092,7 @@ class ImportService:
 
     def _serialize_review_transaction(self, transaction: dict, *, summary: dict):
         provider_config = require_import_provider_config(summary["provider"])
-        return {
+        serialized_transaction = {
             "id": str(transaction["id"]),
             "statement_owner": transaction.get("statement_owner", "") or summary.get("statement_owner", ""),
             "source_fund": (
@@ -2015,6 +2116,14 @@ class ImportService:
             "category": transaction["category"],
             "notes": transaction["notes"],
         }
+        if provider_config.key == "bca":
+            transaction_date = str(transaction["datetime"]).split(" ", 1)[0]
+            serialized_transaction.update({
+                "datetime": transaction_date,
+                "transaction_date": transaction_date,
+                "transaction_time": None,
+            })
+        return serialized_transaction
 
     def _normalize_page_limit(self, limit: int | None, *, default_limit: int) -> int:
         if limit is None:
