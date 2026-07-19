@@ -132,7 +132,7 @@ const ImportLanding = ({ onReviewReady }) => {
               </div>
             </div>
 
-            <ProviderBadge variant="success">Beta</ProviderBadge>
+            <ProviderBadge variant="success">Tersedia</ProviderBadge>
           </div>
 
           <label className="mt-5 block">
