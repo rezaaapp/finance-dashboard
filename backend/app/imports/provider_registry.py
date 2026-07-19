@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from app.imports.parsers.base_parser import BaseParser
+from app.imports.parsers.bca_pdf_parser import BcaPdfParser
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 
 
@@ -63,8 +64,13 @@ _PROVIDER_REGISTRY = MappingProxyType({
         label="BCA",
         source_fund="BCA",
         source_origin="bca_pdf",
-        parser_class=None,
-        import_enabled=False,
+        parser_class=BcaPdfParser,
+        filename_markers=("bca",),
+        content_markers=(
+            "rekening tahapan xpresi",
+            "rekening tahapan",
+        ),
+        import_enabled=True,
     ),
 })
 

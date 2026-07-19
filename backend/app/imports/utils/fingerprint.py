@@ -185,3 +185,51 @@ def build_transaction_fingerprint(
     ])
 
     return hashlib.sha256(fingerprint_payload.encode("utf-8")).hexdigest()
+
+
+def build_bca_signature_key(
+    *,
+    account_identity_hash: str,
+    transaction_date: str,
+    merchant_name: str,
+    amount,
+    direction: str,
+    source_reference: str | None = None,
+    balance_after=None,
+) -> str:
+    """Build the stable, occurrence-independent identity for a BCA row."""
+    return _hash_payload([
+        "bca",
+        _normalize_spaces(account_identity_hash).lower(),
+        _canonicalize_date(transaction_date),
+        _canonicalize_direction(direction),
+        _canonicalize_amount(amount),
+        normalize_description_for_fingerprint(merchant_name),
+        _normalize_spaces(source_reference).upper(),
+        "" if balance_after is None else _canonicalize_amount(balance_after),
+    ])
+
+
+def build_bca_transaction_fingerprint(
+    *,
+    account_identity_hash: str,
+    transaction_date: str,
+    merchant_name: str,
+    amount,
+    direction: str,
+    occurrence_index: int,
+    source_reference: str | None = None,
+    balance_after=None,
+) -> str:
+    """Build a BCA fingerprint without using filename, page, or adapter time."""
+    base_signature = build_bca_signature_key(
+        account_identity_hash=account_identity_hash,
+        transaction_date=transaction_date,
+        merchant_name=merchant_name,
+        amount=amount,
+        direction=direction,
+        source_reference=source_reference,
+        balance_after=balance_after,
+    )
+    normalized_occurrence = max(int(occurrence_index or 1), 1)
+    return _hash_payload(["bca-v1", base_signature, str(normalized_occurrence)])

@@ -299,6 +299,35 @@ def serialize_import_transaction_row(
     )
     raw_category = str(transaction.get("category", "")) or None
     note = str(transaction.get("notes", "")) or None
+    raw_payload = {
+        "Nama": user_name,
+        "merchant_original": str(transaction.get("merchant_original", "")),
+        "merchant_normalized": str(transaction.get("merchant_normalized", "")),
+        "merchant_display": str(
+            transaction.get("merchant_display")
+            or transaction.get("merchant_normalized", "")
+        ),
+        "transaction_type": str(transaction.get("transaction_type", "")),
+        "review_group": str(transaction.get("review_group", "")),
+        "raw_text": str(transaction.get("raw_text", "")),
+        "category": str(transaction.get("category", "")),
+        "notes": str(transaction.get("notes", "")),
+        "source_fund": source_fund,
+        "_import_provider": provider,
+        "_import_source": "smart_import",
+    }
+    if provider == "bca":
+        raw_payload.update({
+            "transaction_date": str(
+                transaction.get("transaction_date")
+                or transaction_time.strftime("%d/%m/%Y")
+            ),
+            "transaction_time": None,
+            "source_reference": transaction.get("source_reference"),
+            "source_sequence": transaction.get("source_sequence"),
+            "balance_after": transaction.get("balance_after"),
+            "_technical_datetime_adapter": True,
+        })
 
     return {
         "workspace_id": workspace_id,
@@ -313,23 +342,7 @@ def serialize_import_transaction_row(
         "source_fund": source_fund,
         "note": note,
         "direction": str(transaction.get("direction", "")) or "expense",
-        "raw_payload": {
-            "Nama": user_name,
-            "merchant_original": str(transaction.get("merchant_original", "")),
-            "merchant_normalized": str(transaction.get("merchant_normalized", "")),
-            "merchant_display": str(
-                transaction.get("merchant_display")
-                or transaction.get("merchant_normalized", "")
-            ),
-            "transaction_type": str(transaction.get("transaction_type", "")),
-            "review_group": str(transaction.get("review_group", "")),
-            "raw_text": str(transaction.get("raw_text", "")),
-            "category": str(transaction.get("category", "")),
-            "notes": str(transaction.get("notes", "")),
-            "source_fund": source_fund,
-            "_import_provider": provider,
-            "_import_source": "smart_import",
-        },
+        "raw_payload": raw_payload,
         "normalized_hash": str(transaction.get("transaction_fingerprint", "")),
         "user_name": user_name,
         "import_job_id": import_job_id,

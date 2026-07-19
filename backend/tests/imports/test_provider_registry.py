@@ -4,9 +4,9 @@ import io
 import unittest
 from pathlib import Path
 
+from app.imports.parsers.bca_pdf_parser import BcaPdfParser
 from app.imports.parsers.blu_pdf_parser import BluPdfParser
 from app.imports.provider_registry import (
-    ImportProviderUnavailableError,
     UnknownImportProviderError,
     get_import_provider_config,
     require_import_parser_class,
@@ -39,19 +39,17 @@ class ImportProviderRegistryTestCase(unittest.TestCase):
         self.assertTrue(provider.import_enabled)
         self.assertTrue(provider.parser_available)
 
-    def test_bca_metadata_is_registered_but_import_is_disabled(self):
+    def test_bca_metadata_is_registered_and_backend_import_is_enabled(self):
         provider = require_import_provider_config("bca")
 
         self.assertEqual("bca", provider.key)
         self.assertEqual("BCA", provider.label)
         self.assertEqual("BCA", provider.source_fund)
         self.assertEqual("bca_pdf", provider.source_origin)
-        self.assertIsNone(provider.parser_class)
-        self.assertFalse(provider.import_enabled)
-        self.assertFalse(provider.parser_available)
-
-        with self.assertRaises(ImportProviderUnavailableError):
-            require_import_parser_class("bca")
+        self.assertIs(BcaPdfParser, provider.parser_class)
+        self.assertTrue(provider.import_enabled)
+        self.assertTrue(provider.parser_available)
+        self.assertIs(BcaPdfParser, require_import_parser_class("bca"))
 
     def test_unknown_provider_never_falls_back_to_blu(self):
         self.assertIsNone(get_import_provider_config("unknown-bank"))
@@ -75,12 +73,12 @@ class ImportProviderRegistryTestCase(unittest.TestCase):
             ),
         )
 
-    def test_disabled_bca_is_not_detected_as_an_active_provider(self):
+    def test_bca_is_detected_as_an_active_backend_provider(self):
         self.assertEqual(
-            {"provider": "unknown", "detection_source": "unknown"},
+            {"provider": "bca", "detection_source": "content"},
             detect_import_provider(
-                filename="bca-estatement.pdf",
-                extracted_text="Bank Central Asia account statement",
+                filename="statement.pdf",
+                extracted_text="REKENING TAHAPAN XPRESI",
             ),
         )
 

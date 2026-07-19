@@ -4,6 +4,12 @@ from hashlib import sha256
 from typing import BinaryIO, Callable
 
 import pdfplumber
+from pdfminer.pdfdocument import PDFPasswordIncorrect
+from pdfplumber.utils.exceptions import PdfminerException
+
+
+class PdfPasswordRequiredError(ValueError):
+    error_code = "encrypted_pdf"
 
 
 def normalize_pdf_text_line(value: str) -> str:
@@ -19,7 +25,16 @@ def extract_pdf_metadata(
     lines: list[str] = []
     extracted_text = ""
 
-    with pdfplumber.open(file) as pdf:
+    try:
+        pdf_context = pdfplumber.open(file)
+    except PDFPasswordIncorrect as exc:
+        raise PdfPasswordRequiredError("PDF requires a password") from exc
+    except PdfminerException as exc:
+        if any(isinstance(argument, PDFPasswordIncorrect) for argument in exc.args):
+            raise PdfPasswordRequiredError("PDF requires a password") from exc
+        raise
+
+    with pdf_context as pdf:
         page_count = len(pdf.pages)
 
         for page in pdf.pages:
