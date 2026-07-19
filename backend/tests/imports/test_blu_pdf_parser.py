@@ -2309,7 +2309,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             range_name="Start 1 Juni",
             rows=[[
                 "Reza",
-                "06/13/2026 13:26",
+                "06/13/2026",
                 "SUPERINDO",
                 "Belanja",
                 159750,
@@ -2338,7 +2338,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             destination_start_row=12,
             destination_end_row=12,
             column_index=1,
-            pattern="yyyy-mm-dd hh:mm",
+            pattern="mm/dd/yyyy",
         )
         self.assertEqual("success", result["status"])
         self.assertEqual(1, result["sync_success"])
@@ -2543,8 +2543,8 @@ class BluPdfParserTestCase(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "type": "DATE_TIME",
-                "pattern": "yyyy-mm-dd hh:mm",
+                "type": "DATE",
+                "pattern": "mm/dd/yyyy",
             },
             request["repeatCell"]["cell"]["userEnteredFormat"]["numberFormat"],
         )
@@ -2588,7 +2588,7 @@ class BluPdfParserTestCase(unittest.TestCase):
             destination_start_row=12,
             destination_end_row=12,
             column_index=1,
-            pattern="yyyy-mm-dd hh:mm",
+            pattern="mm/dd/yyyy",
         )
         self.assertEqual(None, result["template_row"])
         self.assertEqual("12:12", result["appended_row_range"])
@@ -2630,7 +2630,7 @@ class BluPdfParserTestCase(unittest.TestCase):
         self.assertEqual(
             [
                 "Reza",
-                "06/13/2026 13:26",
+                "06/13/2026",
                 "SUPERINDO",
                 "Belanja",
                 159750,
@@ -2639,6 +2639,45 @@ class BluPdfParserTestCase(unittest.TestCase):
             ],
             row,
         )
+
+    def test_spreadsheet_row_formats_bca_midnight_adapter_as_date_only(self):
+        row = SpreadsheetSyncService()._build_sheet_row(
+            {
+                "datetime": "2026-06-04 00:00",
+                "merchant_display": "Test tagihan",
+                "amount": 895856,
+                "category": "Tagihan",
+                "notes": "",
+                "source_dana": "BCA",
+            },
+            current_user={"display_name": "Reza Putra Pratama", "name": "Reza"},
+        )
+
+        self.assertEqual("06/04/2026", row[1])
+
+    def test_spreadsheet_row_interprets_ambiguous_bca_date_as_day_first(self):
+        sync_service = SpreadsheetSyncService()
+
+        test_cases = (
+            ("02/06/2026 00:00", "06/02/2026"),
+            ("27/06/2026 00:00", "06/27/2026"),
+        )
+
+        for datetime_value, expected_date in test_cases:
+            with self.subTest(datetime_value=datetime_value):
+                row = sync_service._build_sheet_row(
+                    {
+                        "datetime": datetime_value,
+                        "merchant_display": "BCA transaction",
+                        "amount": 10000,
+                        "category": "Tagihan",
+                        "notes": "",
+                        "source_dana": "BCA",
+                    },
+                    current_user={"display_name": "Reza Putra Pratama", "name": "Reza"},
+                )
+
+                self.assertEqual(expected_date, row[1])
 
     def test_spreadsheet_value_resolver_uses_single_existing_name(self):
         resolver = SpreadsheetValueResolver()

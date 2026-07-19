@@ -309,7 +309,7 @@ def format_sheet_datetime_column(
     destination_start_row: int,
     destination_end_row: int,
     column_index: int = 1,
-    pattern: str = "yyyy-mm-dd hh:mm",
+    pattern: str = "mm/dd/yyyy",
 ):
     if destination_start_row < 1 or destination_end_row < destination_start_row:
         raise GoogleSheetsClientError("Destination row range is invalid")
@@ -330,7 +330,7 @@ def format_sheet_datetime_column(
                 "cell": {
                     "userEnteredFormat": {
                         "numberFormat": {
-                            "type": "DATE_TIME",
+                            "type": "DATE",
                             "pattern": pattern,
                         },
                     },
